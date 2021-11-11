@@ -8,7 +8,7 @@ The API requires the user to define the following functions:
 - `meas_lpdf(y_curr, x_curr, theta)`: Log-density of `p(y_t | x_t, theta)`.
 - `meas_sample(x_curr, theta)`: Sample from `y_curr ~ p(y_t | x_t, theta)`.
 
-For now, additional inputs (e.g., `dt` in the example below) are specified as global constants.
+For now, additional inputs are specified as global constants.
 
 The provided functions are:
 
@@ -17,93 +17,11 @@ The provided functions are:
 - `particle_loglik(logw_particles)`: Compute the particle filter marginal loglikelihoood.
 - `particle_smooth(logw, X_particles, ancestor_particles, n_sample)`: Posterior sampling from the particle filter distribution of `p(x_state | y_meas, theta)`.
 - `particle_resample(logw)`: A rudimentary particle resampling method.
-
-An example is also provided, consisting of the following model:
-
-```
-x_0 ~ pi(x_0) \propto 1
-x_t ~ N(x_{t-1} + mu * dt, sigma * sqrt(dt))
-y_t ~ N(x_t, tau)
-```
-
-The parameter values are `theta = (mu, sigma, tau)`, and `dt` is a global constant.
 """
 
 import numpy as np
 import scipy as sp
 import scipy.stats
-
-# --- model-specific functions and constants -----------------------------------
-
-# state-space dimensions
-n_meas = 1
-n_state = 1
-
-
-def state_lpdf(x_curr, x_prev, theta):
-    """
-    Calculates the log-density of `p(x_curr | x_prev, theta)`.
-
-    Args:
-        x_curr: State variable at current time `t`.
-        x_prev: State variable at previous time `t-1`.
-        theta: Parameter value.
-
-    Returns:
-        The log-density of `p(x_curr | x_prev, theta)`.
-    """
-    mu = theta[0]
-    sigma = theta[1]
-    return sp.stats.norm.logpdf(x_curr, loc=x_prev + mu * dt, scale=sigma * np.sqrt(dt))
-
-
-def state_sample(x_prev, theta):
-    """
-    Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
-
-    Args:
-        x_prev: State variable at previous time `t-1`.
-        theta: Parameter value.
-
-    Returns:
-        Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
-    """
-    mu = theta[0]
-    sigma = theta[1]
-    return sp.stats.norm.rvs(loc=x_prev + mu * dt, scale=sigma * np.sqrt(dt))
-
-
-def meas_lpdf(y_curr, x_curr, theta):
-    """
-    Log-density of `p(y_curr | x_curr, theta)`.
-
-    Args:
-        y_curr: Measurement variable at current time `t`.
-        x_curr: State variable at current time `t`.
-        theta: Parameter value.
-
-    Returns
-        The log-density of `p(x_curr | x_prev, theta)`.
-    """
-    tau = theta[2]
-    return sp.stats.norm.logpdf(y_curr, loc=x_curr, scale=tau)
-
-
-def meas_sample(x_curr, theta):
-    """
-    Sample from `p(y_curr | x_curr, theta)`.
-
-    Args:
-        x_curr: State variable at current time `t`.
-        theta: Parameter value.
-
-    Returns:
-        Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
-    """
-    tau = theta[2]
-    return sp.stats.norm.rvs(loc=x_curr, scale=tau)
-
-# --- particle filter functions ------------------------------------------------
 
 
 def meas_sim(n_obs, x_init, theta):
@@ -241,46 +159,3 @@ def particle_smooth(logw, X_particles, ancestor_particles, n_sample=1):
             i_part = ancestor_particles[i_obs+1, i_part]
             x_state[i_samp, i_obs] = X_particles[i_obs, i_part, :]
     return x_state  # , i_part_T
-
-# --- test ---------------------------------------------------------------------
-
-
-# parameter values
-mu = 5
-sigma = 1
-tau = .1
-theta = np.array([mu, sigma, tau])
-
-# data specification
-dt = .1
-n_obs = 5
-x_init = np.array([0.])
-
-# simulate data
-y_meas, x_state = meas_sim(n_obs, x_init, theta)
-
-print("y_meas = \n", y_meas)
-print("x_state = \n", x_state)
-
-n_particles = 7
-pf_out = particle_filter(y_meas, theta, n_particles)
-pf_out = particle_filter(y_meas, theta, n_particles)
-pf_out = particle_filter(y_meas, theta, n_particles)
-
-print("pf_out = \n", pf_out)
-
-# calculate marginal loglikelihood
-pf_loglik = particle_loglik(pf_out["logw_particles"])
-
-print("pf_loglik = \n", pf_loglik)
-
-# sample from posterior `p(x_{0:T} | y_{0:T}, theta)`
-n_sample = 11
-X_state = particle_smooth(
-    pf_out["logw_particles"][n_obs-1],
-    pf_out["X_particles"],
-    pf_out["ancestor_particles"],
-    n_sample
-)
-
-print("X_state = \n", X_state)
