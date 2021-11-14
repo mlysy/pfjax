@@ -64,7 +64,7 @@ def meas_lpdf(y_curr, x_curr, theta):
         x_curr: State variable at current time `t`.
         theta: Parameter value.
 
-    Returns
+    Returns:
         The log-density of `p(x_curr | x_prev, theta)`.
     """
     tau = theta[2]
@@ -84,3 +84,47 @@ def meas_sample(x_curr, theta):
     """
     tau = theta[2]
     return sp.stats.norm.rvs(loc=x_curr, scale=tau)
+
+
+def init_logw(x_init, y_init, theta):
+    """
+    Log-weight of the importance sampler for initial state variable `x_init`.
+
+    Suppose that 
+    ```
+    x_init ~ q(x_init) = q(x_init | y_init, theta)
+    ```
+    Then function returns
+    ```
+    logw = log p(x_init | theta) - log q(x_init)
+    ```
+
+    Args:
+        x_init: State variable at initial time `t = 0`.
+        y_init: Measurement variable at initial time `t = 0`.
+        theta: Parameter value.
+
+    Returns:
+        The log-weight of the importance sampler for `x_init`.
+    """
+    return -meas_lpdf(x_init, y_init, theta)
+
+
+def init_sample(y_init, theta):
+    """
+    Sampling distribution for initial state variable `x_init`. 
+
+    Samples from an importance sampling proposal distribution
+    ```
+    x_init ~ q(x_init) = q(x_init | y_init, theta)
+    ```
+    See `init_logw()` for details.
+
+    Args:
+        y_init: Measurement variable at initial time `t = 0`.
+        theta: Parameter value.
+
+    Returns:
+        Sample from the proposal distribution for `x_init`.
+    """
+    return meas_sample(y_init, theta)

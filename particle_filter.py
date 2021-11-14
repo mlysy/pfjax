@@ -93,9 +93,13 @@ def particle_filter(y_meas, theta, n_particles):
     # initial time point
     # FIXME: Hard-coded flat prior on x_0.  Make this more general.
     for i_part in range(n_particles):
-        X_particles[0, i_part, :] = meas_sample(y_meas[0, :], theta)
+        # X_particles[0, i_part, :] = meas_sample(y_meas[0, :], theta)
+        X_particles[0, i_part] = init_sample(y_meas[0], theta)
         # sample directly from posterior p(x_0 | y_0, theta)
-        logw_particles[0, i_part] = 0.
+        # logw_particles[0, i_part] = 0.
+        logw_particles[0, i_part] = \
+            init_logw(X_particles[0, i_part], y_meas[0], theta) + \
+            meas_lpdf(y_meas[0], X_particles[0, i_part], theta)
     # subsequent time points
     for t in range(1, n_obs):
         # resampling step
