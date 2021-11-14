@@ -36,7 +36,10 @@ def state_lpdf(x_curr, x_prev, theta):
     """
     mu = theta[0]
     sigma = theta[1]
-    return sp.stats.norm.logpdf(x_curr, loc=x_prev + mu * dt, scale=sigma * np.sqrt(dt))
+    return np.squeeze(
+        sp.stats.norm.logpdf(x_curr, loc=x_prev + mu * dt,
+                             scale=sigma * np.sqrt(dt))
+    )
 
 
 def state_sample(x_prev, theta):
@@ -68,7 +71,9 @@ def meas_lpdf(y_curr, x_curr, theta):
         The log-density of `p(x_curr | x_prev, theta)`.
     """
     tau = theta[2]
-    return sp.stats.norm.logpdf(y_curr, loc=x_curr, scale=tau)
+    return np.squeeze(
+        sp.stats.norm.logpdf(y_curr, loc=x_curr, scale=tau)
+    )
 
 
 def meas_sample(x_curr, theta):

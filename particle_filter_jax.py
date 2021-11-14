@@ -83,15 +83,16 @@ def particle_filter(y_meas, theta, n_particles, key):
     # initial particles have no ancestors
     ancestor_particles = ancestor_particles.at[0].set(-1)
     # initial time point
-    # FIXME: Hard-coded flat prior on x_0.  Make this more general.
     key, *subkeys = random.split(key, num=n_particles+1)
     X_particles = X_particles.at[0].set(
-        jax.vmap(lambda k: meas_sample(y_meas[0], theta, k))(
+        jax.vmap(lambda k: init_sample(y_meas[0], theta, k))(
             jnp.array(subkeys)
         )
     )
-    # sample directly from posterior p(x_0 | y_0, theta)
-    logw_particles = logw_particles.at[0].set(0.)
+    logw_particles = logw_particles.at[0].set(
+        jax.vmap(lambda xs: init_logw(xs, y_meas[0], theta) +
+                 meas_lpdf(y_meas[0], xs, theta))(X_particles[0])
+    )
     # subsequent time points
     for t in range(1, n_obs):
         # resampling step
@@ -107,10 +108,8 @@ def particle_filter(y_meas, theta, n_particles, key):
             )
         )
         logw_particles = logw_particles.at[t].set(
-            jnp.squeeze(
-                jax.vmap(lambda xs: meas_lpdf(y_meas[t], xs, theta))(
-                    X_particles[t]
-                )
+            jax.vmap(lambda xs: meas_lpdf(y_meas[t], xs, theta))(
+                X_particles[t]
             )
         )
     return {
