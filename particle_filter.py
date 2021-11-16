@@ -7,8 +7,20 @@ The API requires the user to define the following functions:
 - `state_sample(x_last, theta)`: Sample from `x_curr ~ p(x_t | x_{t-1}, theta)`.
 - `meas_lpdf(y_curr, x_curr, theta)`: Log-density of `p(y_t | x_t, theta)`.
 - `meas_sample(x_curr, theta)`: Sample from `y_curr ~ p(y_t | x_t, theta)`.
+- `init_sample(y_init, theta)`: Sample from *proposal* distribution `x_init ~ q(x_init | y_init, theta)`.  See below for details.
+- `init_logw(x_init, y_init, theta)`: Log-weights for importance sampler for `x_init`.
 
 For now, additional inputs are specified as global constants.
+
+Importance sampling is used to draw from the initial state variable `x_init` at time `t = 0`.  That is, the proposal distribution is
+```
+x_init ~ q(x_init) = q(x_init | y_init, theta)
+```
+as obtained by `init_sample()`.  The samples are then reweighted with log-weights
+```
+logw = log p(x_init | theta) - log q(x_init)
+```
+as calculated by `init_logw()`.
 
 The provided functions are:
 
@@ -34,16 +46,15 @@ def meas_sim(n_obs, x_init, theta):
         theta: Parameter value.
 
     Returns:
-        y_meas: The sequence of measurement variables `y_meas = (y_1, ..., y_T)`, where `T = n_obs`.
-        x_state: The sequence of state variables `x_state = (x_1, ..., x_T)`, where `T = n_obs`.
+        y_meas: The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
+        x_state: The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1` and `x_0 = x_init`.
     """
     y_meas = np.zeros((n_obs, n_meas))
     x_state = np.zeros((n_obs, n_state))
-    x_prev = x_init
-    for t in range(n_obs):
-        x_state[t] = state_sample(x_prev, theta)
+    x_state[0] = x_init
+    for t in range(1, n_obs):
+        x_state[t] = state_sample(x_state[t-1], theta)
         y_meas[t] = meas_sample(x_state[t], theta)
-        x_prev = x_state[t]
     return y_meas, x_state
 
 
@@ -71,10 +82,8 @@ def particle_filter(y_meas, theta, n_particles):
 
     Closely follows Algorithm 2 of https://arxiv.org/pdf/1306.3277.pdf.
 
-    FIXME: Uses a hard-coded prior for initial state variable `x_state[0]`.  Need to make this more general.
-
     Args:
-        y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_1, ..., y_T)`, where `T = n_obs`.
+        y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
         theta: Parameter value.
         n_particles: Number of particles.
 
@@ -118,6 +127,8 @@ def particle_loglik(logw_particles):
     """
     Calculate particle filter marginal loglikelihood.
 
+    FIXME: Libbi paper does `logmeanexp` instead of `logsumexp`...
+
     Args:
         logw_particles: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.        
 
@@ -137,7 +148,7 @@ def particle_smooth(logw, X_particles, ancestor_particles, n_sample=1):
     Samples from posterior distribution `p(x_state | x_meas, theta)`.
 
     Args:
-        logw: Vector of `n_particles` unnormalized log-weights at the last time point `t = n_obs`.
+        logw: Vector of `n_particles` unnormalized log-weights at the last time point `t = n_obs-1`.
         X_particles: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.        
         ancestor_particles: An integer `ndarray` of shape `(n_obs, n_particles)` where each element gives the index of the particle's ancestor at the previous time point.
         n_sample: Number of draws of `x_state` to return.

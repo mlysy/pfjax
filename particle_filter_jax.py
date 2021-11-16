@@ -21,17 +21,18 @@ def meas_sim(n_obs, x_init, theta, key):
         key: PRNG key.
 
     Returns:
-        y_meas: The sequence of measurement variables `y_meas = (y_1, ..., y_T)`, where `T = n_obs`.
-        x_state: The sequence of state variables `x_state = (x_1, ..., x_T)`, where `T = n_obs`.
+        y_meas: The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
+        x_state: The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
     """
     y_meas = jnp.zeros((n_obs, n_meas))
     x_state = jnp.zeros((n_obs, n_state))
-    x_prev = x_init
-    for t in range(n_obs):
+    x_state = x_state.at[0].set(x_init)
+    for t in range(1, n_obs):
         key, *subkeys = random.split(key, num=3)
-        x_state = x_state.at[t].set(state_sample(x_prev, theta, subkeys[0]))
+        x_state = x_state.at[t].set(
+            state_sample(x_state[t-1], theta, subkeys[0])
+        )
         y_meas = y_meas.at[t].set(meas_sample(x_state[t], theta, subkeys[1]))
-        x_prev = x_state[t]
     return y_meas, x_state
 
 
@@ -61,10 +62,8 @@ def particle_filter(y_meas, theta, n_particles, key):
 
     Closely follows Algorithm 2 of https://arxiv.org/pdf/1306.3277.pdf.
 
-    FIXME: Uses a hard-coded prior for initial state variable `x_state[0]`.  Need to make this more general.
-
     Args:
-        y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_1, ..., y_T)`, where `T = n_obs`.
+        y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
         theta: Parameter value.
         n_particles: Number of particles.
         key: PRNG key.

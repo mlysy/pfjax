@@ -13,6 +13,7 @@ x_init = np.array([0.])
 y_meas, x_state = meas_sim(n_obs, x_init, theta)
 
 print("y_meas = \n", y_meas)
+print("x_init = \n", x_init)
 print("x_state = \n", x_state)
 
 n_particles = 7

@@ -18,6 +18,7 @@ key, subkey = random.split(key)
 y_meas, x_state = meas_sim(n_obs, x_init, theta, subkey)
 
 print("y_meas = \n", y_meas)
+print("x_init = \n", x_init)
 print("x_state = \n", x_state)
 
 # run particle filter
