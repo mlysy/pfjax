@@ -8,6 +8,8 @@ import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 from jax import random
+from jax import lax
+from functools import partial
 
 
 def meas_sim(n_obs, x_init, theta, key):
@@ -34,6 +36,47 @@ def meas_sim(n_obs, x_init, theta, key):
         )
         y_meas = y_meas.at[t].set(meas_sample(x_state[t], theta, subkeys[1]))
     return y_meas, x_state
+
+
+@partial(jax.jit, static_argnums=0)
+def meas_sim_scan(n_obs, x_init, theta, key):
+    """
+    Simulate data from the state-space model.
+
+    Args:
+        n_obs: Number of observations to generate.
+        x_init: Initial state value at time `t = 0`.
+        theta: Parameter value.
+        key: PRNG key.
+
+    Returns:
+        y_meas: The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
+        x_state: The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
+    """
+    init = {"y_meas": jnp.zeros(n_meas), "x_state": x_init, "key": key}
+
+    def fun(carry, x):
+        key, *subkeys = random.split(carry["key"], num=3)
+        x_state = state_sample(carry["x_state"], theta, subkeys[0])
+        y_meas = meas_sample(x_state, theta, subkeys[1])
+        res = {"y_meas": y_meas, "x_state": x_state, "key": key}
+        return res, res
+    last, full = lax.scan(fun, init, jnp.arange(1, n_obs))
+    x_state = jnp.append(jnp.expand_dims(init["x_state"], axis=0),
+                         full["x_state"], axis=0)
+    y_meas = jnp.append(jnp.expand_dims(init["y_meas"], axis=0),
+                        full["y_meas"], axis=0)
+    return y_meas, x_state
+    # y_meas=jnp.zeros((n_obs, n_meas))
+    # x_state=jnp.zeros((n_obs, n_state))
+    # x_state=x_state.at[0].set(x_init)
+    # for t in range(1, n_obs):
+    #     key, *subkeys=random.split(key, num=3)
+    #     x_state=x_state.at[t].set(
+    #         state_sample(x_state[t-1], theta, subkeys[0])
+    #     )
+    #     y_meas=y_meas.at[t].set(meas_sample(x_state[t], theta, subkeys[1]))
+    # return y_meas, x_state
 
 
 def particle_resample(logw, key):
@@ -116,3 +159,21 @@ def particle_filter(y_meas, theta, n_particles, key):
         "logw_particles": logw_particles,
         "ancestor_particles": ancestor_particles
     }
+
+
+def particle_loglik(logw_particles):
+    """
+    Calculate particle filter marginal loglikelihood.
+
+    FIXME: Libbi paper does `logmeanexp` instead of `logsumexp`...
+
+    Args:
+        logw_particles: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
+
+    Returns:
+        Particle filter approximation of
+        ```
+        log p(y_meas | theta) = log int p(y_meas | x_state, theta) * p(x_state | theta) dx_state
+        ```
+    """
+    return jnp.sum(jsp.special.logsumexp(logw_particles, axis=1))

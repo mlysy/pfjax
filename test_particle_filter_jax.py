@@ -13,13 +13,23 @@ dt = .1
 n_obs = 5
 x_init = jnp.array([0.])
 
-# simulate data
-key, subkey = random.split(key)
-y_meas, x_state = meas_sim(n_obs, x_init, theta, subkey)
-
+# simulate regular data
+y_meas, x_state = meas_sim(n_obs, x_init, theta, key)
 print("y_meas = \n", y_meas)
-print("x_init = \n", x_init)
 print("x_state = \n", x_state)
+
+# simulate lax data
+y_meas, x_state = meas_sim_scan(n_obs, x_init, theta, key)
+print("y_meas = \n", y_meas)
+print("x_state = \n", x_state)
+
+# # simulate data
+# key, subkey = random.split(key)
+# y_meas, x_state = meas_sim(n_obs, x_init, theta, subkey)
+
+# print("y_meas = \n", y_meas)
+# print("x_init = \n", x_init)
+# print("x_state = \n", x_state)
 
 # run particle filter
 n_particles = 7
