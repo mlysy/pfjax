@@ -1,11 +1,20 @@
 """
-Brownian motion state space model in JAX.
+Brownian motion state space model.
+
+The model is:
+
+```
+x_0 ~ pi(x_0) \propto 1
+x_t ~ N(x_{t-1} + mu * dt, sigma * sqrt(dt))
+y_t ~ N(x_t, tau)
+```
+
+The parameter values are `theta = (mu, sigma, tau)`, and `dt` is a global constant.
 """
 
-import jax
-import jax.numpy as jnp
-import jax.scipy as jsp
-from jax import random
+import numpy as np
+import scipy as sp
+import scipy.stats
 
 
 # state-space dimensions
@@ -27,29 +36,26 @@ def state_lpdf(x_curr, x_prev, theta):
     """
     mu = theta[0]
     sigma = theta[1]
-    return jnp.squeeze(
-        jsp.stats.norm.logpdf(x_curr, loc=x_prev + mu * dt,
-                              scale=sigma * jnp.sqrt(dt))
+    return np.squeeze(
+        sp.stats.norm.logpdf(x_curr, loc=x_prev + mu * dt,
+                             scale=sigma * np.sqrt(dt))
     )
 
 
-def state_sample(x_prev, theta, key):
+def state_sample(x_prev, theta):
     """
     Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
 
     Args:
         x_prev: State variable at previous time `t-1`.
         theta: Parameter value.
-        key: PRNG key.
 
     Returns:
         Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
     """
     mu = theta[0]
     sigma = theta[1]
-    x_mean = x_prev + mu * dt
-    x_sd = sigma * jnp.sqrt(dt)
-    return x_mean + x_sd * random.normal(key=key)
+    return sp.stats.norm.rvs(loc=x_prev + mu * dt, scale=sigma * np.sqrt(dt))
 
 
 def meas_lpdf(y_curr, x_curr, theta):
@@ -61,29 +67,28 @@ def meas_lpdf(y_curr, x_curr, theta):
         x_curr: State variable at current time `t`.
         theta: Parameter value.
 
-    Returns
+    Returns:
         The log-density of `p(x_curr | x_prev, theta)`.
     """
     tau = theta[2]
-    return jnp.squeeze(
-        jsp.stats.norm.logpdf(y_curr, loc=x_curr, scale=tau)
+    return np.squeeze(
+        sp.stats.norm.logpdf(y_curr, loc=x_curr, scale=tau)
     )
 
 
-def meas_sample(x_curr, theta, key):
+def meas_sample(x_curr, theta):
     """
     Sample from `p(y_curr | x_curr, theta)`.
 
     Args:
         x_curr: State variable at current time `t`.
         theta: Parameter value.
-        key: PRNG key.
 
     Returns:
         Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
     """
     tau = theta[2]
-    return x_curr + tau * random.normal(key=key)
+    return sp.stats.norm.rvs(loc=x_curr, scale=tau)
 
 
 def init_logw(x_init, y_init, theta):
@@ -110,7 +115,7 @@ def init_logw(x_init, y_init, theta):
     return -meas_lpdf(x_init, y_init, theta)
 
 
-def init_sample(y_init, theta, key):
+def init_sample(y_init, theta):
     """
     Sampling distribution for initial state variable `x_init`. 
 
@@ -123,9 +128,8 @@ def init_sample(y_init, theta, key):
     Args:
         y_init: Measurement variable at initial time `t = 0`.
         theta: Parameter value.
-        key: PRNG key.
 
     Returns:
         Sample from the proposal distribution for `x_init`.
     """
-    return meas_sample(y_init, theta, key)
+    return meas_sample(y_init, theta)
