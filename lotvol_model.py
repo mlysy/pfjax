@@ -4,18 +4,30 @@ Lotka-Volterra predator-prey model.
 The model is:
 
 ```
-x_m0 = (logH_m0, logL_m0) ~ pi(x_m0) \propto 1
+exp(x_m0) = exp( (logH_m0, logL_m0) ) ~ pi(x_m0) \propto 1
 logH_mt ~ N(logH_{m,t-1} + (alpha - beta exp(logL_{m,t-1})) dt/m,
             sigma_H^2 dt/m)
 logL_mt ~ N(logL_{m,t-1} + (-gamma + delta exp(logH_{m,t-1})) dt/m,
             sigma_L^2 dt/m)
-y_t ~ N(x_{m,mt}, diag(tau_H, tau_L))
+y_t ~ N( exp(x_{m,mt}), diag(tau_H^2, tau_L^2) )
 ```
 
 - Model parameters: `theta = (alpha, beta, gamma, delta, sigma_H, sigma_L, tau_H, tau_L)`.
 - Global constants: `dt` and `n_res`, i.e., `m`.
 - State dimensions: `n_state = (n_res, 2)`.
-- Measurement dimensions: `n_meas = 2`.  Note that `y_t` corresponds to `x_t = (x_{m,mt}, ..., x_{m,mt+(m-1)})`, i.e., aligns with the first element of `x_t`.
+- Measurement dimensions: `n_meas = 2`.
+
+**Notes:**
+
+- The measurement `y_t` corresponds to `x_t = (x_{m,mt}, ..., x_{m,mt+(m-1)})`, i.e., aligns with the first element of `x_t`.  This makes it easier to define the prior.
+
+- The prior is such that `p(x_0 | y_0, theta)` is given by:
+
+    ```
+    exp(x_{m0}) ~ N( y_0, diag(tau_H^2, tau_L^2) )
+    x_{mt} ~ Euler(x_{m,t-1}, theta)
+    ```
+
 """
 
 import jax
@@ -141,7 +153,7 @@ def meas_lpdf(y_curr, x_curr, theta):
     """
     tau = theta[6:8]
     return jnp.sum(
-        jsp.stats.norm.logpdf(y_curr, loc=x_curr[0], scale=tau)
+        jsp.stats.norm.logpdf(y_curr, loc=jnp.exp(x_curr[0]), scale=tau)
     )
 
 
@@ -158,7 +170,7 @@ def meas_sample(x_curr, theta, key):
         Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
     """
     tau = theta[6:8]
-    return x_curr[0] + tau * random.normal(key, (n_state[1],))
+    return jnp.exp(x_curr[0]) + tau * random.normal(key, (n_state[1],))
 
 
 def init_logw(x_init, y_init, theta):
@@ -204,6 +216,7 @@ def init_sample(y_init, theta, key):
         Sample from the proposal distribution for `x_init`.
     """
     key, subkey = random.split(key)
-    x_init = meas_sample(y_init, theta, subkey)
+    x_init = jnp.repeat(jnp.expand_dims(y_init, axis=0), n_res, axis=0)
+    x_init = jnp.log(meas_sample(x_init, theta, subkey))
     x_step = euler_sim(n_res-1, x_init, dt/n_res, theta, key)
     return jnp.append(jnp.expand_dims(x_init, axis=0), x_step, axis=0)
