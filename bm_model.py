@@ -1,5 +1,15 @@
 """
-Brownian motion state space model in JAX.
+Brownian motion state space model.
+
+The model is:
+
+```
+x_0 ~ pi(x_0) \propto 1
+x_t ~ N(x_{t-1} + mu * dt, sigma * sqrt(dt))
+y_t ~ N(x_t, tau)
+```
+
+The parameter values are `theta = (mu, sigma, tau)`, the meaurement and state dimensions are `n_meas = 1` and `n_state = 1`, and `dt` is a global constant.
 """
 
 import jax
@@ -62,7 +72,7 @@ def meas_lpdf(y_curr, x_curr, theta):
         theta: Parameter value.
 
     Returns
-        The log-density of `p(x_curr | x_prev, theta)`.
+        The log-density of `p(y_curr | x_curr, theta)`.
     """
     tau = theta[2]
     return jnp.squeeze(
@@ -96,7 +106,7 @@ def init_logw(x_init, y_init, theta):
     ```
     Then function returns
     ```
-    logw = log p(x_init | theta) - log q(x_init)
+    logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
     ```
 
     Args:
@@ -107,7 +117,8 @@ def init_logw(x_init, y_init, theta):
     Returns:
         The log-weight of the importance sampler for `x_init`.
     """
-    return -meas_lpdf(x_init, y_init, theta)
+    return jnp.zeros(())
+    # return -meas_lpdf(x_init, y_init, theta)
 
 
 def init_sample(y_init, theta, key):

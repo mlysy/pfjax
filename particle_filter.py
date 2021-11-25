@@ -214,11 +214,12 @@ def particle_filter(y_meas, theta, n_particles, key):
         return res, res
     # scan initial value
     key, *subkeys = random.split(key, num=n_particles+1)
-    X_particles = jax.vmap(lambda k: init_sample(y_meas[0], theta, k))(
-        jnp.array(subkeys)
-    )
-    logw_particles = jax.vmap(lambda xs: init_logw(xs, y_meas[0], theta) +
-                              meas_lpdf(y_meas[0], xs, theta))(X_particles)
+    X_particles = jax.vmap(
+        lambda k: init_sample(y_meas[0], theta, k))(jnp.array(subkeys))
+    # logw_particles = jax.vmap(lambda xs: init_logw(xs, y_meas[0], theta) +
+    #                           meas_lpdf(y_meas[0], xs, theta))(X_particles)
+    logw_particles = jax.vmap(
+        lambda xs: init_logw(xs, y_meas[0], theta))(X_particles)
     init = {
         "X_particles": X_particles,
         "logw_particles": logw_particles,
