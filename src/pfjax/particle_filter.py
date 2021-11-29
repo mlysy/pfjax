@@ -233,19 +233,20 @@ def particle_loglik(logw_particles):
     return jnp.sum(jsp.special.logsumexp(logw_particles, axis=1) - jnp.log(n_particles))
 
 
-def get_sum_lweights(theta, key, n_particles, y_meas):
+def get_sum_lweights(theta, key, n_particles, y_meas, model):
     """
-    
+
     Args:
         theta: A `jnp.array` that represents the values of the parameters.
         key: The key required for the prng.
         n_particles: The number of particles to use in the particle filter.
-        y_meas: The measurements of the observations required for the particle filter. 
+        y_meas: The measurements of the observations required for the particle filter.
+
     Returns:
         The sum of the particle log weights from the particle filters.
     """
-    _, subkey = random.split(key)
-    ret = particle_filter(y_meas, theta, n_particles, subkey)
+
+    ret = particle_filter(model, y_meas, theta, n_particles, key)
     sum_particle_lweights = particle_loglik(ret['logw_particles'])
     return sum_particle_lweights
 
