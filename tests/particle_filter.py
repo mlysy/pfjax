@@ -279,3 +279,44 @@ def particle_loglik(logw_particles):
         ```
     """
     return jnp.sum(jsp.special.logsumexp(logw_particles, axis=1))
+
+
+def get_sum_lweights(theta, key, n_particles, y_meas):
+    """
+    
+    Args:
+        theta: A `jnp.array` that represents the values of the parameters.
+        key: The key required for the prng.
+        n_particles: The number of particles to use in the particle filter.
+        y_meas: The measurements of the observations required for the particle filter.
+        
+    Returns:
+        The sum of the particle log weights from the particle filters.
+    """
+    _, subkey = random.split(key)
+    ret = particle_filter(y_meas, theta, n_particles, subkey)
+    sum_particle_lweights = particle_loglik(ret['logw_particles'])
+    return sum_particle_lweights
+
+
+def stoch_opt(params, grad_fun, y_meas, n_particles=100, iterations=10, learning_rate=0.01, key=1):
+    """
+    
+    Args:
+        params: A `jnp.array` that represents the initial values of the parameters.
+        grad_fun: The function which we would like to take the gradient with respect to.
+        y_meas: The measurements of the observations required for the particle filter.
+        n_particles: The number of particles to use in the particle filter.
+        learning_rate: The learning rate for the gradient descent algorithm.
+        iterations: The number of iterations to run the gradient descent for.
+        key: The key required for the prng.
+        
+    Returns:
+        The stochastic approximation of `theta` which are the parameters of the model. 
+    """
+    grad_lweights = jax.grad(grad_fun, key, n_particles, y_meas)
+    for i in range(iterations):
+        params_update = grad_lweights(params)
+        params = params + (learning_rate * params_update)
+        
+    return params
