@@ -14,17 +14,9 @@ import numpy as np
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
+from .utils import *  # for running tests from top-level directory
 import particle_filter as pf
 import bm_model as bm
-
-
-def rel_err(X1, X2):
-    """
-    Relative error between two JAX arrays.
-
-    Adds a bit to the denominator when it's equal to zero.
-    """
-    return jnp.max(jnp.abs((X1.ravel() - X2.ravel())/(0.1 + X1.ravel())))
 
 
 # hack to copy-paste in contents without import
@@ -50,11 +42,12 @@ class TestFor(unittest.TestCase):
         # data specification
         n_obs = 5
         x_init = jnp.array([0.])
-        bm_model = bm.BMFilter(dt=dt)
+        bm_model = bm.BMModel(dt=dt)
         # simulate with for-loop
-        y_meas1, x_state1 = bm_model.meas_sim_for(n_obs, x_init, theta, key)
+        y_meas1, x_state1 = pf.meas_sim_for(
+            bm_model, n_obs, x_init, theta, key)
         # simulate without for-loop
-        y_meas2, x_state2 = bm_model.meas_sim(n_obs, x_init, theta, key)
+        y_meas2, x_state2 = pf.meas_sim(bm_model, n_obs, x_init, theta, key)
         self.assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
         self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
 
@@ -68,15 +61,16 @@ class TestFor(unittest.TestCase):
         # data specification
         n_obs = 5
         x_init = jnp.array([0.])
-        bm_model = bm.BMFilter(dt=dt)
+        bm_model = bm.BMModel(dt=dt)
         # simulate without for-loop
-        y_meas, x_state = bm_model.meas_sim(n_obs, x_init, theta, key)
+        y_meas, x_state = pf.meas_sim(bm_model, n_obs, x_init, theta, key)
         # run particle filter
         n_particles = 7
         key, subkey = random.split(key)
-        pf_out1 = bm_model.particle_filter_for(
-            y_meas, theta, n_particles, subkey)
-        pf_out2 = bm_model.particle_filter(y_meas, theta, n_particles, subkey)
+        pf_out1 = pf.particle_filter_for(bm_model,
+                                         y_meas, theta, n_particles, subkey)
+        pf_out2 = pf.particle_filter(
+            bm_model, y_meas, theta, n_particles, subkey)
         for k in pf_out1.keys():
             with self.subTest(k=k):
                 self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
@@ -100,8 +94,8 @@ class TestOOP(unittest.TestCase):
         # simulate with globals
         y_meas1, x_state1 = meas_sim(n_obs, x_init, theta, key)
         # simulate with oop
-        bm_model = bm.BMFilter(dt=dt)
-        y_meas2, x_state2 = bm_model.meas_sim(n_obs, x_init, theta, key)
+        bm_model = bm.BMModel(dt=dt)
+        y_meas2, x_state2 = pf.meas_sim(bm_model, n_obs, x_init, theta, key)
         self.assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
         self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
 
@@ -116,13 +110,14 @@ class TestOOP(unittest.TestCase):
         n_obs = 5
         x_init = jnp.array([0.])
         # simulate with oop
-        bm_model = bm.BMFilter(dt=dt)
-        y_meas, x_state = bm_model.meas_sim(n_obs, x_init, theta, key)
+        bm_model = bm.BMModel(dt=dt)
+        y_meas, x_state = pf.meas_sim(bm_model, n_obs, x_init, theta, key)
         # run particle filter
         n_particles = 7
         key, subkey = random.split(key)
         pf_out1 = particle_filter(y_meas, theta, n_particles, subkey)
-        pf_out2 = bm_model.particle_filter(y_meas, theta, n_particles, subkey)
+        pf_out2 = pf.particle_filter(
+            bm_model, y_meas, theta, n_particles, subkey)
         for k in pf_out1.keys():
             with self.subTest(k=k):
                 self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
@@ -144,11 +139,11 @@ class TestJit(unittest.TestCase):
         n_obs = 5
         x_init = jnp.array([0.])
         # simulate without jit
-        bm_model = bm.BMFilter(dt=dt)
-        y_meas1, x_state1 = bm_model.meas_sim(n_obs, x_init, theta, key)
+        bm_model = bm.BMModel(dt=dt)
+        y_meas1, x_state1 = pf.meas_sim(bm_model, n_obs, x_init, theta, key)
         # simulate with jit
-        y_meas2, x_state2 = jax.jit(bm_model.meas_sim, static_argnums=0)(
-            n_obs, x_init, theta, key)
+        y_meas2, x_state2 = jax.jit(pf.meas_sim, static_argnums=(0, 1))(
+            bm_model, n_obs, x_init, theta, key)
         self.assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
         self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
 
@@ -163,14 +158,15 @@ class TestJit(unittest.TestCase):
         n_obs = 5
         x_init = jnp.array([0.])
         # simulate data
-        bm_model = bm.BMFilter(dt=dt)
-        y_meas, x_state = bm_model.meas_sim(n_obs, x_init, theta, key)
+        bm_model = bm.BMModel(dt=dt)
+        y_meas, x_state = pf.meas_sim(bm_model, n_obs, x_init, theta, key)
         # run particle filter
         n_particles = 7
         key, subkey = random.split(key)
-        pf_out1 = bm_model.particle_filter(y_meas, theta, n_particles, subkey)
-        pf_out2 = jax.jit(bm_model.particle_filter, static_argnums=2)(
-            y_meas, theta, n_particles, subkey)
+        pf_out1 = pf.particle_filter(
+            bm_model, y_meas, theta, n_particles, subkey)
+        pf_out2 = jax.jit(pf.particle_filter, static_argnums=(0, 3))(
+            bm_model, y_meas, theta, n_particles, subkey)
         for k in pf_out1.keys():
             with self.subTest(k=k):
                 self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)

@@ -19,7 +19,7 @@ from jax import random
 import particle_filter as pf
 
 
-class BMModel:
+class BMFilter(pf.ParticleFilter):
     def __init__(self, dt):
         self.n_state = 1
         self.n_meas = 1
