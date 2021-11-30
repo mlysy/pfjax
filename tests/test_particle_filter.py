@@ -147,14 +147,27 @@ class TestJit(unittest.TestCase):
         y_meas1, x_state1 = pf.meas_sim(bm_model, n_obs, x_init, theta, key)
         # simulate with jit
         meas_sim_jit = jax.jit(pf.meas_sim, static_argnums=(0, 1))
-        # use wrong dt
-        bm_model2 = bm.BMModel(dt=2.0 * dt)
+        bm_model2 = bm.BMModel(dt=dt)
         y_meas2, x_state2 = meas_sim_jit(bm_model2, n_obs, x_init, theta, key)
-        # use correct dt
-        bm_model2.dt = dt
-        y_meas2, x_state2 = meas_sim_jit(bm_model2, n_obs, x_init, theta, key)
+        # # use wrong dt
+        # bm_model2 = bm.BMModel(dt=2.0 * dt)
+        # y_meas2, x_state2 = meas_sim_jit(bm_model2, n_obs, x_init, theta, key)
+        # breakpoint()
+        # # use correct dt
+        # bm_model2.dt = dt
+        # y_meas2, x_state2 = meas_sim_jit(bm_model2, n_obs, x_init, theta, key)
         self.assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
         self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
+        # objective function for gradient
+        def obj_fun(model, n_obs, x_init, theta, key): return jnp.mean(
+            pf.meas_sim(model, n_obs, x_init, theta, key)[0])
+        # grad without jit
+        grad1 = jax.grad(obj_fun, argnums=3)(
+            bm_model, n_obs, x_init, theta, key)
+        # grad with jit
+        grad2 = jax.jit(jax.grad(obj_fun, argnums=3), static_argnums=(0, 1))(
+            bm_model, n_obs, x_init, theta, key)
+        self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
 
     def test_pf(self):
         key = random.PRNGKey(0)
@@ -181,6 +194,18 @@ class TestJit(unittest.TestCase):
         for k in pf_out1.keys():
             with self.subTest(k=k):
                 self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+
+        # objective function for gradient
+        def obj_fun(model, y_meas, theta, n_particles, key):
+            return pf.particle_loglik(pf.particle_filter(
+                model, y_meas, theta, n_particles, key)["logw_particles"])
+        # grad without jit
+        grad1 = jax.grad(obj_fun, argnums=2)(
+            bm_model, y_meas, theta, n_particles, key)
+        # grad with jit
+        grad2 = jax.jit(jax.grad(obj_fun, argnums=2), static_argnums=(0, 3))(
+            bm_model, y_meas, theta, n_particles, key)
+        self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
 
 
 if __name__ == '__main__':
