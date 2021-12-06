@@ -281,7 +281,7 @@ def particle_loglik(logw_particles):
     return jnp.sum(jsp.special.logsumexp(logw_particles, axis=1))
 
 
-def get_sum_lweights(theta, key, n_particles, y_meas):
+def get_sum_lweights(theta, key, n_particles, y_meas, model):
     """
     
     Args:
@@ -294,12 +294,12 @@ def get_sum_lweights(theta, key, n_particles, y_meas):
         The sum of the particle log weights from the particle filters.
     """
     
-    ret = particle_filter(y_meas, theta, n_particles, key)
+    ret = particle_filter(model, y_meas, theta, n_particles, key)
     sum_particle_lweights = particle_loglik(ret['logw_particles'])
     return sum_particle_lweights
 
 
-def stoch_opt(params, grad_fun, y_meas, n_particles=100, iterations=10, learning_rate=0.01, key=1):
+def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10, learning_rate=0.01, key=1):
     """
     
     Args:
@@ -314,10 +314,10 @@ def stoch_opt(params, grad_fun, y_meas, n_particles=100, iterations=10, learning
     Returns:
         The stochastic approximation of `theta` which are the parameters of the model. 
     """
-    grad_lweights = jax.jit(jax.grad(grad_fun, key, n_particles, y_meas))
+    grad_lweights = jax.jit(jax.grad(grad_fun, argnums=0), static_argnums=(2,4))
     for i in range(iterations):
-        _, subkey = random.split(key)
-        params_update = grad_lweights(params, subkey)
+        key, subkey = random.split(key)
+        params_update = grad_lweights(params, subkey, n_particles, y_meas, model)
         params = params + (learning_rate * params_update)
         
     return params
