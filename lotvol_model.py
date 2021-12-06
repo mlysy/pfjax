@@ -79,7 +79,8 @@ class LotVolModel(object):
         self.dt = dt
         self.n_res = n_res
         self.n_state = (self.n_res, 2)
-
+        
+        
     def state_lpdf(self, x_curr, x_prev, theta):
         """
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
@@ -197,6 +198,10 @@ class LotVolModel(object):
         """
         return jnp.zeros(())
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> adding stoch_opt code
     def init_sample(self, y_init, theta, key):
         """
         Sampling distribution for initial state variable `x_init`. 
