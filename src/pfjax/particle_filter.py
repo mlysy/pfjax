@@ -250,12 +250,17 @@ def get_sum_lweights(theta, key, n_particles, y_meas, model):
     ret = particle_filter(model, y_meas, theta, n_particles, key)
 =======
     
+<<<<<<< HEAD
     ret = particle_filter(y_meas, theta, n_particles, key)
 >>>>>>> adding stoch_opt code
+=======
+    ret = particle_filter(model, y_meas, theta, n_particles, key)
+>>>>>>> refactoring stoch opt code to fit model desc + fixing implementation
     sum_particle_lweights = particle_loglik(ret['logw_particles'])
     return sum_particle_lweights
 
 
+<<<<<<< HEAD
 def joint_loglik_for(model, y_meas, x_state, theta):
     """
     Calculate the joint loglikelihood `p(y_{0:T} | x_{0:T}, theta) * p(x_{0:T} | theta)`.
@@ -320,6 +325,9 @@ def update_params(params, subkey, grad_fun=None, n_particles=100, y_meas=None, m
 
 def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
               learning_rate=0.01, key=1, mask=None):
+=======
+def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10, learning_rate=0.01, key=1):
+>>>>>>> refactoring stoch opt code to fit model desc + fixing implementation
     """
     Args:
     
@@ -336,6 +344,7 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
         The stochastic approximation of theta which are the parameters of the model.
     """
 <<<<<<< HEAD
+<<<<<<< HEAD
     partial_update_params = partial(update_params, n_particles=n_particles, y_meas=y_meas,
                                     model=model, learning_rate=learning_rate, mask=mask, grad_fun=grad_fun)
     update_fn = jax.jit(partial_update_params, donate_argnums=(0,))
@@ -346,9 +355,12 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
     return params
 =======
     grad_lweights = jax.jit(jax.grad(grad_fun, key, n_particles, y_meas))
+=======
+    grad_lweights = jax.jit(jax.grad(grad_fun, argnums=0), static_argnums=(2,4))
+>>>>>>> refactoring stoch opt code to fit model desc + fixing implementation
     for i in range(iterations):
-        _, subkey = random.split(key)
-        params_update = grad_lweights(params, subkey)
+        key, subkey = random.split(key)
+        params_update = grad_lweights(params, subkey, n_particles, y_meas, model)
         params = params + (learning_rate * params_update)
         
     return params
