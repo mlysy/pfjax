@@ -137,3 +137,54 @@ class BMModel:
             Sample from the proposal distribution for `x_init`.
         """
         return self.meas_sample(y_init, theta, key)
+
+    def pf_init(self, y_init, theta, key):
+        """
+        Particle filter calculation for `x_init`. 
+
+        Samples from an importance sampling proposal distribution
+        ```
+        x_init ~ q(x_init) = q(x_init | y_init, theta)
+        ```
+        and calculates the log weight
+        ```
+        logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
+        ```
+
+        Args:
+            y_init: Measurement variable at initial time `t = 0`.
+            theta: Parameter value.
+            key: PRNG key.
+
+        Returns:
+            - x_init: A sample from the proposal distribution for `x_init`.
+            - logw: The log-weight of `x_init`.
+        """
+        return self.meas_sample(y_init, theta, key), jnp.zeros(())
+
+    def pf_step(self, x_prev, y_curr, theta, key):
+        """
+        Particle filter calculation for `x_curr`. 
+
+        Samples from an importance sampling proposal distribution
+        ```
+        x_curr ~ q(x_curr) = q(x_curr | x_prev, y_curr, theta)
+        ```
+        and calculates the log weight
+        ```
+        logw = log p(y_curr | x_curr, theta) + log p(x_curr | x_prev, theta) - log q(x_curr)
+        ```
+
+        Args:
+            x_prev: State variable at previous time `t-1`.
+            y_curr: Measurement variable at current time `t`.
+            theta: Parameter value.
+            key: PRNG key.
+
+        Returns:
+            - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
+            - logw: The log-weight of `x_curr`.
+        """
+        x_curr = self.state_sample(x_prev, theta, key)
+        logw = self.meas_lpdf(y_curr, x_curr, theta)
+        return x_curr, logw

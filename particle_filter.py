@@ -116,7 +116,12 @@ def particle_filter_for(model, y_meas, theta, n_particles, key):
 
     Closely follows Algorithm 2 of https://arxiv.org/pdf/1306.3277.pdf.
 
-    **FIXME:** This is the testing version which uses for-loops.  It should be put in a separate class in a `test` subfolder.
+    This is the testing version which does the following:
+
+    - Uses for-loops instead of `lax.scan` and `vmap/xmap`.
+    - Only performs a bootstrap particle filter using `state_sample()` and `meas_lpdf()`.
+
+    **FIXME:** Move this to the `tests` module.
 
     Args:
         model: Object specifying the state-space model.
@@ -221,13 +226,17 @@ def particle_filter(model, y_meas, theta, n_particles, key):
                                                subkey)
         # update particles
         key, *subkeys = random.split(key, num=n_particles+1)
-        X_particles = jax.vmap(lambda xs, k: model.state_sample(xs, theta, k))(
-            carry["X_particles"][ancestor_particles], jnp.array(subkeys)
-        )
-        # update log-weights
-        logw_particles = jax.vmap(
-            lambda xs: model.meas_lpdf(y_meas[t], xs, theta)
-        )(X_particles)
+        X_particles, logw_particles = jax.vmap(
+            lambda xs, k: model.pf_step(xs, y_meas[t], theta, k)
+        )(carry["X_particles"][ancestor_particles], jnp.array(subkeys))
+        # X_particles = jax.vmap(lambda xs, k: model.state_sample(xs, theta, k))(
+        #     carry["X_particles"][ancestor_particles], jnp.array(subkeys)
+        # )
+        # # update log-weights
+        # logw_particles = jax.vmap(
+        #     lambda xs: model.meas_lpdf(y_meas[t], xs, theta)
+        # )(X_particles)
+        # breakpoint()
         # output
         res = {
             "ancestor_particles": ancestor_particles,
@@ -239,10 +248,12 @@ def particle_filter(model, y_meas, theta, n_particles, key):
     # scan initial value
     key, *subkeys = random.split(key, num=n_particles+1)
     # vmap version
-    X_particles = jax.vmap(
-        lambda k: model.init_sample(y_meas[0], theta, k))(jnp.array(subkeys))
-    logw_particles = jax.vmap(
-        lambda xs: model.init_logw(xs, y_meas[0], theta))(X_particles)
+    X_particles, logw_particles = jax.vmap(
+        lambda k: model.pf_init(y_meas[0], theta, k))(jnp.array(subkeys))
+    # X_particles = jax.vmap(
+    #     lambda k: model.init_sample(y_meas[0], theta, k))(jnp.array(subkeys))
+    # logw_particles = jax.vmap(
+    #     lambda xs: model.init_logw(xs, y_meas[0], theta))(X_particles)
     # xmap version: experimental!
     # X_particles = xmap(
     #     lambda ym, th, k: model.init_sample(ym, th, k),
