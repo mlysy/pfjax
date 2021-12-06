@@ -51,7 +51,7 @@ def drift(x, dt, theta):
                           -gamma + delta * jnp.exp(x[0])]) * dt
 
 
-def euler_sim(n_steps, x, dt, theta, key):
+def euler_sim(n_steps, x, dt, theta, key, n_state):
     """
     Euler simulation for `n_steps`.
     """
@@ -74,149 +74,155 @@ def euler_sim(n_steps, x, dt, theta, key):
 
 # --- main functions -----------------------------------------------------------
 
-def state_lpdf(x_curr, x_prev, theta):
-    """
-    Calculates the log-density of `p(x_curr | x_prev, theta)`.
+class LotVolModel(object):
+    def __init__(self, dt, n_res):
+        self.dt = dt
+        self.n_res = n_res
+        self.n_state = (self.n_res, 2)
+        
+    def state_lpdf(self, x_curr, x_prev, theta):
+        """
+        Calculates the log-density of `p(x_curr | x_prev, theta)`.
 
-    Args:
-        x_curr: State variable at current time `t`.
-        x_prev: State variable at previous time `t-1`.
-        theta: Parameter value.
+        Args:
+            x_curr: State variable at current time `t`.
+            x_prev: State variable at previous time `t-1`.
+            theta: Parameter value.
 
-    Returns:
-        The log-density of `p(x_curr | x_prev, theta)`.
-    """
-    dt_res = dt/n_res
-    x0 = jnp.append(jnp.expand_dims(
-        x_prev[n_res-1], axis=0), x_curr[:n_res-1], axis=0)
-    x1 = x_curr
-    sigma = theta[4:6] * jnp.sqrt(dt_res)
-    lp = jax.vmap(lambda t:
-                  jsp.stats.norm.logpdf(x1[t],
-                                        loc=drift(x0[t], dt_res, theta),
-                                        scale=sigma))(jnp.arange(n_res))
-    return jnp.sum(lp)
-
-
-def state_sample(x_prev, theta, key):
-    """
-    Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
-
-    Args:
-        x_prev: State variable at previous time `t-1`.
-        theta: Parameter value.
-        key: PRNG key.
-
-    Returns:
-        Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
-    """
-    return euler_sim(n_res, x_prev[n_res-1], dt/n_res, theta, key)
+        Returns:
+            The log-density of `p(x_curr | x_prev, theta)`.
+        """
+        dt_res = self.dt/self.n_res
+        x0 = jnp.append(jnp.expand_dims(
+            x_prev[self.n_res-1], axis=0), x_curr[:self.n_res-1], axis=0)
+        x1 = x_curr
+        sigma = theta[4:6] * jnp.sqrt(dt_res)
+        lp = jax.vmap(lambda t:
+                    jsp.stats.norm.logpdf(x1[t],
+                                            loc=drift(x0[t], dt_res, theta),
+                                            scale=sigma))(jnp.arange(self.n_res))
+        return jnp.sum(lp)
 
 
-def state_sample_for(x_prev, theta, key):
-    """
-    Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
+    def state_sample(self, x_prev, theta, key):
+        """
+        Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
 
-    For-loop version for testing.
+        Args:
+            x_prev: State variable at previous time `t-1`.
+            theta: Parameter value.
+            key: PRNG key.
 
-    Args:
-        x_prev: State variable at previous time `t-1`.
-        theta: Parameter value.
-        key: PRNG key.
+        Returns:
+            Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
+        """
+        return euler_sim(self.n_res, x_prev[self.n_res-1], self.dt/self.n_res, theta, key, self.n_state)
 
-    Returns:
-        Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
-    """
-    dt_res = dt/n_res
-    sigma = theta[4:6] * jnp.sqrt(dt_res)
-    x_curr = jnp.zeros(n_state)
-    x_state = x_prev[n_res-1]
-    for t in range(n_res):
+
+    def state_sample_for(self, x_prev, theta, key):
+        """
+        Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
+
+        For-loop version for testing.
+
+        Args:
+            x_prev: State variable at previous time `t-1`.
+            theta: Parameter value.
+            key: PRNG key.
+
+        Returns:
+            Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
+        """
+        dt_res = self.dt/self.n_res
+        sigma = theta[4:6] * jnp.sqrt(dt_res)
+        x_curr = jnp.zeros(self.n_state)
+        x_state = x_prev[self.n_res-1]
+        for t in range(self.n_res):
+            key, subkey = random.split(key)
+            x_state = drift(x_state, dt_res, theta) + \
+                random.normal(subkey, (self.n_state[1],)) * sigma
+            x_curr = x_curr.at[t].set(x_state)
+        return x_curr
+
+
+    def meas_lpdf(y_curr, x_curr, theta):
+        """
+        Log-density of `p(y_curr | x_curr, theta)`.
+
+        Args:
+            y_curr: Measurement variable at current time `t`.
+            x_curr: State variable at current time `t`.
+            theta: Parameter value.
+
+        Returns
+            The log-density of `p(y_curr | x_curr, theta)`.
+        """
+        tau = theta[6:8]
+        return jnp.sum(
+            jsp.stats.norm.logpdf(y_curr, loc=jnp.exp(x_curr[0]), scale=tau)
+        )
+
+
+    def meas_sample(self, x_curr, theta, key):
+        """
+        Sample from `p(y_curr | x_curr, theta)`.
+
+        Args:
+            x_curr: State variable at current time `t`.
+            theta: Parameter value.
+            key: PRNG key.
+
+        Returns:
+            Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
+        """
+        tau = theta[6:8]
+        return jnp.exp(x_curr[0]) + tau * random.normal(key, (self.n_state[1],))
+
+
+    def init_logw(x_init, y_init, theta):
+        """
+        Log-weight of the importance sampler for initial state variable `x_init`.
+
+        Suppose that 
+        ```
+        x_init ~ q(x_init) = q(x_init | y_init, theta)
+        ```
+        Then function returns
+        ```
+        logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
+        ```
+
+        Args:
+            x_init: State variable at initial time `t = 0`.
+            y_init: Measurement variable at initial time `t = 0`.
+            theta: Parameter value.
+
+        Returns:
+            The log-weight of the importance sampler for `x_init`.
+        """
+        return jnp.zeros(())
+
+
+    def init_sample(self, y_init, theta, key):
+        """
+        Sampling distribution for initial state variable `x_init`. 
+
+        Samples from an importance sampling proposal distribution
+        ```
+        x_init ~ q(x_init) = q(x_init | y_init, theta)
+        ```
+        See `init_logw()` for details.
+
+        Args:
+            y_init: Measurement variable at initial time `t = 0`.
+            theta: Parameter value.
+            key: PRNG key.
+
+        Returns:
+            Sample from the proposal distribution for `x_init`.
+        """
         key, subkey = random.split(key)
-        x_state = drift(x_state, dt_res, theta) + \
-            random.normal(subkey, (n_state[1],)) * sigma
-        x_curr = x_curr.at[t].set(x_state)
-    return x_curr
-
-
-def meas_lpdf(y_curr, x_curr, theta):
-    """
-    Log-density of `p(y_curr | x_curr, theta)`.
-
-    Args:
-        y_curr: Measurement variable at current time `t`.
-        x_curr: State variable at current time `t`.
-        theta: Parameter value.
-
-    Returns
-        The log-density of `p(y_curr | x_curr, theta)`.
-    """
-    tau = theta[6:8]
-    return jnp.sum(
-        jsp.stats.norm.logpdf(y_curr, loc=jnp.exp(x_curr[0]), scale=tau)
-    )
-
-
-def meas_sample(x_curr, theta, key):
-    """
-    Sample from `p(y_curr | x_curr, theta)`.
-
-    Args:
-        x_curr: State variable at current time `t`.
-        theta: Parameter value.
-        key: PRNG key.
-
-    Returns:
-        Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
-    """
-    tau = theta[6:8]
-    return jnp.exp(x_curr[0]) + tau * random.normal(key, (n_state[1],))
-
-
-def init_logw(x_init, y_init, theta):
-    """
-    Log-weight of the importance sampler for initial state variable `x_init`.
-
-    Suppose that 
-    ```
-    x_init ~ q(x_init) = q(x_init | y_init, theta)
-    ```
-    Then function returns
-    ```
-    logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
-    ```
-
-    Args:
-        x_init: State variable at initial time `t = 0`.
-        y_init: Measurement variable at initial time `t = 0`.
-        theta: Parameter value.
-
-    Returns:
-        The log-weight of the importance sampler for `x_init`.
-    """
-    return jnp.zeros(())
-
-
-def init_sample(y_init, theta, key):
-    """
-    Sampling distribution for initial state variable `x_init`. 
-
-    Samples from an importance sampling proposal distribution
-    ```
-    x_init ~ q(x_init) = q(x_init | y_init, theta)
-    ```
-    See `init_logw()` for details.
-
-    Args:
-        y_init: Measurement variable at initial time `t = 0`.
-        theta: Parameter value.
-        key: PRNG key.
-
-    Returns:
-        Sample from the proposal distribution for `x_init`.
-    """
-    key, subkey = random.split(key)
-    x_init = jnp.repeat(jnp.expand_dims(y_init, axis=0), n_res, axis=0)
-    x_init = jnp.log(meas_sample(x_init, theta, subkey))
-    x_step = euler_sim(n_res-1, x_init, dt/n_res, theta, key)
-    return jnp.append(jnp.expand_dims(x_init, axis=0), x_step, axis=0)
+        x_init = jnp.repeat(jnp.expand_dims(y_init, axis=0), self.n_res, axis=0)
+        x_init = jnp.log(self.meas_sample(x_init, theta, subkey))
+        x_step = euler_sim(self.n_res-1, x_init, self.dt/self.n_res, theta, key, self.n_state)
+        return jnp.append(jnp.expand_dims(x_init, axis=0), x_step, axis=0)
