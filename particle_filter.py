@@ -309,8 +309,8 @@ def get_sum_lweights(theta, key, n_particles, y_meas):
     Returns:
         The sum of the particle log weights from the particle filters.
     """
-    _, subkey = random.split(key)
-    ret = particle_filter(y_meas, theta, n_particles, subkey)
+    
+    ret = particle_filter(y_meas, theta, n_particles, key)
     sum_particle_lweights = particle_loglik(ret['logw_particles'])
     return sum_particle_lweights
 
@@ -330,9 +330,10 @@ def stoch_opt(params, grad_fun, y_meas, n_particles=100, iterations=10, learning
     Returns:
         The stochastic approximation of `theta` which are the parameters of the model. 
     """
-    grad_lweights = jax.grad(grad_fun, key, n_particles, y_meas)
+    grad_lweights = jax.jit(jax.grad(grad_fun, key, n_particles, y_meas))
     for i in range(iterations):
-        params_update = grad_lweights(params)
+        _, subkey = random.split(key)
+        params_update = grad_lweights(params, subkey)
         params = params + (learning_rate * params_update)
         
     return params
