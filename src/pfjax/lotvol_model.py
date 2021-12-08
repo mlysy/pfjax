@@ -263,10 +263,6 @@ class LotVolModel(object):
         """
         return jnp.zeros(())
 
-<<<<<<< HEAD
-=======
-
->>>>>>> adding stoch_opt code
     def init_sample(self, y_init, theta, key):
         """
         Sampling distribution for initial state variable `x_init`.

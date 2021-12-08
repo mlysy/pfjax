@@ -261,6 +261,7 @@ def get_sum_lweights(theta, key, n_particles, y_meas, model):
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 def joint_loglik_for(model, y_meas, x_state, theta):
     """
     Calculate the joint loglikelihood `p(y_{0:T} | x_{0:T}, theta) * p(x_{0:T} | theta)`.
@@ -328,6 +329,15 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
 =======
 def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10, learning_rate=0.01, key=1):
 >>>>>>> refactoring stoch opt code to fit model desc + fixing implementation
+=======
+def update_params(params, subkey, grad_fun=None, n_particles=100, y_meas=None, model=None, learning_rate=0.01, mask=None):
+    params_update = jax.grad(grad_fun, argnums=0)(params, subkey, n_particles, y_meas, model)
+    return params + learning_rate * (jnp.where(mask, params_update, 0))
+
+
+def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10, 
+              learning_rate=0.01, key=1, mask=None):
+>>>>>>> lotvol model + stoch opt new formulation
     """
     Args:
     
@@ -341,17 +351,24 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10, l
         key: The key required for the prng.
 
     Returns:
+<<<<<<< HEAD
         The stochastic approximation of theta which are the parameters of the model.
     """
 <<<<<<< HEAD
 <<<<<<< HEAD
     partial_update_params = partial(update_params, n_particles=n_particles, y_meas=y_meas,
+=======
+        The stochastic approximation of theta which are the parameters of the model. 
+    """
+    partial_update_params = partial(update_params, n_particles=n_particles, y_meas=y_meas, 
+>>>>>>> lotvol model + stoch opt new formulation
                                     model=model, learning_rate=learning_rate, mask=mask, grad_fun=grad_fun)
     update_fn = jax.jit(partial_update_params, donate_argnums=(0,))
     keys = random.split(key, iterations)
     for subkey in keys:
         params = update_fn(params, subkey)
         print(params)
+<<<<<<< HEAD
     return params
 =======
     grad_lweights = jax.jit(jax.grad(grad_fun, key, n_particles, y_meas))
@@ -365,3 +382,6 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10, l
         
     return params
 >>>>>>> adding stoch_opt code
+=======
+    return params
+>>>>>>> lotvol model + stoch opt new formulation
