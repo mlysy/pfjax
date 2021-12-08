@@ -145,7 +145,7 @@ class LotVolModel(object):
         return x_curr
 
 
-    def meas_lpdf(y_curr, x_curr, theta):
+    def meas_lpdf(self, y_curr, x_curr, theta):
         """
         Log-density of `p(y_curr | x_curr, theta)`.
 
@@ -179,7 +179,7 @@ class LotVolModel(object):
         return jnp.exp(x_curr[0]) + tau * random.normal(key, (self.n_state[1],))
 
 
-    def init_logw(x_init, y_init, theta):
+    def init_logw(self, x_init, y_init, theta):
         """
         Log-weight of the importance sampler for initial state variable `x_init`.
 
