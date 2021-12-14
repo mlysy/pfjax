@@ -7,6 +7,14 @@ Things to test:
 - [ ] `vmap`, `xmap`, `scan`, etc. give the same result as with for-loops.
 - [ ] Global and OOP APIs give the same results.
 - [ ] OOP API treats class members as expected, i.e., not like using globals in jitted functions.
+
+Test code: from `pfjax` top directory:
+
+```
+python -m unittest tests/test_*
+```
+
+**FIXME:** This doesn't work well because the library hasn't been set up as a proper Python package.  Hopefully can fix imports etc. to run this properly once the package is installed.
 """
 
 import unittest
@@ -76,6 +84,27 @@ class TestFor(unittest.TestCase):
         for k in pf_out1.keys():
             with self.subTest(k=k):
                 self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+
+    def test_loglik(self):
+        key = random.PRNGKey(0)
+        # parameter values
+        mu = 5
+        sigma = 1
+        tau = .1
+        theta = jnp.array([mu, sigma, tau])
+        # data specification
+        n_obs = 10
+        x_init = jnp.array([0.])
+        bm_model = bm.BMModel(dt=dt)
+        # simulate without for-loop
+        y_meas, x_state = pf.meas_sim(bm_model, n_obs, x_init, theta, key)
+        # joint loglikelihood with for-loop
+        loglik1 = pf.joint_loglik_for(bm_model,
+                                      y_meas, x_state, theta)
+        # joint loglikelihood with vmap
+        loglik2 = pf.joint_loglik(bm_model,
+                                  y_meas, x_state, theta)
+        self.assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
 
 
 class TestOOP(unittest.TestCase):

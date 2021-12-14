@@ -79,7 +79,7 @@ class LotVolModel(object):
         self.dt = dt
         self.n_res = n_res
         self.n_state = (self.n_res, 2)
-        
+
     def state_lpdf(self, x_curr, x_prev, theta):
         """
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
@@ -98,11 +98,10 @@ class LotVolModel(object):
         x1 = x_curr
         sigma = theta[4:6] * jnp.sqrt(dt_res)
         lp = jax.vmap(lambda t:
-                    jsp.stats.norm.logpdf(x1[t],
+                      jsp.stats.norm.logpdf(x1[t],
                                             loc=drift(x0[t], dt_res, theta),
                                             scale=sigma))(jnp.arange(self.n_res))
         return jnp.sum(lp)
-
 
     def state_sample(self, x_prev, theta, key):
         """
@@ -117,7 +116,6 @@ class LotVolModel(object):
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
         return euler_sim(self.n_res, x_prev[self.n_res-1], self.dt/self.n_res, theta, key, self.n_state)
-
 
     def state_sample_for(self, x_prev, theta, key):
         """
@@ -144,7 +142,6 @@ class LotVolModel(object):
             x_curr = x_curr.at[t].set(x_state)
         return x_curr
 
-
     def meas_lpdf(self, y_curr, x_curr, theta):
         """
         Log-density of `p(y_curr | x_curr, theta)`.
@@ -162,7 +159,6 @@ class LotVolModel(object):
             jsp.stats.norm.logpdf(y_curr, loc=jnp.exp(x_curr[0]), scale=tau)
         )
 
-
     def meas_sample(self, x_curr, theta, key):
         """
         Sample from `p(y_curr | x_curr, theta)`.
@@ -177,7 +173,6 @@ class LotVolModel(object):
         """
         tau = theta[6:8]
         return jnp.exp(x_curr[0]) + tau * random.normal(key, (self.n_state[1],))
-
 
     def init_logw(self, x_init, y_init, theta):
         """
@@ -202,7 +197,6 @@ class LotVolModel(object):
         """
         return jnp.zeros(())
 
-
     def init_sample(self, y_init, theta, key):
         """
         Sampling distribution for initial state variable `x_init`. 
@@ -221,8 +215,80 @@ class LotVolModel(object):
         Returns:
             Sample from the proposal distribution for `x_init`.
         """
+        tau = theta[6:8]
         key, subkey = random.split(key)
-        x_init = jnp.repeat(jnp.expand_dims(y_init, axis=0), self.n_res, axis=0)
-        x_init = jnp.log(self.meas_sample(x_init, theta, subkey))
-        x_step = euler_sim(self.n_res-1, x_init, self.dt/self.n_res, theta, key, self.n_state)
+        x_init = jnp.repeat(jnp.expand_dims(
+            y_init, axis=0), self.n_res, axis=0)
+        # x_init = jnp.log(self.meas_sample(jnp.log(x_init), theta, subkey))
+        x_init = jnp.log(x_init +
+                         tau * random.normal(subkey, (self.n_state[1],)))
+        x_step = euler_sim(self.n_res-1, x_init, self.dt / self.n_res,
+                           theta, key, self.n_state)
         return jnp.append(jnp.expand_dims(x_init, axis=0), x_step, axis=0)
+
+    def pf_init(self, y_init, theta, key):
+        """
+        Particle filter calculation for `x_init`. 
+
+        Samples from an importance sampling proposal distribution
+        ```
+        x_init ~ q(x_init) = q(x_init | y_init, theta)
+        ```
+        and calculates the log weight
+        ```
+        logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
+        ```
+
+        **FIXME:** Explain what the proposal is and why it gives `logw = 0`.
+
+        In fact, if you think about it hard enough then it's not actually a perfect proposal...
+
+        Args:
+            y_init: Measurement variable at initial time `t = 0`.
+            theta: Parameter value.
+            key: PRNG key.
+
+        Returns:
+            - x_init: A sample from the proposal distribution for `x_init`.
+            - logw: The log-weight of `x_init`.
+        """
+        tau = theta[6:8]
+        key, subkey = random.split(key)
+        x_init = jnp.repeat(jnp.expand_dims(
+            y_init, axis=0), self.n_res, axis=0)
+        x_init = jnp.log(x_init +
+                         tau * random.normal(subkey, (self.n_state[1],)))
+        # x_init = jnp.log(self.meas_sample(jnp.log(x_init), theta, subkey))
+        x_step = euler_sim(self.n_res-1, x_init, self.dt / self.n_res,
+                           theta, key, self.n_state)
+        return jnp.append(jnp.expand_dims(x_init, axis=0), x_step, axis=0), \
+            jnp.zeros(())
+
+    def pf_step(self, x_prev, y_curr, theta, key):
+        """
+        Particle filter calculation for `x_curr`. 
+
+        Samples from an importance sampling proposal distribution
+        ```
+        x_curr ~ q(x_curr) = q(x_curr | x_prev, y_curr, theta)
+        ```
+        and calculates the log weight
+        ```
+        logw = log p(y_curr | x_curr, theta) + log p(x_curr | x_prev, theta) - log q(x_curr)
+        ```
+
+        **FIXME:** Explain that this is a bootstrap particle filter.
+
+        Args:
+            x_prev: State variable at previous time `t-1`.
+            y_curr: Measurement variable at current time `t`.
+            theta: Parameter value.
+            key: PRNG key.
+
+        Returns:
+            - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
+            - logw: The log-weight of `x_curr`.
+        """
+        x_curr = self.state_sample(x_prev, theta, key)
+        logw = self.meas_lpdf(y_curr, x_curr, theta)
+        return x_curr, logw
