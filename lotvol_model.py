@@ -218,10 +218,10 @@ class LotVolModel(object):
         """
         tau = theta[6:8]
         key, subkey = random.split(key)
-        x_init = jnp.repeat(jnp.expand_dims(
-            y_init, axis=0), self.n_res, axis=0)
+        # x_init = jnp.repeat(jnp.expand_dims(
+        #     y_init, axis=0), self.n_res, axis=0)
         # x_init = jnp.log(self.meas_sample(jnp.log(x_init), theta, subkey))
-        x_init = jnp.log(x_init +
+        x_init = jnp.log(y_init +
                          tau * random.normal(subkey, (self.n_state[1],)))
         x_step = euler_sim(self.n_res-1, x_init, self.dt / self.n_res,
                            theta, key, self.n_state)
@@ -255,11 +255,11 @@ class LotVolModel(object):
         """
         tau = theta[6:8]
         key, subkey = random.split(key)
-        x_init = jnp.repeat(jnp.expand_dims(
-            y_init, axis=0), self.n_res, axis=0)
-        x_init = jnp.log(x_init +
-                         tau * random.normal(subkey, (self.n_state[1],)))
+        # x_init = jnp.repeat(jnp.expand_dims(
+        #     y_init, axis=0), self.n_res, axis=0)
         # x_init = jnp.log(self.meas_sample(jnp.log(x_init), theta, subkey))
+        x_init = jnp.log(y_init +
+                         tau * random.normal(subkey, (self.n_state[1],)))
         x_step = euler_sim(self.n_res-1, x_init, self.dt / self.n_res,
                            theta, key, self.n_state)
         return jnp.append(jnp.expand_dims(x_init, axis=0), x_step, axis=0), \
