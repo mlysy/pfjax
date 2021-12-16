@@ -300,7 +300,6 @@ def particle_loglik(logw_particles):
 
 def get_sum_lweights(theta, key, n_particles, y_meas, model):
     """
-
     Args:
         theta: A `jnp.array` that represents the values of the parameters.
         key: The key required for the prng.
