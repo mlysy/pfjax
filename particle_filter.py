@@ -310,23 +310,13 @@ def get_sum_lweights(theta, key, n_particles, y_meas, model):
     Returns:
         The sum of the particle log weights from the particle filters.
     """
-<<<<<<< HEAD
 
     ret = particle_filter(model, y_meas, theta, n_particles, key)
-=======
-    
-<<<<<<< HEAD
-    ret = particle_filter(y_meas, theta, n_particles, key)
->>>>>>> adding stoch_opt code
-=======
-    ret = particle_filter(model, y_meas, theta, n_particles, key)
->>>>>>> refactoring stoch opt code to fit model desc + fixing implementation
     sum_particle_lweights = particle_loglik(ret['logw_particles'])
     return sum_particle_lweights
 
 
-<<<<<<< HEAD
-<<<<<<< HEAD
+
 def joint_loglik_for(model, y_meas, x_state, theta):
     """
     Calculate the joint loglikelihood `p(y_{0:T} | x_{0:T}, theta) * p(x_{0:T} | theta)`.
@@ -383,18 +373,7 @@ def joint_loglik(model, y_meas, x_state, theta):
     return ll_init + jnp.sum(ll_step)
 
 
-def update_params(params, subkey, grad_fun=None, n_particles=100, y_meas=None, model=None, learning_rate=0.01, mask=None):
-    params_update = jax.grad(grad_fun, argnums=0)(
-        params, subkey, n_particles, y_meas, model)
-    return params + learning_rate * (jnp.where(mask, params_update, 0))
 
-
-def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
-              learning_rate=0.01, key=1, mask=None):
-=======
-def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10, learning_rate=0.01, key=1):
->>>>>>> refactoring stoch opt code to fit model desc + fixing implementation
-=======
 def update_params(params, subkey, grad_fun=None, n_particles=100, y_meas=None, model=None, learning_rate=0.01, mask=None):
     params_update = jax.grad(grad_fun, argnums=0)(params, subkey, n_particles, y_meas, model)
     return params + learning_rate * (jnp.where(mask, params_update, 0))
@@ -402,7 +381,6 @@ def update_params(params, subkey, grad_fun=None, n_particles=100, y_meas=None, m
 
 def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10, 
               learning_rate=0.01, key=1, mask=None):
->>>>>>> lotvol model + stoch opt new formulation
     """
     Args:
         params: A jnp.array that represents the initial values of the parameters.
@@ -413,38 +391,13 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
         iterations: The number of iterations to run the gradient descent for.
         key: The key required for the prng.
 
-    Returns:
-<<<<<<< HEAD
-        The stochastic approximation of theta which are the parameters of the model.
-    """
-<<<<<<< HEAD
-<<<<<<< HEAD
-    partial_update_params = partial(update_params, n_particles=n_particles, y_meas=y_meas,
-=======
-        The stochastic approximation of theta which are the parameters of the model. 
+
     """
     partial_update_params = partial(update_params, n_particles=n_particles, y_meas=y_meas, 
->>>>>>> lotvol model + stoch opt new formulation
                                     model=model, learning_rate=learning_rate, mask=mask, grad_fun=grad_fun)
     update_fn = jax.jit(partial_update_params, donate_argnums=(0,))
     keys = random.split(key, iterations)
     for subkey in keys:
         params = update_fn(params, subkey)
         print(params)
-<<<<<<< HEAD
     return params
-=======
-    grad_lweights = jax.jit(jax.grad(grad_fun, key, n_particles, y_meas))
-=======
-    grad_lweights = jax.jit(jax.grad(grad_fun, argnums=0), static_argnums=(2,4))
->>>>>>> refactoring stoch opt code to fit model desc + fixing implementation
-    for i in range(iterations):
-        key, subkey = random.split(key)
-        params_update = grad_lweights(params, subkey, n_particles, y_meas, model)
-        params = params + (learning_rate * params_update)
-        
-    return params
->>>>>>> adding stoch_opt code
-=======
-    return params
->>>>>>> lotvol model + stoch opt new formulation
