@@ -1,0 +1,38 @@
+Metadata-Version: 2.1
+Name: pfjax
+Version: 0.0.0.9000
+Summary: Particle Filtering in Jax
+Home-page: https://github.com/mlysy/pfjax
+Author: Pranav Subramani, Jonathan Ramkissoon, Michelle Ko, Mohan Wu, Yunfeng Yang, Martin Lysy
+Author-email: mlysy@uwaterloo.ca
+License: UNKNOWN
+Project-URL: Bug Tracker, https://github.com/mlysy/pfjax/issues
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: GPL-3 License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
+
+# **pfjax**: Particle Filtering in JAX
+
+---
+
+## Installation
+
+```bash
+git clone https://github.com/mlysy/pfjax
+cd pfjax
+pip install .
+```
+
+## Documentation
+
+- An introduction to [**pjfax**](examples/pfjax.ipynb).
+
+- An [example](examples/lotvol.ipynb) of inference with **pfjax** for a stochastic differential equation model.
+
+## Testing
+
+
+

@@ -13,7 +13,7 @@ from jax.experimental.maps import xmap
 from functools import partial
 
 
-def meas_sim_for(n_obs, x_init, theta, key):
+def simulate_for(n_obs, x_init, theta, key):
     """
     Simulate data from the state-space model.
 
@@ -47,7 +47,7 @@ def meas_sim_for(n_obs, x_init, theta, key):
 
 
 # @partial(jax.jit, static_argnums=0)
-def meas_sim(n_obs, x_init, theta, key):
+def simulate(n_obs, x_init, theta, key):
     """
     Simulate data from the state-space model.
 

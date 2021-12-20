@@ -54,6 +54,8 @@ def drift(x, dt, theta):
 def euler_sim(n_steps, x, dt, theta, key, n_state):
     """
     Euler simulation for `n_steps`.
+
+    **FIXME:** Put this into an SDE module, possibly with different dispatch depending on whether diffusion is constant, diagonal, etc.
     """
     sigma = theta[4:6] * jnp.sqrt(dt)
 
