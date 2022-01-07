@@ -1,3 +1,5 @@
+""" not updated for new file structure yet. Imports may not work """
+
 ## test file for brownian motion model:
 import numpy as np
 import jax
