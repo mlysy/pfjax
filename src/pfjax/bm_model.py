@@ -16,7 +16,6 @@ import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 from jax import random
-import particle_filter as pf
 
 
 class BMModel:
@@ -151,6 +150,8 @@ class BMModel:
         logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
         ```
 
+        **FIXME:** Explain what the proposal is and why it gives `logw = 0`.
+
         Args:
             y_init: Measurement variable at initial time `t = 0`.
             theta: Parameter value.
@@ -174,6 +175,8 @@ class BMModel:
         ```
         logw = log p(y_curr | x_curr, theta) + log p(x_curr | x_prev, theta) - log q(x_curr)
         ```
+
+        **FIXME:** Explain that this is a bootstrap particle filter.
 
         Args:
             x_prev: State variable at previous time `t-1`.

@@ -1,4 +1,5 @@
 __pycache__
 .ipynb_checkpoints
-
-bm_test.py
+dist
+build
+pfjax.egg-info

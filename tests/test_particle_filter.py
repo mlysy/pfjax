@@ -7,6 +7,12 @@ Things to test:
 - [ ] `vmap`, `xmap`, `scan`, etc. give the same result as with for-loops.
 - [ ] Global and OOP APIs give the same results.
 - [ ] OOP API treats class members as expected, i.e., not like using globals in jitted functions.
+
+Test code: from `pfjax/tests`:
+
+```
+python -m unittest -v
+```
 """
 
 import unittest
@@ -14,14 +20,13 @@ import numpy as np
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
-from .utils import *  # for running tests from top-level directory
-import particle_filter as pf
-import bm_model as bm
+import pfjax as pf
+from utils import *
 
 
 # hack to copy-paste in contents without import
-exec(open("tests/bm_model.py").read())
-exec(open("tests/particle_filter.py").read())
+exec(open("bm_model.py").read())
+exec(open("particle_filter.py").read())
 
 # global variable (can't be defined inside class...)
 dt = .1
@@ -42,12 +47,12 @@ class TestFor(unittest.TestCase):
         # data specification
         n_obs = 5
         x_init = jnp.array([0.])
-        bm_model = bm.BMModel(dt=dt)
+        bm_model = pf.BMModel(dt=dt)
         # simulate with for-loop
-        y_meas1, x_state1 = pf.meas_sim_for(
+        y_meas1, x_state1 = pf.simulate_for(
             bm_model, n_obs, x_init, theta, key)
         # simulate without for-loop
-        y_meas2, x_state2 = pf.meas_sim(bm_model, n_obs, x_init, theta, key)
+        y_meas2, x_state2 = pf.simulate(bm_model, n_obs, x_init, theta, key)
         self.assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
         self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
 
@@ -61,9 +66,9 @@ class TestFor(unittest.TestCase):
         # data specification
         n_obs = 5
         x_init = jnp.array([0.])
-        bm_model = bm.BMModel(dt=dt)
+        bm_model = pf.BMModel(dt=dt)
         # simulate without for-loop
-        y_meas, x_state = pf.meas_sim(bm_model, n_obs, x_init, theta, key)
+        y_meas, x_state = pf.simulate(bm_model, n_obs, x_init, theta, key)
         # particle filter specification
         n_particles = 7
         key, subkey = random.split(key)
@@ -76,6 +81,27 @@ class TestFor(unittest.TestCase):
         for k in pf_out1.keys():
             with self.subTest(k=k):
                 self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+
+    def test_loglik(self):
+        key = random.PRNGKey(0)
+        # parameter values
+        mu = 5
+        sigma = 1
+        tau = .1
+        theta = jnp.array([mu, sigma, tau])
+        # data specification
+        n_obs = 10
+        x_init = jnp.array([0.])
+        bm_model = pf.BMModel(dt=dt)
+        # simulate without for-loop
+        y_meas, x_state = pf.simulate(bm_model, n_obs, x_init, theta, key)
+        # joint loglikelihood with for-loop
+        loglik1 = pf.joint_loglik_for(bm_model,
+                                      y_meas, x_state, theta)
+        # joint loglikelihood with vmap
+        loglik2 = pf.joint_loglik(bm_model,
+                                  y_meas, x_state, theta)
+        self.assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
 
 
 class TestOOP(unittest.TestCase):
@@ -94,10 +120,10 @@ class TestOOP(unittest.TestCase):
         n_obs = 5
         x_init = jnp.array([0.])
         # simulate with globals
-        y_meas1, x_state1 = meas_sim(n_obs, x_init, theta, key)
+        y_meas1, x_state1 = simulate(n_obs, x_init, theta, key)
         # simulate with oop
-        bm_model = bm.BMModel(dt=dt)
-        y_meas2, x_state2 = pf.meas_sim(bm_model, n_obs, x_init, theta, key)
+        bm_model = pf.BMModel(dt=dt)
+        y_meas2, x_state2 = pf.simulate(bm_model, n_obs, x_init, theta, key)
         self.assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
         self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
 
@@ -112,8 +138,8 @@ class TestOOP(unittest.TestCase):
         n_obs = 5
         x_init = jnp.array([0.])
         # simulate with oop
-        bm_model = bm.BMModel(dt=dt)
-        y_meas, x_state = pf.meas_sim(bm_model, n_obs, x_init, theta, key)
+        bm_model = pf.BMModel(dt=dt)
+        y_meas, x_state = pf.simulate(bm_model, n_obs, x_init, theta, key)
         # particle filter specification
         n_particles = 7
         key, subkey = random.split(key)
@@ -143,24 +169,24 @@ class TestJit(unittest.TestCase):
         n_obs = 5
         x_init = jnp.array([0.])
         # simulate without jit
-        bm_model = bm.BMModel(dt=dt)
-        y_meas1, x_state1 = pf.meas_sim(bm_model, n_obs, x_init, theta, key)
+        bm_model = pf.BMModel(dt=dt)
+        y_meas1, x_state1 = pf.simulate(bm_model, n_obs, x_init, theta, key)
         # simulate with jit
-        meas_sim_jit = jax.jit(pf.meas_sim, static_argnums=(0, 1))
-        bm_model2 = bm.BMModel(dt=dt)
-        y_meas2, x_state2 = meas_sim_jit(bm_model2, n_obs, x_init, theta, key)
+        simulate_jit = jax.jit(pf.simulate, static_argnums=(0, 1))
+        bm_model2 = pf.BMModel(dt=dt)
+        y_meas2, x_state2 = simulate_jit(bm_model2, n_obs, x_init, theta, key)
         # # use wrong dt
-        # bm_model2 = bm.BMModel(dt=2.0 * dt)
-        # y_meas2, x_state2 = meas_sim_jit(bm_model2, n_obs, x_init, theta, key)
+        # bm_model2 = pf.BMModel(dt=2.0 * dt)
+        # y_meas2, x_state2 = simulate_jit(bm_model2, n_obs, x_init, theta, key)
         # breakpoint()
         # # use correct dt
         # bm_model2.dt = dt
-        # y_meas2, x_state2 = meas_sim_jit(bm_model2, n_obs, x_init, theta, key)
+        # y_meas2, x_state2 = simulate_jit(bm_model2, n_obs, x_init, theta, key)
         self.assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
         self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
         # objective function for gradient
         def obj_fun(model, n_obs, x_init, theta, key): return jnp.mean(
-            pf.meas_sim(model, n_obs, x_init, theta, key)[0])
+            pf.simulate(model, n_obs, x_init, theta, key)[0])
         # grad without jit
         grad1 = jax.grad(obj_fun, argnums=3)(
             bm_model, n_obs, x_init, theta, key)
@@ -180,8 +206,8 @@ class TestJit(unittest.TestCase):
         n_obs = 5
         x_init = jnp.array([0.])
         # simulate data
-        bm_model = bm.BMModel(dt=dt)
-        y_meas, x_state = pf.meas_sim(bm_model, n_obs, x_init, theta, key)
+        bm_model = pf.BMModel(dt=dt)
+        y_meas, x_state = pf.simulate(bm_model, n_obs, x_init, theta, key)
         # particle filter specification
         n_particles = 7
         key, subkey = random.split(key)
@@ -231,10 +257,10 @@ if __name__ == '__main__':
 # x_init = jnp.array([0.])
 
 # # simulate regular data
-# y_meas_for, x_state_for = meas_sim_for(n_obs, x_init, theta, key)
+# y_meas_for, x_state_for = simulate_for(n_obs, x_init, theta, key)
 
 # # simulate lax data
-# y_meas, x_state = meas_sim(n_obs, x_init, theta, key)
+# y_meas, x_state = simulate(n_obs, x_init, theta, key)
 
 # print("max_diff between sim_for and sim_opt:\n")
 # print("y_meas = \n",
