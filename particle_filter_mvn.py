@@ -107,16 +107,10 @@ def particle_filter_for(model, y_meas, theta, n_particles, key):
     for t in range(1, n_obs):
         # resampling step
         key, subkey = random.split(key)
-        # ancestor_particles = ancestor_particles.at[t].set(
-        #     particle_resample(logw_particles[t-1], subkey)
-        # )
         resampled_particles = particle_resample_mvn(
             X_particles, logw_particles[t-1], subkey)
         X_particles = resampled_particles[0]
-        X_particles_mu = X_particles_mu.at[t].set(resampled_particles[1]) # mean of MVN
-
-        # print("Particles: \n")
-        # print(X_particles)
+        X_particles_mu = X_particles_mu.at[t].set(resampled_particles[1]) # mean of MVN - UNCOMMENT
 
         # update
         key, *subkeys = random.split(key, num=n_particles+1)
@@ -138,7 +132,7 @@ def particle_filter_for(model, y_meas, theta, n_particles, key):
         #     )
         # )
     return {
-        "X_particles": X_particles,
+        "X_particles": X_particles_mu,  # NEED TO RETURN MU
         "logw_particles": logw_particles,
         "ancestor_particles": ancestor_particles
     }
@@ -161,7 +155,7 @@ def particle_filter(model, y_meas, theta, n_particles, key):
 
     Returns:
         A dictionary with elements:
-            - `X_particles`: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the mean of the MVN at each timestep. Note that this is different from the vanilla particle filter, which returns the particles at each timestep
+            - `X_particles_mu`: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the mean of the MVN at each timestep. Note that this is different from the vanilla particle filter, which returns the particles at each timestep
             - `logw_particles`: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
     """
     n_obs = y_meas.shape[0]
@@ -169,21 +163,22 @@ def particle_filter(model, y_meas, theta, n_particles, key):
     # lax.scan setup
     # scan function
     def fun(carry, t):
+        """ 
+        Simple way: Sample particles and use that as the carry. This defeats the purpose of using the MVN because we still carry around the particles. Should update this later
+        """
         # resampling step
         key, subkey = random.split(carry["key"])
-        # ancestor_particles = particle_resample(carry["logw_particles"],
-        #                                        subkey)
-        resampled_particles = particle_resample_mvn(
-            X_particles, carry["logw_particles"], subkey)
+        resampled_particles = particle_resample_mvn(carry["X_particles"], 
+                                                    carry["logw_particles"], 
+                                                    subkey)
         X_particles = resampled_particles[0]
-        X_particles_mu = X_particles_mu.at[t].set(
-            resampled_particles[1])  # mean of MVN
+        X_particles_mu = resampled_particles[1]
 
         # update particles
         key, *subkeys = random.split(key, num=n_particles+1)
         X_particles, logw_particles = jax.vmap(
             lambda xs, k: model.pf_step(xs, y_meas[t], theta, k)
-        )(carry["X_particles"][ancestor_particles], jnp.array(subkeys))
+        )(X_particles, jnp.array(subkeys))
 
         # X_particles = jax.vmap(lambda xs, k: model.state_sample(xs, theta, k))(
         #     carry["X_particles"][ancestor_particles], jnp.array(subkeys)
@@ -197,13 +192,14 @@ def particle_filter(model, y_meas, theta, n_particles, key):
         res = {
             "logw_particles": logw_particles,
             "X_particles": X_particles,
+            "X_particles_mu": X_particles_mu,
             "key": key
         }
         return res, res
     # scan initial value
     key, *subkeys = random.split(key, num=n_particles+1)
     # vmap version
-    X_particles, logw_particles = jax.vmap(
+    X_particles_init, logw_particles_init = jax.vmap(
         lambda k: model.pf_init(y_meas[0], theta, k))(jnp.array(subkeys))
     # X_particles = jax.vmap(
     #     lambda k: model.init_sample(y_meas[0], theta, k))(jnp.array(subkeys))
@@ -218,9 +214,12 @@ def particle_filter(model, y_meas, theta, n_particles, key):
     #     lambda xs, ym, th: model.init_logw(xs, ym, th),
     #     in_axes=(["particles", ...], [...], [...]),
     #     out_axes=["particles", ...])(X_particles, y_meas[0], theta)
+    wgt = jnp.exp(logw_particles_init - jnp.max(logw_particles_init))
+    prob = wgt / jnp.sum(wgt)
     init = {
-        "X_particles": X_particles,
-        "logw_particles": logw_particles,
+        "X_particles": X_particles_init,
+        "logw_particles": logw_particles_init,
+        "X_particles_mu": jnp.average(X_particles_init, axis=0, weights=prob),
         "key": key
     }
     # lax.scan itself
@@ -228,7 +227,7 @@ def particle_filter(model, y_meas, theta, n_particles, key):
     # append initial values
     out = {
         k: jnp.append(jnp.expand_dims(init[k], axis=0), full[k], axis=0)
-        for k in ["X_particles", "logw_particles"]
+        for k in ["X_particles", "logw_particles", "X_particles_mu"]
     }
     return out
 
@@ -249,3 +248,4 @@ def particle_loglik(logw_particles):
         ```
     """
     return jnp.sum(jsp.special.logsumexp(logw_particles, axis=1))
+
