@@ -29,10 +29,12 @@ import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
+from jax.config import config
 import pfjax as pf
 import pfjax.mcmc as mcmc
 import utils
 
+config.update("jax_enable_x64", True)
 
 class TestFor(unittest.TestCase):
     """
