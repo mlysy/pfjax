@@ -46,7 +46,7 @@ def simulate_for(n_obs, x_init, theta, key):
     return y_meas, x_state
 
 
-# @partial(jax.jit, static_argnums=0)
+@partial(jax.jit, static_argnums=0)
 def simulate(n_obs, x_init, theta, key):
     """
     Simulate data from the state-space model.
