@@ -30,13 +30,15 @@ def particle_resample_mvn(particles, logw, key):
     Returns: 
         Matrix of size (`n_particles`, `n_states`) representing the particles for the next timestep 
     """
-    n_particles = particles.shape[0]
-    n_states = particles.shape[1]
+    if len(particles.shape) > 2:
+        n_particles, n_states = jnp.squeeze(particles).shape
+    else :
+        n_particles, n_states = particles.shape
 
     wgt = jnp.exp(logw - jnp.max(logw))
     prob = wgt / jnp.sum(wgt)
     # variables are the rows in jnp.cov()
-    cov_mat = jnp.cov(jnp.transpose(particles), aweights=prob)
+    cov_mat = jnp.cov(jnp.transpose(jnp.squeeze(particles)), aweights=prob)
     mu = jnp.average(particles, axis=0, weights=prob)
 
     if n_states == 1:
@@ -46,9 +48,9 @@ def particle_resample_mvn(particles, logw, key):
         samples = samples.reshape(n_particles, n_states)
     else : 
         samples = random.multivariate_normal(key, mean=mu,
-                                        cov=cov_mat,
-                                        shape=(n_particles, ))
-        samples = samples.reshape(n_particles, n_states)
+                                            cov=cov_mat,
+                                            shape=(n_particles, n_states))
+        # samples = samples.reshape(n_particles, n_states)
     return samples, mu, cov_mat
 
 def particle_filter_for(model, y_meas, theta, n_particles, key):
@@ -73,14 +75,13 @@ def particle_filter_for(model, y_meas, theta, n_particles, key):
 
     Returns:
         A dictionary with elements:
-            - `X_particles`: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
+            - `X_particles_mu`: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
             - `logw_particles`: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
-            - `ancestor_particles`: An integer `ndarray` of shape `(n_obs, n_particles)` where each element gives the index of the particle's ancestor at the previous time point.  Since the first time point does not have ancestors, the first row of `ancestor_particles` contains all `-1`.
     """
     # memory allocation
     n_obs = y_meas.shape[0]
-    X_particles_mu = jnp.zeros((n_obs, model.n_state))
-    X_particles = jnp.zeros((n_particles, model.n_state))
+    X_particles_mu = jnp.zeros((n_obs, model.n_meas))
+    X_particles = jnp.zeros((n_particles, model.n_meas))
     logw_particles = jnp.zeros((n_obs, n_particles))
     ancestor_particles = jnp.zeros((n_obs, n_particles), dtype=int)
     # initial particles have no ancestors
@@ -114,9 +115,8 @@ def particle_filter_for(model, y_meas, theta, n_particles, key):
             )
 
     return {
-        "X_particles": X_particles_mu,  # NEED TO RETURN MU
+        "X_particles_mu": X_particles_mu,  
         "logw_particles": logw_particles,
-        "ancestor_particles": ancestor_particles
     }
 
 
@@ -174,7 +174,6 @@ def particle_filter(model, y_meas, theta, n_particles, key):
     # vmap version
     X_particles_init, logw_particles_init = jax.vmap(
         lambda k: model.pf_init(y_meas[0], theta, k))(jnp.array(subkeys))
-
     wgt = jnp.exp(logw_particles_init - jnp.max(logw_particles_init))
     prob = wgt / jnp.sum(wgt)
     init = {
@@ -183,12 +182,13 @@ def particle_filter(model, y_meas, theta, n_particles, key):
         "X_particles_mu": jnp.average(X_particles_init, axis=0, weights=prob),
         "key": key
     }
+
     # lax.scan itself
     last, full = lax.scan(fun, init, jnp.arange(1, n_obs))
     # append initial values
     out = {
         k: jnp.append(jnp.expand_dims(init[k], axis=0), full[k], axis=0)
-        for k in ["X_particles", "logw_particles", "X_particles_mu"]
+        for k in ["logw_particles", "X_particles_mu"]
     }
     return out
 
@@ -257,8 +257,8 @@ def particle_filter_for_refactor(model, y_meas, theta, n_particles, key, scheme 
     """
     # memory allocation
     n_obs = y_meas.shape[0]
-    X_particles_mu = jnp.zeros((n_obs, model.n_state))
-    X_particles = jnp.zeros((n_particles, model.n_state))
+    X_particles_mu = jnp.zeros((n_obs, model.n_meas))
+    X_particles = jnp.zeros((n_particles, model.n_meas))
     logw_particles = jnp.zeros((n_obs, n_particles))
     ancestor_particles = jnp.zeros((n_obs, n_particles), dtype=int)
     # resampling scheme

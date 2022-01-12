@@ -401,3 +401,4 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
         params = update_fn(params, subkey)
         print(params)
     return params
+

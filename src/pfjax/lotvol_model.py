@@ -81,6 +81,7 @@ class LotVolModel(object):
         self.dt = dt
         self.n_res = n_res
         self.n_state = (self.n_res, 2)
+        self.n_meas = 2
 
     def state_lpdf(self, x_curr, x_prev, theta):
         """
