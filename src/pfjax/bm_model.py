@@ -16,7 +16,6 @@ import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 from jax import random
-import particle_filter as pf
 
 
 class BMModel:
