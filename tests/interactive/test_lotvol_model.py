@@ -3,9 +3,10 @@ import numpy as np
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
+import pfjax as pf
 
-exec(open("lotvol_model.py").read())
-exec(open("particle_filter.py").read())
+# exec(open("lotvol_model.py").read())
+# exec(open("particle_filter.py").read())
 
 # parameter values
 alpha = 1.02
@@ -23,19 +24,22 @@ n_res = 10
 n_state = (n_res, 2)
 
 key = random.PRNGKey(0)
+lv_model = pf.LotVolModel(dt=dt, n_res=n_res)
 
 key, subkey = random.split(key)
 x_prev = random.normal(subkey, n_state)
 
 key, subkey = random.split(key)
-x_curr = state_sample(x_prev, theta, key)
-x_curr_for = state_sample_for(x_prev, theta, key)
+x_curr = lv_model.state_sample(x_prev, theta, key)
+x_curr_for = lv_model.state_sample_for(x_prev, theta, key)
 
 print("x_curr - x_curr_for = \n", x_curr - x_curr_for)
 
-state_lp = state_lpdf(x_curr, x_prev, theta)
-print("state_lp = \n", state_lp)
+state_lp = lv_model.state_lpdf(x_curr, x_prev, theta)
+state_lp_for = lv_model.state_lpdf_for(x_curr, x_prev, theta)
+print("state_lp - state_lp_for= \n", state_lp - state_lp_for)
 
+breakpoint()
 
 # --- particle filter ----------------------------------------------------------
 

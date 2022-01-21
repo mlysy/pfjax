@@ -1,0 +1,65 @@
+\newcommand{\bm}[1]{\boldsymbol{#1}}
+\makeatletter
+\newcommand{\ud}{\mathop{}\!{\mathrm{d}}}
+\newcommand{\iid}{\stackrel {\mathrm{iid}}{\sim}}
+\newcommand{\ind}{\stackrel {\mathrm{ind}}{\sim}}
+\newcommand{\thickhline}{%
+    \noalign {\ifnum 0=`}\fi \hrule height 1pt
+    \futurelet \reserved@a \@xhline
+}
+\makeatother
+\newcommand{\del}[2][]{\frac{\partial^{#1}}{\partial {#2}^{#1}}}
+\newcommand{\der}[2][]{\frac{\textnormal{d}^{#1}}{\textnormal{d} {#2}^{#1}}}
+\newcommand{\fdel}[3][]{\frac{\partial^{#1}#3}{\partial{#2}^{#1}}}
+\newcommand{\fder}[3][]{\frac{\textnormal{d}^{#1}#3}{\textnormal{d} {#2}^{#1}}}
+\DeclareMathOperator{\logit}{logit}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\newcommand{\E}{\mathop{}\!E\!\mathop{}}
+\DeclareMathOperator{\ibm}{IBM}
+\DeclareMathOperator{\var}{var}
+\DeclareMathOperator{\cov}{cov}
+\DeclareMathOperator{\cor}{cor}
+\DeclareMathOperator{\sd}{sd}
+\DeclareMathOperator{\se}{se}
+\DeclareMathOperator{\diag}{diag}
+\newcommand{\rv}[3][1]{#2_{#1},\ldots,#2_{#3}}
+\newcommand{\N}{\mathcal N}
+\newcommand{\bO}{\mathcal{O}}
+\newcommand{\correct}[1]{\textbf{[{\color{red}#1}]}}
+\newcommand{\bz}{{\bm 0}}
+\renewcommand{\AA}{{\bm A}}
+\newcommand{\BB}{{\bm B}}
+\newcommand{\CC}{{\bm C}}
+\newcommand{\bb}{{\bm b}}
+\newcommand{\ff}{{\bm f}}
+\newcommand{\GG}{{\bm G}}
+\newcommand{\QQ}{{\bm Q}}
+\newcommand{\RR}{{\bm R}}
+\newcommand{\WW}{\bm{W}}
+\newcommand{\XX}{\bm{X}}
+\newcommand{\xx}{\bm{x}}
+\newcommand{\yy}{\bm{y}}
+\newcommand{\YY}{\bm{Y}}
+\newcommand{\II}{\bm{I}}
+\newcommand{\eps}{{\bm \epsilon}}
+\newcommand{\eet}{{\bm \eta}}
+\newcommand{\lla}{{\bm \lambda}}
+\newcommand{\gga}{{\bm \gamma}}
+\newcommand{\tta}{{\bm \tau}}
+\newcommand{\TTh}{\bm{\Theta}}
+\newcommand{\tth}{\bm{\theta}}
+\newcommand{\hess}[1]{\frac{\partial^2}{\partial{#1}\partial{#1}'}}
+\newcommand{\dt}{\Delta t}
+\newcommand{\Id}{\bm{I}}
+\newcommand{\mmu}{{\bm \mu}}
+\newcommand{\SSi}{{\bm \Sigma}}
+\newcommand{\OOm}{{\bm \Omega}}
+\newcommand{\ssi}{{\bm \sigma}}
+\newcommand{\dr}{{\bm \Lambda}}
+\newcommand{\df}{{\bm \Sigma}}
+\newcommand{\zzero}{{\bm 0}}
+\newcommand{\up}[1]{^{(#1)}}
+\newcommand{\lap}{\textnormal{Lap}}
+\newcommand{\ella}{\ell_{\lap}}
+\newcommand{\Lhat}{\hat {\mathcal L}}
