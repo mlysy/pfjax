@@ -49,6 +49,7 @@ def particle_resample_mvn(particles, logw, key):
     cov_mat = jnp.cov(jnp.transpose(particles), aweights=prob)
     mu = jnp.average(particles, axis=0, weights=prob).reshape(-1, )
 
+    # FIXME: replace with lax.cond(n_states == 1, cov_mat = cov_mat.reshape(-1, 1))
     if n_states == 1:
         cov_mat = cov_mat.reshape(-1, 1) # change int into matrix
 

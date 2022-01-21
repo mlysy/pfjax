@@ -323,7 +323,7 @@ class LotVolModel(object):
         return \
             jnp.append(jnp.zeros((self.n_res-1,) + x_init.shape),
                        jnp.expand_dims(x_init, axis=0), axis=0), \
-            jnp.zeros()
+            jnp.zeros(())
         # x_init = jnp.log(y_init +
         #                  tau * random.normal(subkey, (self.n_state[1],)))
         # x_step = euler_sim(self.n_res-1, x_init, self.dt / self.n_res,
