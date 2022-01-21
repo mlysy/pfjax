@@ -372,15 +372,15 @@ def joint_loglik(model, y_meas, x_state, theta):
     return ll_init + jnp.sum(ll_step)
 
 
-
-def update_params(params, subkey, grad_fun=None, n_particles=100, y_meas=None, model=None, learning_rate=0.01, mask=None):
-    temp = grad_fun(params, subkey, n_particles, y_meas, model)   # Remove me if not debugging
-    params_update = jax.grad(grad_fun)(params, subkey, n_particles, y_meas, model)
+def update_params(params, subkey, grad_fun=None, n_particles=100, y_meas=None, model=None, learning_rate=0.01, mask=None, **kwargs):
+    temp = 0 #grad_fun(params, subkey, n_particles, y_meas, model)   # Remove me if not debugging
+    params_update = jax.grad(grad_fun)(
+        params, subkey, n_particles, y_meas, model, **kwargs)
     return (jnp.where(mask, params_update, 0)), temp
 
 
 def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10, 
-              learning_rate=0.01, key=1, mask=None):
+              learning_rate=0.01, key=1, mask=None, **kwargs):
     """
     Args:
         model: The model class for which all of the functions are defined.
@@ -394,7 +394,7 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
         mask: The mask over which dimensions we would like to perform the optimization.
     """
     partial_update_params = partial(update_params, n_particles=n_particles, y_meas=y_meas, 
-                                    model=model, learning_rate=learning_rate, mask=mask, grad_fun=grad_fun)
+                                    model=model, learning_rate=learning_rate, mask=mask, grad_fun=grad_fun, **kwargs)
     update_fn = jax.jit(partial_update_params)
     gradients = []
     stoch_obj = []

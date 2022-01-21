@@ -249,3 +249,14 @@ def density_estimator (particles, weights, key):
     pass
 
 
+def log_posterior(theta, key, n_particles, y_meas, model, prior):
+    """log posterior. 
+
+    Args:
+        params ([type]): jnp array of MLE parameter estiamtes calculated by `stoch_opt` or another optim function 
+        loglik ([type]): log-likelihood
+    """
+    ret = particle_filter(model, y_meas, theta, n_particles, key)
+    sum_particle_lweights = particle_loglik(ret['logw_particles'])
+    lprior = jnp.log(prior(theta))
+    return sum_particle_lweights + lprior
