@@ -52,6 +52,10 @@ def particle_resample_mvn(particles, logw, key):
     # FIXME: replace with lax.cond(n_states == 1, cov_mat = cov_mat.reshape(-1, 1))
     if n_states == 1:
         cov_mat = cov_mat.reshape(-1, 1) # change int into matrix
+    # cov_mat = lax.cond(n_states == 1, 
+    #                    lambda x: x.reshape(-1, 1),
+    #                    lambda x: x,
+    #                    cov_mat)  # change int into matrix
 
     samples = random.multivariate_normal(key, mean=mu,
                                          cov=cov_mat,
