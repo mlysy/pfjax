@@ -19,13 +19,13 @@ y_t ~ N( exp(x_{m,mt}), diag(tau_H^2, tau_L^2) )
 
 **Notes:**
 
-- The measurement `y_t` corresponds to `x_t = (x_{m,mt}, ..., x_{m,mt+(m-1)})`, i.e., aligns with the first element of `x_t`.  This makes it easier to define the prior.
+- The measurement `y_t` corresponds to `x_t = (x_{m,(t-1)m+1}, ..., x_{m,tm})`, i.e., aligns with the last element of `x_t`.
 
 - The prior is such that `p(x_0 | y_0, theta)` is given by:
 
     ```
-    exp(x_{m0}) ~ N( y_0, diag(tau_H^2, tau_L^2) )
-    x_{mt} ~ Euler(x_{m,t-1}, theta)
+    exp(x_{m0}) ~ TruncatedNormal( y_0, diag(tau_H^2, tau_L^2) )
+    x_{m,n} = 0 for n = -m+1, ..., -1.
     ```
 
 """
@@ -35,11 +35,12 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 from jax import random
 from jax import lax
-
+from pfjax import sde as sde
 
 # --- helper functions ---------------------------------------------------------
 
-def drift(x, dt, theta):
+
+def lotvol_drift(x, dt, theta):
     """
     Calculates the SDE drift function.
     """
@@ -63,7 +64,7 @@ def euler_sim(n_steps, x, dt, theta, key, n_state):
     # scan function
     def fun(carry, t):
         key, subkey = random.split(carry["key"])
-        x = drift(carry["x"], dt, theta) + \
+        x = lotvol_drift(carry["x"], dt, theta) + \
             random.normal(subkey, (n_state[1],)) * sigma
         res = {"x": x, "key": key}
         return res, res
@@ -82,9 +83,55 @@ class LotVolModel(object):
         self.n_res = n_res
         self.n_state = (self.n_res, 2)
 
+    def drift(self, x, theta):
+        """
+        Calculates the SDE drift function.
+        """
+        alpha = theta[0]
+        beta = theta[1]
+        gamma = theta[2]
+        delta = theta[3]
+        return jnp.array([alpha - beta * jnp.exp(x[1]),
+                          -gamma + delta * jnp.exp(x[0])])
+
+    def diff(self, x, theta):
+        """
+        Calculates the SDE diffusion function.
+        """
+        return theta[4:6]
+
     def state_lpdf(self, x_curr, x_prev, theta):
         """
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
+
+        Args:
+            x_curr: State variable at current time `t`.
+            x_prev: State variable at previous time `t-1`.
+            theta: Parameter value.
+
+        Returns:
+            The log-density of `p(x_curr | x_prev, theta)`.
+        """
+        x = jnp.append(jnp.expand_dims(x_prev[self.n_res-1], axis=0),
+                       x_curr, axis=0)
+        return sde.euler_lpdf_diag(x, self.dt/self.n_res,
+                                   self.drift, self.diff, theta)
+        # x0 = jnp.append(jnp.expand_dims(
+        #      x_prev[self.n_res-1], axis=0), x_curr[:self.n_res-1], axis=0)
+        # x1 = x_curr
+        # sigma = theta[4:6] * jnp.sqrt(dt_res)
+        # lp = jax.vmap(lambda t:
+        #               jsp.stats.norm.logpdf(x1[t],
+        #                                     loc=lotvol_drift(
+        #                                         x0[t], dt_res, theta),
+        #                                     scale=sigma))(jnp.arange(self.n_res))
+        # return jnp.sum(lp)
+
+    def state_lpdf_for(self, x_curr, x_prev, theta):
+        """
+        Calculates the log-density of `p(x_curr | x_prev, theta)`.
+
+        For-loop version for testing.
 
         Args:
             x_curr: State variable at current time `t`.
@@ -99,11 +146,14 @@ class LotVolModel(object):
             x_prev[self.n_res-1], axis=0), x_curr[:self.n_res-1], axis=0)
         x1 = x_curr
         sigma = theta[4:6] * jnp.sqrt(dt_res)
-        lp = jax.vmap(lambda t:
-                      jsp.stats.norm.logpdf(x1[t],
-                                            loc=drift(x0[t], dt_res, theta),
-                                            scale=sigma))(jnp.arange(self.n_res))
-        return jnp.sum(lp)
+        lp = jnp.array(0.0)
+        for t in range(self.n_res):
+            lp = lp + jnp.sum(jsp.stats.norm.logpdf(
+                x1[t],
+                loc=lotvol_drift(x0[t], dt_res, theta),
+                scale=sigma
+            ))
+        return lp
 
     def state_sample(self, x_prev, theta, key):
         """
@@ -117,7 +167,16 @@ class LotVolModel(object):
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
-        return euler_sim(self.n_res, x_prev[self.n_res-1], self.dt/self.n_res, theta, key, self.n_state)
+        return sde.euler_sim_diag(
+            n_steps=self.n_res,
+            x=x_prev[self.n_res-1],
+            dt=self.dt/self.n_res,
+            drift=self.drift,
+            diff=self.diff,
+            theta=theta,
+            key=key
+        )
+        # return euler_sim(self.n_res, x_prev[self.n_res-1], self.dt/self.n_res, theta, key, self.n_state)
 
     def state_sample_for(self, x_prev, theta, key):
         """
@@ -139,7 +198,7 @@ class LotVolModel(object):
         x_state = x_prev[self.n_res-1]
         for t in range(self.n_res):
             key, subkey = random.split(key)
-            x_state = drift(x_state, dt_res, theta) + \
+            x_state = lotvol_drift(x_state, dt_res, theta) + \
                 random.normal(subkey, (self.n_state[1],)) * sigma
             x_curr = x_curr.at[t].set(x_state)
         return x_curr
@@ -158,7 +217,7 @@ class LotVolModel(object):
         """
         tau = theta[6:8]
         return jnp.sum(
-            jsp.stats.norm.logpdf(y_curr, loc=jnp.exp(x_curr[0]), scale=tau)
+            jsp.stats.norm.logpdf(y_curr, loc=jnp.exp(x_curr[-1]), scale=tau)
         )
 
     def meas_sample(self, x_curr, theta, key):
@@ -174,13 +233,13 @@ class LotVolModel(object):
             Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
         """
         tau = theta[6:8]
-        return jnp.exp(x_curr[0]) + tau * random.normal(key, (self.n_state[1],))
+        return jnp.exp(x_curr[-1]) + tau * random.normal(key, (self.n_state[1],))
 
     def init_logw(self, x_init, y_init, theta):
         """
         Log-weight of the importance sampler for initial state variable `x_init`.
 
-        Suppose that 
+        Suppose that
         ```
         x_init ~ q(x_init) = q(x_init | y_init, theta)
         ```
@@ -201,7 +260,7 @@ class LotVolModel(object):
 
     def init_sample(self, y_init, theta, key):
         """
-        Sampling distribution for initial state variable `x_init`. 
+        Sampling distribution for initial state variable `x_init`.
 
         Samples from an importance sampling proposal distribution
         ```
@@ -219,18 +278,20 @@ class LotVolModel(object):
         """
         tau = theta[6:8]
         key, subkey = random.split(key)
-        # x_init = jnp.repeat(jnp.expand_dims(
-        #     y_init, axis=0), self.n_res, axis=0)
-        # x_init = jnp.log(self.meas_sample(jnp.log(x_init), theta, subkey))
+        # FIXME: Implement a truncated normal instead of just a normal here
         x_init = jnp.log(y_init +
                          tau * random.normal(subkey, (self.n_state[1],)))
-        x_step = euler_sim(self.n_res-1, x_init, self.dt / self.n_res,
-                           theta, key, self.n_state)
-        return jnp.append(jnp.expand_dims(x_init, axis=0), x_step, axis=0)
+        return jnp.append(jnp.zeros((self.n_res-1,) + x_init.shape),
+                          jnp.expand_dims(x_init, axis=0), axis=0)
+        # x_init = jnp.log(y_init +
+        #                  tau * random.normal(subkey, (self.n_state[1],)))
+        # x_step = euler_sim(self.n_res-1, x_init, self.dt / self.n_res,
+        #                    theta, key, self.n_state)
+        # return jnp.append(jnp.expand_dims(x_init, axis=0), x_step, axis=0)
 
     def pf_init(self, y_init, theta, key):
         """
-        Particle filter calculation for `x_init`. 
+        Particle filter calculation for `x_init`.
 
         Samples from an importance sampling proposal distribution
         ```
@@ -256,19 +317,22 @@ class LotVolModel(object):
         """
         tau = theta[6:8]
         key, subkey = random.split(key)
-        # x_init = jnp.repeat(jnp.expand_dims(
-        #     y_init, axis=0), self.n_res, axis=0)
-        # x_init = jnp.log(self.meas_sample(jnp.log(x_init), theta, subkey))
         x_init = jnp.log(y_init +
                          tau * random.normal(subkey, (self.n_state[1],)))
-        x_step = euler_sim(self.n_res-1, x_init, self.dt / self.n_res,
-                           theta, key, self.n_state)
-        return jnp.append(jnp.expand_dims(x_init, axis=0), x_step, axis=0), \
-            jnp.zeros(())
+        return \
+            jnp.append(jnp.zeros((self.n_res-1,) + x_init.shape),
+                       jnp.expand_dims(x_init, axis=0), axis=0), \
+            jnp.zeros()
+        # x_init = jnp.log(y_init +
+        #                  tau * random.normal(subkey, (self.n_state[1],)))
+        # x_step = euler_sim(self.n_res-1, x_init, self.dt / self.n_res,
+        #                    theta, key, self.n_state)
+        # return jnp.append(jnp.expand_dims(x_init, axis=0), x_step, axis=0),
+        # jnp.zeros(())
 
     def pf_step(self, x_prev, y_curr, theta, key):
         """
-        Particle filter calculation for `x_curr`. 
+        Particle filter calculation for `x_curr`.
 
         Samples from an importance sampling proposal distribution
         ```
