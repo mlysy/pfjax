@@ -17,6 +17,16 @@ from jax.experimental.maps import xmap
 from functools import partial
 
 
+@jax.jit
+def _lweight_to_prob(logw):
+    """Returns normalized propabilities from unnormalized log weights
+
+    Args:
+        logw ([type]): [description]
+    """
+    wgt = jnp.exp(logw - jnp.max(logw))  # jnp.maximum
+    prob = wgt / jnp.sum(wgt)
+    return prob
 
 # @jax.jit
 def particle_resample_mvn(particles, logw, key):
@@ -31,30 +41,22 @@ def particle_resample_mvn(particles, logw, key):
     Returns: 
         Matrix of size (`n_particles`, `n_states`) representing the particles for the next timestep 
     """
-    # maybe we dont need this
-    if len(particles.shape) > 2:
-        n_particles, n_states = jnp.squeeze(particles).shape
-    else :
-        n_particles, n_states = particles.shape
+    assert len(particles.shape) == 2, "Invalid particle shape, must have dimension (n_particles, n_states), got {0}".format(particles.shape)
+    n_particles, n_states = particles.shape
+    prob = _lweight_to_prob(logw)
 
-    # jit these
-    wgt = jnp.exp(logw - jnp.max(logw)) # jnp.maximum
-    prob = wgt / jnp.sum(wgt)
     # variables are the rows in jnp.cov()
-    cov_mat = jnp.cov(jnp.transpose(jnp.squeeze(particles)), aweights=prob)
-    mu = jnp.average(particles, axis=0, weights=prob)
+    cov_mat = jnp.cov(jnp.transpose(particles), aweights=prob)
+    mu = jnp.average(particles, axis=0, weights=prob).reshape(-1, )
 
     if n_states == 1:
-        # cant use MVNormal, Jax complains
-        Z = random.normal(key, shape=(n_particles, ))
-        samples = mu + jnp.sqrt(cov_mat) * Z
-        samples = samples.reshape(n_particles, n_states)
-    else : 
-        samples = random.multivariate_normal(key, mean=mu,
-                                            cov=cov_mat,
-                                            shape=(n_particles, n_states))
-        # samples = samples.reshape(n_particles, n_states)
-    return samples, mu, cov_mat
+        cov_mat = cov_mat.reshape(-1, 1) # change int into matrix
+
+    samples = random.multivariate_normal(key, mean=mu,
+                                         cov=cov_mat,
+                                         shape=(n_particles, n_states))
+    return jnp.squeeze(samples), mu, cov_mat
+    
 
 def particle_filter_for(model, y_meas, theta, n_particles, key):
     """
@@ -103,7 +105,7 @@ def particle_filter_for(model, y_meas, theta, n_particles, key):
         # resampling step
         key, subkey = random.split(key)
         resampled_particles = particle_resample_mvn(
-            X_particles, logw_particles[t-1], subkey)
+            jnp.squeeze(X_particles), logw_particles[t-1], subkey)
         X_particles = resampled_particles[0]
         X_particles_mu = X_particles_mu.at[t].set(resampled_particles[1]) # mean of MVN - UNCOMMENT
 
@@ -153,7 +155,7 @@ def particle_filter(model, y_meas, theta, n_particles, key):
         """
         # resampling step
         key, subkey = random.split(carry["key"])
-        resampled_particles = particle_resample_mvn(carry["X_particles"], 
+        resampled_particles = particle_resample_mvn(jnp.squeeze(carry["X_particles"]), 
                                                     carry["logw_particles"], 
                                                     subkey)
         X_particles = resampled_particles[0]
@@ -177,12 +179,11 @@ def particle_filter(model, y_meas, theta, n_particles, key):
     # vmap version
     X_particles_init, logw_particles_init = jax.vmap(
         lambda k: model.pf_init(y_meas[0], theta, k))(jnp.array(subkeys))
-    wgt = jnp.exp(logw_particles_init - jnp.max(logw_particles_init))
-    prob = wgt / jnp.sum(wgt)
+    prob = _lweight_to_prob(logw_particles_init)
     init = {
         "X_particles": X_particles_init,
         "logw_particles": logw_particles_init,
-        "X_particles_mu": jnp.average(X_particles_init, axis=0, weights=prob),
+        "X_particles_mu": jnp.average(X_particles_init, axis=0, weights=prob).reshape(-1, ),
         "key": key
     }
 
@@ -246,3 +247,5 @@ def density_estimator (particles, weights, key):
         x_particles_summ: summary statistic for particles. Could be the mean if density estimation uses a MVN, etc. 
     """
     pass
+
+
