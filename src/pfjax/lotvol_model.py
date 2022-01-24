@@ -82,7 +82,6 @@ class LotVolModel(object):
         self.dt = dt
         self.n_res = n_res
         self.n_state = (self.n_res, 2)
-<<<<<<< HEAD:src/pfjax/lotvol_model.py
 
     def drift(self, x, theta):
         """
@@ -101,10 +100,7 @@ class LotVolModel(object):
         """
         return theta[4:6]
 
-=======
-        
-        
->>>>>>> adding stoch_opt code:lotvol_model.py
+
     def state_lpdf(self, x_curr, x_prev, theta):
         """
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
