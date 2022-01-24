@@ -82,29 +82,8 @@ class LotVolModel(object):
         self.dt = dt
         self.n_res = n_res
         self.n_state = (self.n_res, 2)
-<<<<<<< HEAD
+        self.drift = lotvol_drift
         
-        
-=======
-
-    def drift(self, x, theta):
-        """
-        Calculates the SDE drift function.
-        """
-        alpha = theta[0]
-        beta = theta[1]
-        gamma = theta[2]
-        delta = theta[3]
-        return jnp.array([alpha - beta * jnp.exp(x[1]),
-                          -gamma + delta * jnp.exp(x[0])])
-
-    def diff(self, x, theta):
-        """
-        Calculates the SDE diffusion function.
-        """
-        return theta[4:6]
-
->>>>>>> 5abc1d42cf7ed02c1b77177f0620ffd3341624da
     def state_lpdf(self, x_curr, x_prev, theta):
         """
         Calculates the log-density of `p(x_curr | x_prev, theta)`.

@@ -231,7 +231,6 @@ def particle_loglik(logw_particles):
     """
     n_particles = logw_particles.shape[1]
     return jnp.sum(jsp.special.logsumexp(logw_particles, axis=1) - jnp.log(n_particles))
-<<<<<<< HEAD
 
 
 def get_sum_lweights(theta, key, n_particles, y_meas, model):
@@ -341,5 +340,3 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
         stoch_obj.append(temp)
         gradients.append(update_vals)
     return params, stoch_obj, gradients
-=======
->>>>>>> 5abc1d42cf7ed02c1b77177f0620ffd3341624da
