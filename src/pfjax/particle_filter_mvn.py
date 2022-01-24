@@ -28,7 +28,10 @@ def _lweight_to_prob(logw):
     prob = wgt / jnp.sum(wgt)
     return prob
 
+# @partial(jit, static_argnums=(0,))
 # @jax.jit
+
+@partial(jax.jit, static_argnums=(0,))
 def particle_resample_mvn(particles, logw, key):
     """
     Approximate particle distribution with MVN. Uses weighted mean and covariance of `particles` for the MVN mean and cov
@@ -52,10 +55,10 @@ def particle_resample_mvn(particles, logw, key):
     # FIXME: replace with lax.cond(n_states == 1, cov_mat = cov_mat.reshape(-1, 1))
     if n_states == 1:
         cov_mat = cov_mat.reshape(-1, 1) # change int into matrix
-    # cov_mat = lax.cond(n_states == 1, 
-    #                    lambda x: x.reshape(-1, 1),
-    #                    lambda x: x,
-    #                    cov_mat)  # change int into matrix
+    # cov_mat = lax.cond(n_states == 1,  # true_fun and false_fun output must have identical types...
+    #                    true_fun = lambda x: x.reshape(-1, 1),
+    #                    false_fun = lambda x: x,
+    #                    operand = cov_mat)  # change int into matrix
 
     samples = random.multivariate_normal(key, mean=mu,
                                          cov=cov_mat,
