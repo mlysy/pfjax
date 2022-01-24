@@ -1,7 +1,18 @@
 """
 Particle filter in JAX.
 
-Uses the same API as NumPy/SciPy version.
+The API requires the user to define a model class with the following methods:
+
+- `pf_init()`
+- `pf_step()`
+
+The provided functions are:
+
+- `particle_filter()`
+- `particle_loglik()`
+- `particle_smooth()`
+- `particle_resample()`
+
 """
 
 import jax
@@ -11,82 +22,6 @@ from jax import random
 from jax import lax
 from jax.experimental.maps import xmap
 from functools import partial
-
-
-def simulate_for(model, n_obs, x_init, theta, key):
-    """
-    Simulate data from the state-space model.
-
-    **FIXME:** This is the testing version which uses a for-loop.  This should be put in a separate class in a `test` subfolder.
-
-    Args:
-        model: Object specifying the state-space model.
-        n_obs: Number of observations to generate.
-        x_init: Initial state value at time `t = 0`.
-        theta: Parameter value.
-        key: PRNG key.
-
-    Returns:
-        y_meas: The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
-        x_state: The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
-    """
-    y_meas = jnp.zeros((n_obs, model.n_meas))
-    x_state = jnp.zeros((n_obs, model.n_state))
-    x_state = x_state.at[0].set(x_init)
-    # initial observation
-    key, subkey = random.split(key)
-    y_meas = y_meas.at[0].set(model.meas_sample(x_init, theta, subkey))
-    for t in range(1, n_obs):
-        key, *subkeys = random.split(key, num=3)
-        x_state = x_state.at[t].set(
-            model.state_sample(x_state[t-1], theta, subkeys[0])
-        )
-        y_meas = y_meas.at[t].set(
-            model.meas_sample(x_state[t], theta, subkeys[1])
-        )
-    return y_meas, x_state
-
-# @partial(jax.jit, static_argnums=0)
-
-
-def simulate(model, n_obs, x_init, theta, key):
-    """
-    Simulate data from the state-space model.
-
-    Args:
-        model: Object specifying the state-space model.
-        n_obs: Number of observations to generate.
-        x_init: Initial state value at time `t = 0`.
-        theta: Parameter value.
-        key: PRNG key.
-
-    Returns:
-        y_meas: The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
-        x_state: The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
-    """
-    # lax.scan setup
-    # scan function
-    def fun(carry, x):
-        key, *subkeys = random.split(carry["key"], num=3)
-        x_state = model.state_sample(carry["x_state"], theta, subkeys[0])
-        y_meas = model.meas_sample(x_state, theta, subkeys[1])
-        res = {"y_meas": y_meas, "x_state": x_state, "key": key}
-        return res, res
-    # scan initial value
-    key, subkey = random.split(key)
-    init = {
-        "y_meas": model.meas_sample(x_init, theta, subkey),
-        "x_state": x_init,
-        "key": key
-    }
-    # scan itself
-    last, full = lax.scan(fun, init, jnp.arange(1, n_obs))
-    # append initial values
-    x_state = jnp.append(jnp.expand_dims(init["x_state"], axis=0),
-                         full["x_state"], axis=0)
-    y_meas = jnp.append(jnp.expand_dims(init["y_meas"], axis=0),
-                        full["y_meas"], axis=0)
-    return y_meas, x_state
 
 
 def particle_resample(logw, key):
@@ -296,6 +231,7 @@ def particle_loglik(logw_particles):
     """
     n_particles = logw_particles.shape[1]
     return jnp.sum(jsp.special.logsumexp(logw_particles, axis=1) - jnp.log(n_particles))
+<<<<<<< HEAD
 
 
 def get_sum_lweights(theta, key, n_particles, y_meas, model):
@@ -405,3 +341,5 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
         stoch_obj.append(temp)
         gradients.append(update_vals)
     return params, stoch_obj, gradients
+=======
+>>>>>>> 5abc1d42cf7ed02c1b77177f0620ffd3341624da
