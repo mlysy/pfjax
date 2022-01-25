@@ -9,6 +9,7 @@ from jax import random
 from jax import lax
 from jax.experimental.maps import xmap
 from functools import partial
+from pfjax import particle_loglik, particle_filter
 
 
 def get_sum_lweights(theta, key, n_particles, y_meas, model):
