@@ -74,6 +74,9 @@ def euler_sim(n_steps, x, dt, theta, key, n_state):
     last, full = lax.scan(fun, init, jnp.arange(n_steps))
     return full["x"]
 
+def lotvol_diff(x, theta):
+    return jnp.diag(theta[4:6])
+
 
 # --- main functions -----------------------------------------------------------
 
