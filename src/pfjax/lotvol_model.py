@@ -85,6 +85,7 @@ class LotVolModel(object):
         self.dt = dt
         self.n_res = n_res
         self.n_state = (self.n_res, 2)
+<<<<<<< HEAD
 
     def drift(self, x, theta):
         """
@@ -104,6 +105,11 @@ class LotVolModel(object):
         return theta[4:6]
 
 
+=======
+        self.drift = lotvol_drift
+        self.diff = lotvol_diff
+        
+>>>>>>> b2664bbe4756697b6f07904058ef0d5a79df8a05
     def state_lpdf(self, x_curr, x_prev, theta):
         """
         Calculates the log-density of `p(x_curr | x_prev, theta)`.

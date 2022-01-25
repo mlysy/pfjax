@@ -31,7 +31,7 @@ def euler_sim_diag(n_steps, x, dt, drift, diff, theta, key):
     def fun(carry, t):
         key, subkey = random.split(carry["key"])
         x = carry["x"]
-        dr = x + drift(x, theta) * dt
+        dr = x + drift(x, dt, theta) * dt
         df = diff(x, theta) * jnp.sqrt(dt)
         x = dr + df * random.normal(subkey, (x.shape[0],))
         res = {"x": x, "key": key}
