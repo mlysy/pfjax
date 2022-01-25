@@ -31,7 +31,7 @@ def _lweight_to_prob(logw):
 # @partial(jit, static_argnums=(0,))
 # @jax.jit
 
-@partial(jax.jit, static_argnums=(0,))
+# @partial(jax.jit, static_argnums=(0,))
 def particle_resample_mvn(particles, logw, key):
     """
     Approximate particle distribution with MVN. Uses weighted mean and covariance of `particles` for the MVN mean and cov
