@@ -3,10 +3,18 @@ Unit tests for the particle filter.
 
 Things to test:
 
-- [ ] `jit` + `grad` return without errors.
-- [ ] `vmap`, `xmap`, `scan`, etc. give the same result as with for-loops.
-- [ ] Global and OOP APIs give the same results.
-- [ ] OOP API treats class members as expected, i.e., not like using globals in jitted functions.
+- [x] `jit` + `grad` return without errors.
+
+- [x] `vmap`, `xmap`, `scan`, etc. give the same result as with for-loops.
+
+- [x] Global and OOP APIs give the same results.
+
+    **Deprecated:** Too cumbersome to maintain essentially duplicate APIs. 
+
+- [x] OOP API treats class members as expected, i.e., not like using globals in jitted functions.
+
+    **Update:** Does in fact treat data members as globals, unless the class is made hashable.
+
 
 Test code: from `pfjax/tests`:
 
@@ -17,6 +25,7 @@ python -m unittest -v
 
 import unittest
 import numpy as np
+import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
@@ -25,12 +34,12 @@ import pfjax.mcmc
 from utils import *
 
 
-# hack to copy-paste in contents without import
-exec(open("bm_model.py").read())
-exec(open("particle_filter.py").read())
+# # hack to copy-paste in contents without import
+# exec(open("bm_model.py").read())
+# exec(open("particle_filter.py").read())
 
-# global variable (can't be defined inside class...)
-dt = .1
+# # global variable (can't be defined inside class...)
+# dt = .1
 
 
 class TestFor(unittest.TestCase):
@@ -46,6 +55,7 @@ class TestFor(unittest.TestCase):
         tau = .1
         theta = jnp.array([mu, sigma, tau])
         # data specification
+        dt = .1
         n_obs = 5
         x_init = jnp.array([0.])
         bm_model = pf.BMModel(dt=dt)
@@ -65,6 +75,7 @@ class TestFor(unittest.TestCase):
         tau = .1
         theta = jnp.array([mu, sigma, tau])
         # data specification
+        dt = .1
         n_obs = 5
         x_init = jnp.array([0.])
         bm_model = pf.BMModel(dt=dt)
@@ -93,6 +104,7 @@ class TestFor(unittest.TestCase):
         tau = .1
         theta = jnp.array([mu, sigma, tau])
         # data specification
+        dt = .1
         n_obs = 10
         x_init = jnp.array([0.])
         bm_model = pf.BMModel(dt=dt)
@@ -170,6 +182,7 @@ class TestJit(unittest.TestCase):
         tau = .1
         theta = jnp.array([mu, sigma, tau])
         # data specification
+        dt = .1
         n_obs = 5
         x_init = jnp.array([0.])
         # simulate without jit
@@ -207,6 +220,7 @@ class TestJit(unittest.TestCase):
         tau = .1
         theta = jnp.array([mu, sigma, tau])
         # data specification
+        dt = .1
         n_obs = 5
         x_init = jnp.array([0.])
         # simulate data
