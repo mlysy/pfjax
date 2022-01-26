@@ -4,10 +4,11 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
 import pfjax as pf
+import pfjax.sde
+import lotvol_model as lv
 
-# exec(open("lotvol_model.py").read())
-# exec(open("particle_filter.py").read())
 
+key = random.PRNGKey(0)
 # parameter values
 alpha = 1.02
 beta = 1.02
@@ -18,9 +19,22 @@ sigma_L = .2
 tau_H = .25
 tau_L = .35
 theta = jnp.array([alpha, beta, gamma, delta, sigma_H, sigma_L, tau_H, tau_L])
-
-dt = .1
+# data specification
+dt = .09
 n_res = 10
+n_obs = 7
+x_init = jnp.block([[jnp.zeros((n_res-1, 2))],
+                    [jnp.log(jnp.array([5., 3.]))]])
+# simulate with inherited class
+lv_model1 = pf.LotVolModel(dt=dt, n_res=n_res)
+y_meas1, x_state1 = pf.simulate(lv_model1, n_obs, x_init, theta, key)
+# simulate with non-inherited class
+lv_model2 = lv.LotVolModel(dt=dt, n_res=n_res)
+y_meas2, x_state2 = pf.simulate(lv_model2, n_obs, x_init, theta, key)
+
+y_meas1 - y_meas2
+x_state1 - x_state2
+
 n_state = (n_res, 2)
 
 key = random.PRNGKey(0)

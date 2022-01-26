@@ -43,14 +43,14 @@ class BMModel:
                                   scale=sigma * jnp.sqrt(self.dt))
         )
 
-    def state_sample(self, x_prev, theta, key):
+    def state_sample(self, key, x_prev, theta):
         """
         Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
 
         Args:
+            key: PRNG key.
             x_prev: State variable at previous time `t-1`.
             theta: Parameter value.
-            key: PRNG key.
 
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
@@ -78,7 +78,7 @@ class BMModel:
             jsp.stats.norm.logpdf(y_curr, loc=x_curr, scale=tau)
         )
 
-    def meas_sample(self, x_curr, theta, key):
+    def meas_sample(self, key, x_curr, theta):
         """
         Sample from `p(y_curr | x_curr, theta)`.
 
@@ -117,7 +117,7 @@ class BMModel:
         # return -meas_lpdf(x_init, y_init, theta)
         return jnp.zeros(())
 
-    def init_sample(self, y_init, theta, key):
+    def init_sample(self, key, y_init, theta):
         """
         Sampling distribution for initial state variable `x_init`. 
 
@@ -128,16 +128,16 @@ class BMModel:
         See `init_logw()` for details.
 
         Args:
+            key: PRNG key.
             y_init: Measurement variable at initial time `t = 0`.
             theta: Parameter value.
-            key: PRNG key.
 
         Returns:
             Sample from the proposal distribution for `x_init`.
         """
-        return self.meas_sample(y_init, theta, key)
+        return self.meas_sample(key, y_init, theta)
 
-    def pf_init(self, y_init, theta, key):
+    def pf_init(self, key, y_init, theta):
         """
         Particle filter calculation for `x_init`. 
 
@@ -153,17 +153,17 @@ class BMModel:
         **FIXME:** Explain what the proposal is and why it gives `logw = 0`.
 
         Args:
+            key: PRNG key.
             y_init: Measurement variable at initial time `t = 0`.
             theta: Parameter value.
-            key: PRNG key.
 
         Returns:
             - x_init: A sample from the proposal distribution for `x_init`.
             - logw: The log-weight of `x_init`.
         """
-        return self.meas_sample(y_init, theta, key), jnp.zeros(())
+        return self.meas_sample(key, y_init, theta), jnp.zeros(())
 
-    def pf_step(self, x_prev, y_curr, theta, key):
+    def pf_step(self, key, x_prev, y_curr, theta):
         """
         Particle filter calculation for `x_curr`. 
 
@@ -179,15 +179,15 @@ class BMModel:
         **FIXME:** Explain that this is a bootstrap particle filter.
 
         Args:
+            key: PRNG key.
             x_prev: State variable at previous time `t-1`.
             y_curr: Measurement variable at current time `t`.
             theta: Parameter value.
-            key: PRNG key.
 
         Returns:
             - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
             - logw: The log-weight of `x_curr`.
         """
-        x_curr = self.state_sample(x_prev, theta, key)
+        x_curr = self.state_sample(key, x_prev, theta)
         logw = self.meas_lpdf(y_curr, x_curr, theta)
         return x_curr, logw
