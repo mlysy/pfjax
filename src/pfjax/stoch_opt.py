@@ -5,6 +5,7 @@ Stochastic optimization for particle filter.
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
+import optax
 from jax import random
 from jax import lax
 from jax.experimental.maps import xmap
@@ -12,11 +13,31 @@ from functools import partial
 from pfjax import particle_loglik, particle_filter
 
 
-def update_params(params, subkey, grad_fun=None, n_particles=100, y_meas=None, model=None, learning_rate=0.01, mask=None, **kwargs):
-    temp = 0 # grad_fun(params, subkey, n_particles, y_meas, model)   # Remove me if not debugging FIXME:
-    params_update = jax.grad(grad_fun)(
-        params, subkey, n_particles, y_meas, model, **kwargs)
-    return (jnp.where(mask, params_update, 0)), temp
+def get_sum_lweights(theta, key, n_particles, y_meas, model):
+    """
+
+    Args:
+        theta: A `jnp.array` that represents the values of the parameters.
+        key: The key required for the prng.
+        n_particles: The number of particles to use in the particle filter.
+        y_meas: The measurements of the observations required for the particle filter.
+
+    Returns:
+        The sum of the particle log weights from the particle filters.
+    """
+
+    ret = particle_filter(model, key, y_meas, theta, n_particles)
+    sum_particle_lweights = particle_loglik(ret['logw'])
+    return sum_particle_lweights
+
+
+def update_params(params, subkey, opt_state, grad_fun=None, n_particles=100, y_meas=None, model=None, learning_rate=0.01, mask=None,
+                  optimizer=None):
+    params_update = jax.grad(grad_fun, argnums=0)(
+        params, subkey, n_particles, y_meas, model)
+    params_update = jnp.where(mask, params_update, 0)
+    updates, opt_state = optimizer.update(params_update, opt_state)
+    return optax.apply_updates(params, updates)
 
 
 def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
@@ -33,15 +54,13 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
         key: The key required for the prng.
         mask: The mask over which dimensions we would like to perform the optimization.
     """
+    optimizer = optax.adam(learning_rate)
+    opt_state = optimizer.init(params)
     partial_update_params = partial(update_params, n_particles=n_particles, y_meas=y_meas,
-                                    model=model, learning_rate=learning_rate, mask=mask, grad_fun=grad_fun, **kwargs)
-    update_fn = jax.jit(partial_update_params)
-    gradients = []
-    stoch_obj = []
+                                    model=model, learning_rate=learning_rate, mask=mask, grad_fun=grad_fun, optimizer=optimizer)
+    update_fn = jax.jit(partial_update_params, donate_argnums=(0,))
     keys = random.split(key, iterations)
     for subkey in keys:
-        update_vals, temp = update_fn(params, subkey)
-        params = params + learning_rate * update_vals
-        stoch_obj.append(temp)
-        gradients.append(update_vals)
-    return params, stoch_obj, gradients
+        params = update_fn(params, subkey, opt_state)
+        print(params)
+    return params
