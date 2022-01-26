@@ -18,6 +18,18 @@ from jax import lax
 from jax.experimental.maps import xmap
 
 
+@jax.jit
+def _lweight_to_prob(logw):
+    """Returns normalized propabilities from unnormalized log weights
+
+    Args:
+        logw ([type]): [description]
+    """
+    wgt = jnp.exp(logw - jnp.max(logw))  # jnp.maximum
+    prob = wgt / jnp.sum(wgt)
+    return prob
+
+
 def particle_resample_old(key, logw):
     """
     Particle resampler.
@@ -50,8 +62,7 @@ def particle_resample(key, x_particles_prev, logw):
             - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.  These are sampled with replacement from `x_particles_prev` with probability vector `exp(logw) / sum(exp(logw))`.
             - `ancestors`: Vector of `n_particles` integers between 0 and `n_particles-1` giving the index of each element of `x_particles_prev` corresponding to the elements of `x_particles`.
     """
-    wgt = jnp.exp(logw - jnp.max(logw))
-    prob = wgt / jnp.sum(wgt)
+    prob = _lweight_to_prob(logw)
     n_particles = logw.size
     ancestors = random.choice(key,
                               a=jnp.arange(n_particles),
@@ -60,6 +71,46 @@ def particle_resample(key, x_particles_prev, logw):
         "x_particles": x_particles_prev[ancestors, ...],
         "ancestors": ancestors
     }
+
+
+# @partial(jax.jit, static_argnums=(0,))
+@jax.jit
+def particle_resample_mvn(key, x_particles_prev, logw):
+    """
+    Approximate particle distribution with MVN. Uses weighted mean and covariance of `x_particles_prev` to construct a MVN. Weights are normalized `logw`
+
+    Args:
+        key: PRNG key.
+        x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
+        logw: Vector of corresponding `n_particles` unnormalized log-weights.
+    Returns:
+        A dictionary with elements:
+            - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step. 
+            - `x_particles_mu`: Mean vector of the MVN approximation 
+    
+    """
+    assert len(x_particles_prev.shape) == 2, "Invalid particle shape, must have dimension (n_particles, n_states), got {0}".format(
+        x_particles_prev.shape)
+    n_particles, n_states = x_particles_prev.shape
+    prob = _lweight_to_prob(logw)
+
+    # variables are the rows in jnp.cov()
+    cov_mat = jnp.cov(jnp.transpose(x_particles_prev), aweights=prob)
+    mu = jnp.average(x_particles_prev, axis=0, weights=prob).reshape(-1, )
+
+    # FIXME: replace with lax.cond(n_states == 1, cov_mat = cov_mat.reshape(-1, 1))
+    if n_states == 1:
+        cov_mat = cov_mat.reshape(-1, 1)  # change int into matrix
+    # cov_mat = lax.cond(n_states == 1,  # true_fun and false_fun output must have identical types...
+    #                    true_fun = lambda x: x.reshape(-1, 1),
+    #                    false_fun = lambda x: x,
+    #                    operand = cov_mat)  # change int into matrix
+    samples = random.multivariate_normal(key, mean=mu,
+                                         cov=cov_mat,
+                                         shape=(n_particles, n_states))
+    ret_val = {"x_particles": jnp.squeeze(samples), 
+               "x_particles_mu": mu}
+    return ret_val
 
 
 def particle_filter_for(model, key, y_meas, theta, n_particles):

@@ -75,7 +75,9 @@ def particle_filter_for(model, y_meas, theta, n_particles, key):
     - Uses for-loops instead of `lax.scan` and `vmap/xmap`.
     - Only performs a bootstrap particle filter using `state_sample()` and `meas_lpdf()`.
 
-    **FIXME:** Refactor `ancestor_particles` to use particle_resample_mvn
+    **FIXME:** 
+        - Refactor `ancestor_particles` to use particle_resample_mvn
+        - Remove `init_sample`
 
     Args:
         model: Object specifying the state-space model.
@@ -161,16 +163,17 @@ def particle_filter(model, y_meas, theta, n_particles, key):
         """
         # resampling step
         key, subkey = random.split(carry["key"])
-        resampled_particles = particle_resample_mvn(jnp.squeeze(carry["X_particles"]), 
-                                                    carry["logw_particles"], 
-                                                    subkey)
+        resampled_particles = particle_resample_mvn(particles = jnp.squeeze(carry["X_particles"]), 
+                                                    logw = carry["logw_particles"], 
+                                                    key = subkey) 
         X_particles = resampled_particles[0]
         X_particles_mu = resampled_particles[1]
 
         # update particles
         key, *subkeys = random.split(key, num=n_particles+1)
         X_particles, logw_particles = jax.vmap(
-            lambda xs, k: model.pf_step(xs, y_meas[t], theta, k)
+            # key, x_prev, y_curr, theta
+            lambda xs, k: model.pf_step(key = k, x_prev = xs, y_curr = y_meas[t], theta = theta)
         )(X_particles, jnp.array(subkeys))
 
         res = {
@@ -184,7 +187,7 @@ def particle_filter(model, y_meas, theta, n_particles, key):
     key, *subkeys = random.split(key, num=n_particles+1)
     # vmap version
     X_particles_init, logw_particles_init = jax.vmap(
-        lambda k: model.pf_init(y_meas[0], theta, k))(jnp.array(subkeys))
+        lambda k: model.pf_init(k, y_meas[0], theta))(jnp.array(subkeys))  
     prob = _lweight_to_prob(logw_particles_init)
     init = {
         "X_particles": X_particles_init,
