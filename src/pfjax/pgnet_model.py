@@ -28,51 +28,21 @@ from jax import random
 from jax import lax
 from pfjax import sde as sde
 
-# --- helper functions ---------------------------------------------------------
-
-
-# def lotvol_drift(x, dt, theta):
-#     """
-#     Calculates the SDE drift function.
-#     """
-#     alpha = theta[0]
-#     beta = theta[1]
-#     gamma = theta[2]
-#     delta = theta[3]
-#     return x + jnp.array([alpha - beta * jnp.exp(x[1]),
-#                           -gamma + delta * jnp.exp(x[0])]) * dt
-
-
-# def euler_sim(n_steps, x, dt, theta, key, n_state):
-#     """
-#     Euler simulation for `n_steps`.
-
-#     **FIxME:** Put this into an SDE module, possibly with different dispatch depending on whether diffusion is constant, diagonal, etc.
-#     """
-#     sigma = theta[4:6] * jnp.sqrt(dt)
-
-#     # setup lax.scan:
-#     # scan function
-#     def fun(carry, t):
-#         key, subkey = random.split(carry["key"])
-#         x = lotvol_drift(carry["x"], dt, theta) + \
-#             random.normal(subkey, (n_state[1],)) * sigma
-#         res = {"x": x, "key": key}
-#         return res, res
-#     # scan initial value
-#     init = {"x": x, "key": key}
-#     # lax.scan itself
-#     last, full = lax.scan(fun, init, jnp.arange(n_steps))
-#     return full["x"]
-
-
 # --- main functions -----------------------------------------------------------
-class PGNETModel(object):
+class PGNETModel(sde.SDEModel):
     def __init__(self, dt, n_res):
-        self.dt = dt
-        self.n_res = n_res
-        self.n_state = (self.n_res, 4)
-        self.K = 10
+        # creates "private" variables self._dt and self._n_res
+        super().__init__(dt, n_res, diff_diag=False)
+        # self.dt = dt
+        # self.n_res = n_res
+        self._n_state = (self._n_res, 4)
+        self._K = 10
+
+    #def __init__(self, dt, n_res):
+    #    self.dt = dt
+    #    self.n_res = n_res
+    #    self.n_state = (self.n_res, 4)
+    #    self.K = 10
 
     def premu(self, x, theta, K):
         """
@@ -111,7 +81,7 @@ class PGNETModel(object):
         Calculates the SDE drift function.
         """
         x = jnp.exp(x)
-        K = self.K
+        K = self._K
         mu = self.premu(x, theta, K)
         Sigma  = self.preSigma(x, theta, K)
         
@@ -128,7 +98,7 @@ class PGNETModel(object):
         Calculates the SDE diffusion function.
         """
         x = jnp.exp(x)
-        K = self.K
+        K = self._K
         Sigma = self.preSigma(x, theta, K)
 
         #f_p = jnp.array([1/x[0], 1/x[1], 1/x[2], 1/x[3] + 1/(K-x[3])])
@@ -148,22 +118,22 @@ class PGNETModel(object):
     #     #sigma = jnp.array([0.1, 0.1, 0.1, 0.1])
     #     return Sigma
         
-    def state_lpdf(self, x_curr, x_prev, theta):
-        """
-        Calculates the log-density of `p(x_curr | x_prev, theta)`.
+    # def state_lpdf(self, x_curr, x_prev, theta):
+    #     """
+    #     Calculates the log-density of `p(x_curr | x_prev, theta)`.
 
-        Args:
-            x_curr: State variable at current time `t`.
-            x_prev: State variable at previous time `t-1`.
-            theta: Parameter value.
+    #     Args:
+    #         x_curr: State variable at current time `t`.
+    #         x_prev: State variable at previous time `t-1`.
+    #         theta: Parameter value.
 
-        Returns:
-            The log-density of `p(x_curr | x_prev, theta)`.
-        """
-        x = jnp.append(jnp.expand_dims(x_prev[self.n_res-1], axis=0),
-                       x_curr, axis=0)
-        return sde.euler_lpdf_var(x, self.dt/self.n_res,
-                                  self.drift, self.diff, theta)
+    #     Returns:
+    #         The log-density of `p(x_curr | x_prev, theta)`.
+    #     """
+    #     x = jnp.append(jnp.expand_dims(x_prev[self._n_res-1], axis=0),
+    #                    x_curr, axis=0)
+    #     return sde.euler_lpdf_var(x, self.dt/self._n_res,
+    #                               self.drift, self.diff, theta)
 
 #     def state_lpdf_for(self, x_curr, x_prev, theta):
 #         """
@@ -193,27 +163,27 @@ class PGNETModel(object):
 #             ))
 #         return lp
 
-    def state_sample(self, x_prev, theta, key):
-        """
-        Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
+    # def state_sample(self, key, x_prev, theta):
+    #     """
+    #     Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
 
-        Args:
-            x_prev: State variable at previous time `t-1`.
-            theta: Parameter value.
-            key: PRNG key.
+    #     Args:
+    #         x_prev: State variable at previous time `t-1`.
+    #         theta: Parameter value.
+    #         key: PRNG key.
 
-        Returns:
-            Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
-        """
-        return sde.euler_sim_var(
-            n_steps=self.n_res,
-            x=x_prev[self.n_res-1],
-            dt=self.dt/self.n_res,
-            drift=self.drift,
-            diff=self.diff,
-            theta=theta,
-            key=key
-        )
+    #     Returns:
+    #         Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
+    #     """
+    #     return sde.euler_sim_var(
+    #         n_steps=self.n_res,
+    #         x=x_prev[self.n_res-1],
+    #         dt=self.dt/self.n_res,
+    #         drift=self.drift,
+    #         diff=self.diff,
+    #         theta=theta,
+    #         key=key
+    #     )
         # return euler_sim(self.n_res, x_prev[self.n_res-1], self.dt/self.n_res, theta, key, self.n_state)
 
 #     def state_sample_for(self, x_prev, theta, key):
@@ -258,7 +228,7 @@ class PGNETModel(object):
             jsp.stats.norm.logpdf(y_curr, loc=jnp.exp(x_curr[-1]), scale=tau)
         )
 
-    def meas_sample(self, x_curr, theta, key):
+    def meas_sample(self, key, x_curr, theta):
         """
         Sample from `p(y_curr | x_curr, theta)`.
 
@@ -271,32 +241,9 @@ class PGNETModel(object):
             Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
         """
         tau = theta[8:12]
-        return jnp.exp(x_curr[-1]) + tau * random.normal(key, (self.n_state[1],))
+        return jnp.exp(x_curr[-1]) + tau * random.normal(key, (self._n_state[1],))
 
-    def init_logw(self, x_init, y_init, theta):
-        """
-        Log-weight of the importance sampler for initial state variable `x_init`.
-
-        Suppose that
-        ```
-        x_init ~ q(x_init) = q(x_init | y_init, theta)
-        ```
-        Then function returns
-        ```
-        logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
-        ```
-
-        Args:
-            x_init: State variable at initial time `t = 0`.
-            y_init: Measurement variable at initial time `t = 0`.
-            theta: Parameter value.
-
-        Returns:
-            The log-weight of the importance sampler for `x_init`.
-        """
-        return jnp.zeros(())
-
-    def init_sample(self, y_init, theta, key):
+    def init_sample(self, key, y_init, theta):
         """
         Sampling distribution for initial state variable `x_init`.
 
@@ -318,11 +265,11 @@ class PGNETModel(object):
         key, subkey = random.split(key)
         # FIxME: Implement a truncated normal instead of just a normal here
         x_init = jnp.log(y_init + 
-                tau * random.normal(subkey, (self.n_state[1],)))
-        return jnp.append(jnp.zeros((self.n_res-1,) + x_init.shape),
+                tau * random.normal(subkey, (self._n_state[1],)))
+        return jnp.append(jnp.zeros((self._n_res-1,) + x_init.shape),
                           jnp.expand_dims(x_init, axis=0), axis=0)
 
-    def pf_init(self, y_init, theta, key):
+    def pf_init(self, key, y_init, theta):
         """
         Particle filter calculation for `x_init`.
 
@@ -349,40 +296,54 @@ class PGNETModel(object):
             - logw: The log-weight of `x_init`.
         """
         tau = theta[8:12]
+        # key, subkey = random.split(key)
+        # x_init = jnp.log(y_init + 
+        #         tau * random.normal(subkey, (self.n_state[1],)))
+        # return \
+        #     jnp.append(jnp.zeros((self.n_res-1,) + x_init.shape),
+        #                jnp.expand_dims(x_init, axis=0), axis=0), \
+        #     jnp.zeros(())
+
         key, subkey = random.split(key)
-        x_init = jnp.log(y_init + 
-                tau * random.normal(subkey, (self.n_state[1],)))
+        x_init = jnp.log(y_init + tau * random.truncated_normal(
+            subkey,
+            lower=-y_init/tau,
+            upper=jnp.inf,
+            shape=(self._n_state[1],)
+        ))
+        logw = jnp.sum(jsp.stats.norm.logcdf(y_init/tau))
         return \
-            jnp.append(jnp.zeros((self.n_res-1,) + x_init.shape),
+            jnp.append(jnp.zeros((self._n_res-1,) + x_init.shape),
                        jnp.expand_dims(x_init, axis=0), axis=0), \
-            jnp.zeros(())
+            logw
 
 
-    def pf_step(self, x_prev, y_curr, theta, key):
-        """
-        Particle filter calculation for `x_curr`.
 
-        Samples from an importance sampling proposal distribution
-        ```
-        x_curr ~ q(x_curr) = q(x_curr | x_prev, y_curr, theta)
-        ```
-        and calculates the log weight
-        ```
-        logw = log p(y_curr | x_curr, theta) + log p(x_curr | x_prev, theta) - log q(x_curr)
-        ```
+    # def pf_step(self, key, x_prev, y_curr, theta):
+    #     """
+    #     Particle filter calculation for `x_curr`.
 
-        **FIxME:** Explain that this is a bootstrap particle filter.
+    #     Samples from an importance sampling proposal distribution
+    #     ```
+    #     x_curr ~ q(x_curr) = q(x_curr | x_prev, y_curr, theta)
+    #     ```
+    #     and calculates the log weight
+    #     ```
+    #     logw = log p(y_curr | x_curr, theta) + log p(x_curr | x_prev, theta) - log q(x_curr)
+    #     ```
 
-        Args:
-            x_prev: State variable at previous time `t-1`.
-            y_curr: Measurement variable at current time `t`.
-            theta: Parameter value.
-            key: PRNG key.
+    #     **FIxME:** Explain that this is a bootstrap particle filter.
 
-        Returns:
-            - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
-            - logw: The log-weight of `x_curr`.
-        """
-        x_curr = self.state_sample(x_prev, theta, key)
-        logw = self.meas_lpdf(y_curr, x_curr, theta)
-        return x_curr, logw
+    #     Args:
+    #         x_prev: State variable at previous time `t-1`.
+    #         y_curr: Measurement variable at current time `t`.
+    #         theta: Parameter value.
+    #         key: PRNG key.
+
+    #     Returns:
+    #         - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
+    #         - logw: The log-weight of `x_curr`.
+    #     """
+    #     x_curr = self.state_sample(x_prev, theta, key)
+    #     logw = self.meas_lpdf(y_curr, x_curr, theta)
+    #     return x_curr, logw

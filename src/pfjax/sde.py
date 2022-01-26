@@ -94,6 +94,65 @@ def euler_lpdf_diag(x, dt, drift, diff, theta):
                   ))(jnp.arange(x0.shape[0]))
     return jnp.sum(lp)
 
+def euler_sim_var(key, n_steps, x, dt, drift, diff, theta):
+    """
+    Simulate SDE with dense diffusion using Euler-Maruyama discretization.
+
+    Args:
+        n_steps: Number of steps to simulate.
+        x: Initial value of the SDE.  A vector of size `n_dims`.
+        dt: Interobservation time.
+        drift: Drift function having signature `drift(x, theta)` and returning a vector of size `n_dims`.
+        diff: Diffusion function having signature `diff(x, theta)` and returning a vector of size `n_dims x n_dims`.
+        theta: Parameter value.
+        key: PRNG key.
+
+    Returns:
+        Simulated SDE values in a matrix of size `n_steps x n_dims`.
+    """
+
+    # setup lax.scan:
+    # scan function
+    def fun(carry, t):
+        key, subkey = random.split(carry["key"])
+        x = carry["x"]
+        dr = x + drift(x, theta) * dt
+        chol_Sigma = jnp.linalg.cholesky(diff(x, theta))
+        df = chol_Sigma * jnp.sqrt(dt)
+        #x = random.multivariate_normal(subkey, dr, diff(x, theta)*dt)
+        x = dr + jnp.matmul(df, random.normal(subkey, (x.shape[0],)))
+        res = {"x": x, "key": key}
+        return res, res
+    # scan initial value
+    init = {"x": x, "key": key}
+    # lax.scan itself
+    last, full = lax.scan(fun, init, jnp.arange(n_steps))
+    return full["x"]
+
+
+def euler_lpdf_var(x, dt, drift, diff, theta):
+    """
+    Calculate the log PDF of observations from an SDE with dense diffusion using the Euler-Maruyama discretization.
+
+    Args:
+        x: SDE observations.  An array of size `n_obs x n_dims`.
+        dt: Interobservation time.
+        drift: Drift function having signature `drift(x, theta)` and returning a vector of size `n_dims`.
+        diff: Diffusion function having signature `diff(x, theta)` and returning a matrix of size `n_dims x n_dims`.
+        theta: Parameter value.
+
+    Returns:
+        The log-density of the SDE observations.
+    """
+    x0 = x[:-1, :]
+    x1 = x[1:, :]
+    lp = jax.vmap(lambda t:
+                  jsp.stats.multivariate_normal.logpdf(
+                      x=x1[t],
+                      mean=x0[t] + drift(x0[t], theta) * dt,
+                      cov=diff(x0[t], theta) * dt
+                  ))(jnp.arange(x0.shape[0]))
+    return jnp.sum(lp)
 
 class SDEModel(object):
     """
