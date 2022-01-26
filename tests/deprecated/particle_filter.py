@@ -123,66 +123,47 @@ def particle_filter_for(y_meas, theta, n_particles, key):
 
     Returns:
         A dictionary with elements:
-            - `X_particles`: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
-            - `logw_particles`: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
-            - `ancestor_particles`: An integer `ndarray` of shape `(n_obs, n_particles)` where each element gives the index of the particle's ancestor at the previous time point.  Since the first time point does not have ancestors, the first row of `ancestor_particles` contains all `-1`.
+            - `x_particles`: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
+            - `logw`: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
+            - `ancestors`: An integer `ndarray` of shape `(n_obs, n_particles)` where each element gives the index of the particle's ancestor at the previous time point.  Since the first time point does not have ancestors, the first row of `ancestors` contains all `-1`.
     """
     # memory allocation
     n_obs = y_meas.shape[0]
-    X_particles = jnp.zeros((n_obs, n_particles, n_state))
-    logw_particles = jnp.zeros((n_obs, n_particles))
-    ancestor_particles = jnp.zeros((n_obs, n_particles), dtype=int)
+    x_particles = jnp.zeros((n_obs, n_particles, n_state))
+    logw = jnp.zeros((n_obs, n_particles))
+    ancestors = jnp.zeros((n_obs, n_particles), dtype=int)
     # initial particles have no ancestors
-    ancestor_particles = ancestor_particles.at[0].set(-1)
+    ancestors = ancestors.at[0].set(-1)
     # initial time point
     key, *subkeys = random.split(key, num=n_particles+1)
     for p in range(n_particles):
-        X_particles = X_particles.at[0, p].set(
+        x_particles = x_particles.at[0, p].set(
             init_sample(y_meas[0], theta, subkeys[p])
         )
-        logw_particles = logw_particles.at[0, p].set(
-            init_logw(X_particles[0, p], y_meas[0], theta)
+        logw = logw.at[0, p].set(
+            init_logw(x_particles[0, p], y_meas[0], theta)
         )
-    # X_particles = X_particles.at[0].set(
-    #     jax.vmap(lambda k: init_sample(y_meas[0], theta, k))(
-    #         jnp.array(subkeys)
-    #     )
-    # )
-    # logw_particles = logw_particles.at[0].set(
-    #     jax.vmap(lambda xs: init_logw(xs, y_meas[0], theta) +
-    #              meas_lpdf(y_meas[0], xs, theta))(X_particles[0])
-    # )
     # subsequent time points
     for t in range(1, n_obs):
         # resampling step
         key, subkey = random.split(key)
-        ancestor_particles = ancestor_particles.at[t].set(
-            particle_resample(logw_particles[t-1], subkey)
+        ancestors = ancestors.at[t].set(
+            particle_resample(logw[t-1], subkey)
         )
         # update
         key, *subkeys = random.split(key, num=n_particles+1)
         for p in range(n_particles):
-            X_particles = X_particles.at[t, p].set(
-                state_sample(X_particles[t-1, ancestor_particles[t, p]],
+            x_particles = x_particles.at[t, p].set(
+                state_sample(x_particles[t-1, ancestors[t, p]],
                              theta, subkeys[p])
             )
-            logw_particles = logw_particles.at[t, p].set(
-                meas_lpdf(y_meas[t], X_particles[t, p], theta)
+            logw = logw.at[t, p].set(
+                meas_lpdf(y_meas[t], x_particles[t, p], theta)
             )
-        # X_particles = X_particles.at[t].set(
-        #     jax.vmap(lambda xs, k: state_sample(xs, theta, k))(
-        #         X_particles[t-1, ancestor_particles[t]], jnp.array(subkeys)
-        #     )
-        # )
-        # logw_particles = logw_particles.at[t].set(
-        #     jax.vmap(lambda xs: meas_lpdf(y_meas[t], xs, theta))(
-        #         X_particles[t]
-        #     )
-        # )
     return {
-        "X_particles": X_particles,
-        "logw_particles": logw_particles,
-        "ancestor_particles": ancestor_particles
+        "x_particles": x_particles,
+        "logw": logw,
+        "ancestors": ancestors
     }
 
 
@@ -201,9 +182,9 @@ def particle_filter(y_meas, theta, n_particles, key):
 
     Returns:
         A dictionary with elements:
-            - `X_particles`: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
-            - `logw_particles`: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
-            - `ancestor_particles`: An integer `ndarray` of shape `(n_obs, n_particles)` where each element gives the index of the particle's ancestor at the previous time point.  Since the first time point does not have ancestors, the first row of `ancestor_particles` contains all `-1`.
+            - `x_particles`: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
+            - `logw`: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
+            - `ancestors`: An integer `ndarray` of shape `(n_obs, n_particles)` where each element gives the index of the particle's ancestor at the previous time point.  Since the first time point does not have ancestors, the first row of `ancestors` contains all `-1`.
     """
     n_obs = y_meas.shape[0]
 
@@ -212,45 +193,45 @@ def particle_filter(y_meas, theta, n_particles, key):
     def fun(carry, t):
         # resampling step
         key, subkey = random.split(carry["key"])
-        ancestor_particles = particle_resample(carry["logw_particles"],
-                                               subkey)
+        ancestors = particle_resample(carry["logw"],
+                                      subkey)
         # update particles
         key, *subkeys = random.split(key, num=n_particles+1)
-        X_particles = jax.vmap(lambda xs, k: state_sample(xs, theta, k))(
-            carry["X_particles"][ancestor_particles], jnp.array(subkeys)
+        x_particles = jax.vmap(lambda xs, k: state_sample(xs, theta, k))(
+            carry["x_particles"][ancestors], jnp.array(subkeys)
         )
         # update log-weights
-        logw_particles = jax.vmap(lambda xs: meas_lpdf(y_meas[t], xs, theta))(
-            X_particles
+        logw = jax.vmap(lambda xs: meas_lpdf(y_meas[t], xs, theta))(
+            x_particles
         )
         # output
         res = {
-            "ancestor_particles": ancestor_particles,
-            "logw_particles": logw_particles,
-            "X_particles": X_particles,
+            "ancestors": ancestors,
+            "logw": logw,
+            "x_particles": x_particles,
             "key": key
         }
         return res, res
     # scan initial value
     key, *subkeys = random.split(key, num=n_particles+1)
     # vmap version
-    X_particles = jax.vmap(
+    x_particles = jax.vmap(
         lambda k: init_sample(y_meas[0], theta, k))(jnp.array(subkeys))
-    logw_particles = jax.vmap(
-        lambda xs: init_logw(xs, y_meas[0], theta))(X_particles)
+    logw = jax.vmap(
+        lambda xs: init_logw(xs, y_meas[0], theta))(x_particles)
     # xmap version: experimental!
-    # X_particles = xmap(
+    # x_particles = xmap(
     #     lambda ym, th, k: init_sample(ym, th, k),
     #     in_axes=([...], [...], ["particles", ...]),
     #     out_axes=["particles", ...])(y_meas[0], theta, jnp.array(subkeys))
-    # logw_particles = xmap(
+    # logw = xmap(
     #     lambda xs, ym, th: init_logw(xs, ym, th),
     #     in_axes=(["particles", ...], [...], [...]),
-    #     out_axes=["particles", ...])(X_particles, y_meas[0], theta)
+    #     out_axes=["particles", ...])(x_particles, y_meas[0], theta)
     init = {
-        "X_particles": X_particles,
-        "logw_particles": logw_particles,
-        "ancestor_particles": -jnp.ones(n_particles, dtype=int),
+        "x_particles": x_particles,
+        "logw": logw,
+        "ancestors": -jnp.ones(n_particles, dtype=int),
         "key": key
     }
     # lax.scan itself
@@ -258,19 +239,19 @@ def particle_filter(y_meas, theta, n_particles, key):
     # append initial values
     out = {
         k: jnp.append(jnp.expand_dims(init[k], axis=0), full[k], axis=0)
-        for k in ["X_particles", "logw_particles", "ancestor_particles"]
+        for k in ["x_particles", "logw", "ancestors"]
     }
     return out
 
 
-def particle_loglik(logw_particles):
+def particle_loglik(logw):
     """
     Calculate particle filter marginal loglikelihood.
 
     FIXME: Libbi paper does `logmeanexp` instead of `logsumexp`...
 
     Args:
-        logw_particles: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
+        logw: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
 
     Returns:
         Particle filter approximation of
@@ -278,6 +259,7 @@ def particle_loglik(logw_particles):
         log p(y_meas | theta) = log int p(y_meas | x_state, theta) * p(x_state | theta) dx_state
         ```
     """
+<<<<<<< HEAD:tests/particle_filter.py
     return jnp.sum(jsp.special.logsumexp(logw_particles, axis=1))
 
 
@@ -327,3 +309,6 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
         params = update_fn(params, subkey)
         print(params)
     return params
+=======
+    return jnp.sum(jsp.special.logsumexp(logw, axis=1))
+>>>>>>> 7dec00da2b81f2735a58aa1f5def7fceba521f31:tests/deprecated/particle_filter.py

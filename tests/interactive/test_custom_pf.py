@@ -2,8 +2,7 @@ import numpy as np
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
-import particle_filter as pf
-import bm_model as bm
+import pfjax as pf
 
 key = random.PRNGKey(0)
 # parameter values
@@ -15,12 +14,23 @@ theta = jnp.array([mu, sigma, tau])
 dt = .1
 n_obs = 5
 x_init = jnp.array([0.])
-bm_model = bm.BMModel(dt=dt)
+bm_model = pf.BMModel(dt=dt)
 # simulate without for-loop
-y_meas, x_state = pf.meas_sim(bm_model, n_obs, x_init, theta, key)
+y_meas, x_state = pf.simulate(bm_model, n_obs, x_init, theta, key)
+
 # particle filter specification
 n_particles = 7
 key, subkey = random.split(key)
-# pf without for-loop
-pf_out = pf.particle_filter(
+# pf with for-loop
+pf_out1 = pf.particle_filter_for(
     bm_model, y_meas, theta, n_particles, subkey)
+# pf without for-loop
+pf_out2 = pf.particle_filter(
+    bm_model, y_meas, theta, n_particles, pf.particle_resample, subkey)
+
+max_diff = {
+    k: jnp.max(jnp.abs(pf_out1[k] - pf_out2[k]))
+    for k in pf_out1.keys()
+}
+
+max_diff

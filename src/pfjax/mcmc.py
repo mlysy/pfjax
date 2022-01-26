@@ -76,7 +76,7 @@ def full_loglik(model, y_meas, x_state, theta):
     return ll_init + jnp.sum(ll_step)
 
 
-def param_mwg_update_for(model, prior, theta, x_state, y_meas, rw_sd, key):
+def param_mwg_update_for(model, key, prior, theta, x_state, y_meas, rw_sd):
     """
     Parameter update by Metropolis-within-Gibbs random walk.
 
@@ -87,12 +87,12 @@ def param_mwg_update_for(model, prior, theta, x_state, y_meas, rw_sd, key):
 
     Args:
         model: Object specifying the state-space model.
+        key: PRNG key.
         prior: Object specifying the parameter prior.
         theta: Current parameter vector.
         x_state: The sequence of `n_obs` state variables `x_state = (x_0, ..., x_T)`.
         y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
         rw_sd: Vector of length `n_param = theta.size` standard deviations for the componentwise random walk proposal.
-        key: PRNG key.
 
     Returns:
         theta_update: Updated parameter vector.
@@ -124,7 +124,7 @@ def param_mwg_update_for(model, prior, theta, x_state, y_meas, rw_sd, key):
     return theta_update, accept
 
 
-def param_mwg_update(model, prior, theta, x_state, y_meas, rw_sd, key):
+def param_mwg_update(model, key, prior, theta, x_state, y_meas, rw_sd):
     """
     Parameter update by Metropolis-within-Gibbs random walk.
 
