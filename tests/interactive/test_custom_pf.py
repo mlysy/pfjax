@@ -1,4 +1,5 @@
 import numpy as np
+import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
@@ -16,7 +17,11 @@ n_obs = 5
 x_init = jnp.array([0.])
 bm_model = pf.BMModel(dt=dt)
 # simulate without for-loop
-y_meas, x_state = pf.simulate(bm_model, n_obs, x_init, theta, key)
+y_meas, x_state = pf.simulate(bm_model, key, n_obs, x_init, theta)
+
+# check jit
+y_meas, x_state = jax.jit(pf.simulate, static_argnums=(0, 2))(
+    bm_model, key, n_obs, x_init, theta)
 
 # particle filter specification
 n_particles = 7

@@ -76,34 +76,38 @@ def full_loglik(model, y_meas, x_state, theta):
     return ll_init + jnp.sum(ll_step)
 
 
-def param_mwg_update_for(model, key, prior, theta, x_state, y_meas, rw_sd):
+def param_mwg_update_for(model, prior, key, theta, x_state, y_meas, rw_sd, theta_order):
     """
     Parameter update by Metropolis-within-Gibbs random walk.
 
-    FIXME:
-        - Assumes the parameters are real valued.  Next step would be to provide a validator to the model.
-        - Gets size of `theta` from `theta` itself, rather than e.g., `model.n_param`.  
-        - Potentially wastes an initial evaluation of `full_loglik(theta)`.  Could be passed in from a previous calculation but a bit cumbersome.
+    Version for testing using for-loops.
+
+    **Notes:**
+
+    - Assumes the parameters are real valued.  Next step might be to provide a parameter validator to the model.
+    - Gets size of `theta` from `theta` itself, rather than e.g., `model.n_param`.  
+    - Potentially wastes an initial evaluation of `full_loglik(theta)`.  Could be passed in from a previous calculation but a bit cumbersome.
 
     Args:
         model: Object specifying the state-space model.
-        key: PRNG key.
         prior: Object specifying the parameter prior.
+        key: PRNG key.
         theta: Current parameter vector.
-        x_state: The sequence of `n_obs` state variables `x_state = (x_0, ..., x_T)`.
-        y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
+        x_state: The sequence of `n_obs` state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
+        y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`.
         rw_sd: Vector of length `n_param = theta.size` standard deviations for the componentwise random walk proposal.
+        theta_order: Vector of integers between 0 and `n_param-1` indicating the order in which to update the components of `theta`.  Can use this to keep certain components fixed.
 
     Returns:
-        theta_update: Updated parameter vector.
-        accept: Whether or not the proposal was accepted for each component: a vector of length `n_param`. 
+        theta_out: Updated parameter vector.
+        accept: Boolean vector of size `theta_order.size` indicating whether or not the proposal was accepted. 
     """
-    n_param = theta.size
+    n_updates = theta_order.size
     theta_curr = theta + 0.  # how else to copy...
-    accept = jnp.empty(n_param, dtype=bool)
+    accept = jnp.empty(0, dtype=bool)
     lp_curr = full_loglik(model, y_meas, x_state,
                           theta_curr) + prior.lpdf(theta_curr)
-    for i in range(n_param):
+    for i in theta_order:
         # 2 subkeys for each param: rw_jump and mh_accept
         key, *subkeys = random.split(key, num=3)
         # proposal
@@ -114,37 +118,44 @@ def param_mwg_update_for(model, key, prior, theta, x_state, y_meas, rw_sd):
         lp_prop = full_loglik(model, y_meas, x_state,
                               theta_prop) + prior.lpdf(theta_prop)
         lrate = lp_prop - lp_curr
+        # breakpoint()
         # update parameter draw
         acc = random.bernoulli(key=subkeys[1],
-                               p=jnp.maximum(1.0, jnp.exp(lrate)))
-        theta_curr = theta_prop * acc
-        lp_curr = lp_prop * acc
-        accept = accept.at[i].set(acc)
-    theta_update = theta_curr
-    return theta_update, accept
+                               p=jnp.minimum(1.0, jnp.exp(lrate)))
+        # print("acc = {}".format(acc))
+        theta_curr = theta_curr.at[i].set(
+            theta_prop[i] * acc + theta_curr[i] * (1-acc)
+        )
+        lp_curr = lp_prop * acc + lp_curr * (1-acc)
+        accept = jnp.append(accept, acc)
+    return theta_curr, accept
 
 
-def param_mwg_update(model, key, prior, theta, x_state, y_meas, rw_sd):
+def param_mwg_update(model, prior, key, theta, x_state, y_meas, rw_sd, theta_order):
     """
     Parameter update by Metropolis-within-Gibbs random walk.
 
-    FIXME:
-        - Assumes the parameters are real valued.  Next step would be to provide a validator to the model.
-        - Gets size of `theta` from `theta` itself, rather than e.g., `model.n_param`.  
-        - Potentially wastes an initial evaluation of `full_loglik(theta)`.  Could be passed in from a previous calculation but a bit cumbersome.
+    Version for testing using for-loops.
+
+    **Notes:**
+
+    - Assumes the parameters are real valued.  Next step might be to provide a parameter validator to the model.
+    - Gets size of `theta` from `theta` itself, rather than e.g., `model.n_param`.  
+    - Potentially wastes an initial evaluation of `full_loglik(theta)`.  Could be passed in from a previous calculation but a bit cumbersome.
 
     Args:
         model: Object specifying the state-space model.
         prior: Object specifying the parameter prior.
-        theta: Current parameter vector.
-        x_state: The sequence of `n_obs` state variables `x_state = (x_0, ..., x_T)`.
-        y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
-        rw_sd: Vector of length `n_param = theta.size` standard deviations for the componentwise random walk proposal.
         key: PRNG key.
+        theta: Current parameter vector.
+        x_state: The sequence of `n_obs` state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
+        y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`.
+        rw_sd: Vector of length `n_param = theta.size` standard deviations for the componentwise random walk proposal.
+        theta_order: Vector of integers between 0 and `n_param-1` indicating the order in which to update the components of `theta`.  Can use this to keep certain components fixed.
 
     Returns:
-        theta_update: Updated parameter vector.
-        accept: Whether or not the proposal was accepted for each component: a vector of length `n_param`. 
+        theta_out: Updated parameter vector.
+        accept: Boolean vector of size `theta_order.size` indicating whether or not the proposal was accepted. 
     """
     # lax.scan setup
     def fun(carry, i):
@@ -162,17 +173,18 @@ def param_mwg_update(model, key, prior, theta, x_state, y_meas, rw_sd):
                               theta_prop) + prior.lpdf(theta_prop)
         lrate = lp_prop - lp_curr
         # update parameter draw
-        accept = random.bernoulli(key=subkeys[1],
-                                  p=jnp.maximum(1.0, jnp.exp(lrate)))
+        acc = random.bernoulli(key=subkeys[1],
+                               p=jnp.minimum(1.0, jnp.exp(lrate)))
         res = {
-            "theta_curr": theta_prop * accept,
-            "lp_curr": lp_prop * accept,
-            "accept": accept,
+            "theta_curr": theta_curr.at[i].set(
+                theta_prop[i] * acc + theta_curr[i] * (1-acc)
+            ),
+            "lp_curr": lp_prop * acc + lp_curr * (1-acc),
+            "accept": acc,
             "key": key
         }
         return res, res
     # scan initial value
-    n_param = theta.size
     init = {
         "theta_curr": theta,
         "lp_curr": full_loglik(model, y_meas, x_state,
@@ -181,5 +193,5 @@ def param_mwg_update(model, key, prior, theta, x_state, y_meas, rw_sd):
         "key": key
     }
     # scan itself
-    last, full = lax.scan(fun, init, jnp.arange(n_param))
+    last, full = lax.scan(fun, init, theta_order)
     return last["theta_curr"], full["accept"]
