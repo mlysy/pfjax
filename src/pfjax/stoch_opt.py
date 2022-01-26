@@ -5,6 +5,7 @@ Stochastic optimization for particle filter.
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
+import optax
 from jax import random
 from jax import lax
 from jax.experimental.maps import xmap
@@ -25,15 +26,18 @@ def get_sum_lweights(theta, key, n_particles, y_meas, model):
         The sum of the particle log weights from the particle filters.
     """
 
-    ret = particle_filter(model, y_meas, theta, n_particles, key)
-    sum_particle_lweights = particle_loglik(ret['logw_particles'])
+    ret = particle_filter(model, key, y_meas, theta, n_particles)
+    sum_particle_lweights = particle_loglik(ret['logw'])
     return sum_particle_lweights
 
 
-def update_params(params, subkey, grad_fun=None, n_particles=100, y_meas=None, model=None, learning_rate=0.01, mask=None):
+def update_params(params, subkey, opt_state, grad_fun=None, n_particles=100, y_meas=None, model=None, learning_rate=0.01, mask=None,
+                  optimizer=None):
     params_update = jax.grad(grad_fun, argnums=0)(
         params, subkey, n_particles, y_meas, model)
-    return params + learning_rate * (jnp.where(mask, params_update, 0))
+    params_update = jnp.where(mask, params_update, 0)
+    updates, opt_state = optimizer.update(params_update, opt_state)
+    return optax.apply_updates(params, updates)
 
 
 def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
@@ -51,11 +55,13 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
     Returns:
         The stochastic approximation of theta which are the parameters of the model.
     """
+    optimizer = optax.adam(learning_rate)
+    opt_state = optimizer.init(params)
     partial_update_params = partial(update_params, n_particles=n_particles, y_meas=y_meas,
-                                    model=model, learning_rate=learning_rate, mask=mask, grad_fun=grad_fun)
+                                    model=model, learning_rate=learning_rate, mask=mask, grad_fun=grad_fun, optimizer=optimizer)
     update_fn = jax.jit(partial_update_params, donate_argnums=(0,))
     keys = random.split(key, iterations)
     for subkey in keys:
-        params = update_fn(params, subkey)
+        params = update_fn(params, subkey, opt_state)
         print(params)
     return params
