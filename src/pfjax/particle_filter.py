@@ -21,10 +21,9 @@ import jax.scipy as jsp
 from jax import random
 from jax import lax
 from jax.experimental.maps import xmap
-from functools import partial
 
 
-def particle_resample_old(logw, key):
+def particle_resample_old(key, logw):
     """
     Particle resampler.
 
@@ -33,8 +32,8 @@ def particle_resample_old(logw, key):
     Old API, to be depreciated after testing against `particle_filter_for()`.
 
     Args:
-        logw: Vector of `n_particles` unnormalized log-weights.
         key: PRNG key.
+        logw: Vector of `n_particles` unnormalized log-weights.
 
     Returns:
         Vector of `n_particles` integers between 0 and `n_particles-1`, sampled with replacement with probability vector `exp(logw) / sum(exp(logw))`.
@@ -47,16 +46,16 @@ def particle_resample_old(logw, key):
                          shape=(n_particles,), p=prob)
 
 
-def particle_resample(x_particles_prev, logw, key):
+def particle_resample(key, x_particles_prev, logw):
     """
     Particle resampler.
 
     This basic one just does a multinomial sampler, i.e., sample with replacement proportional to weights.
 
     Args:
+        key: PRNG key.
         x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
         logw: Vector of corresponding `n_particles` unnormalized log-weights.
-        key: PRNG key.
 
     Returns:
         A dictionary with elements:
@@ -75,7 +74,7 @@ def particle_resample(x_particles_prev, logw, key):
     }
 
 
-def particle_filter_for(model, y_meas, theta, n_particles, key):
+def particle_filter_for(model, key, y_meas, theta, n_particles):
     """
     Apply particle filter for given value of `theta`.
 
@@ -91,10 +90,10 @@ def particle_filter_for(model, y_meas, theta, n_particles, key):
 
     Args:
         model: Object specifying the state-space model.
+        key: PRNG key.
         y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
         theta: Parameter value.
         n_particles: Number of particles.
-        key: PRNG key.
 
     Returns:
         A dictionary with elements:
@@ -113,7 +112,7 @@ def particle_filter_for(model, y_meas, theta, n_particles, key):
     key, *subkeys = random.split(key, num=n_particles+1)
     for p in range(n_particles):
         x_particles = x_particles.at[0, p].set(
-            model.init_sample(y_meas[0], theta, subkeys[p])
+            model.init_sample(subkeys[p], y_meas[0], theta)
         )
         logw = logw.at[0, p].set(
             model.init_logw(x_particles[0, p], y_meas[0], theta)
@@ -123,14 +122,15 @@ def particle_filter_for(model, y_meas, theta, n_particles, key):
         # resampling step
         key, subkey = random.split(key)
         ancestors = ancestors.at[t-1].set(
-            particle_resample_old(logw[t-1], subkey)
+            particle_resample_old(subkey, logw[t-1])
         )
         # update
         key, *subkeys = random.split(key, num=n_particles+1)
         for p in range(n_particles):
             x_particles = x_particles.at[t, p].set(
-                model.state_sample(x_particles[t-1, ancestors[t-1, p]],
-                                   theta, subkeys[p])
+                model.state_sample(subkeys[p],
+                                   x_particles[t-1, ancestors[t-1, p]],
+                                   theta)
             )
             logw = logw.at[t, p].set(
                 model.meas_lpdf(y_meas[t], x_particles[t, p], theta)
@@ -142,9 +142,8 @@ def particle_filter_for(model, y_meas, theta, n_particles, key):
     }
 
 
-# @partial(jax.jit, static_argnums=2)
-def particle_filter(model, y_meas, theta, n_particles,
-                    particle_sampler, key):
+def particle_filter(model, key, y_meas, theta, n_particles,
+                    particle_sampler=particle_resample):
     """
     Apply particle filter for given value of `theta`.
 
@@ -152,11 +151,11 @@ def particle_filter(model, y_meas, theta, n_particles,
 
     Args:
         model: Object specifying the state-space model.
+        key: PRNG key.
         y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
         theta: Parameter value.
         n_particles: Number of particles.
-        particle_sampler: Function used at step `t` to obtain sample of particles from `p(x_{t-1} | y_{0:t-1}, theta)`.  The inputs to the function are `particle_sampler(x_particles, logw, key)`, and the return value is a dictionary with mandatory element `x_particles` and optional elements that get stacked to the final output using `lax.scan()`.
-        key: PRNG key.
+        particle_sampler: Function used at step `t` to obtain sample of particles from `p(x_{t-1} | y_{0:t-1}, theta)`.  The inputs to the function are `particle_sampler(x_particles, logw, key)`, and the return value is a dictionary with mandatory element `x_particles` and optional elements that get stacked to the final output using `lax.scan()`.  Default value is `particle_resample()`.
 
     Returns:
         A dictionary with elements:
@@ -171,13 +170,13 @@ def particle_filter(model, y_meas, theta, n_particles,
     def fun(carry, t):
         # sample particles from previous time point
         key, subkey = random.split(carry["key"])
-        new_particles = particle_sampler(carry["x_particles"],
-                                         carry["logw"],
-                                         subkey)
+        new_particles = particle_sampler(subkey,
+                                         carry["x_particles"],
+                                         carry["logw"])
         # update particles to current time point (and get weights)
         key, *subkeys = random.split(key, num=n_particles+1)
         x_particles, logw = jax.vmap(
-            lambda xs, k: model.pf_step(xs, y_meas[t], theta, k)
+            lambda xs, k: model.pf_step(k, xs, y_meas[t], theta)
         )(new_particles["x_particles"], jnp.array(subkeys))
         # breakpoint()
         # output
@@ -190,18 +189,11 @@ def particle_filter(model, y_meas, theta, n_particles,
         res_stack["x_particles"] = x_particles
         res_stack["logw"] = logw
         return res_carry, res_stack
-        # res = {
-        #     "ancestors": ancestors,
-        #     "logw": logw,
-        #     "x_particles": x_particles,
-        #     "key": key
-        # }
-        # return res, res
     # scan initial value
     key, *subkeys = random.split(key, num=n_particles+1)
     # vmap version
     x_particles, logw = jax.vmap(
-        lambda k: model.pf_init(y_meas[0], theta, k))(jnp.array(subkeys))
+        lambda k: model.pf_init(k, y_meas[0], theta))(jnp.array(subkeys))
     # xmap version: experimental!
     # x_particles = xmap(
     #     lambda ym, th, k: model.init_sample(ym, th, k),
@@ -211,12 +203,6 @@ def particle_filter(model, y_meas, theta, n_particles,
     #     lambda xs, ym, th: model.init_logw(xs, ym, th),
     #     in_axes=(["particles", ...], [...], [...]),
     #     out_axes=["particles", ...])(x_particles, y_meas[0], theta)
-    # init = {
-    #     "x_particles": x_particles,
-    #     "logw": logw,
-    #     "ancestors": -jnp.ones(n_particles, dtype=int),
-    #     "key": key
-    # }
     init = {
         "x_particles": x_particles,
         "logw": logw,
@@ -232,11 +218,6 @@ def particle_filter(model, y_meas, theta, n_particles,
         jnp.expand_dims(init["logw"], axis=0),
         full["logw"], axis=0)
     return full
-    # out = {
-    #     k: jnp.append(jnp.expand_dims(init[k], axis=0), full[k], axis=0)
-    #     for k in ["x_particles", "logw", "ancestors"]
-    # }
-    # return out
 
 
 def particle_loglik(logw):
@@ -256,13 +237,20 @@ def particle_loglik(logw):
     return jnp.sum(jsp.special.logsumexp(logw, axis=1) - jnp.log(n_particles))
 
 
-def particle_smooth_for(logw, x_particles, ancestors, n_sample=1):
+def particle_smooth_for(key, logw, x_particles, ancestors, n_sample=1):
     """
     Basic particle smoothing algorithm.
 
     Samples from posterior distribution `p(x_state | x_meas, theta)`.
 
+    **FIXME:** 
+
+    - Currently written in numpy...
+
+    - Will probably need to change inputs to "generalize" to other resampling methods.
+
     Args:
+        key: PRNG key.
         logw: Vector of `n_particles` unnormalized log-weights at the last time point `t = n_obs-1`.
         x_particles: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.        
         ancestors: An integer `ndarray` of shape `(n_obs, n_particles)` where each element gives the index of the particle's ancestor at the previous time point.

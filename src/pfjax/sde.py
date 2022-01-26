@@ -13,18 +13,18 @@ from jax import random
 from jax import lax
 
 
-def euler_sim_diag(n_steps, x, dt, drift, diff, theta, key):
+def euler_sim_diag(key, n_steps, x, dt, drift, diff, theta):
     """
     Simulate SDE with diagonal diffusion using Euler-Maruyama discretization.
 
     Args:
+        key: PRNG key.
         n_steps: Number of steps to simulate.
         x: Initial value of the SDE.  A vector of size `n_dims`.
         dt: Interobservation time.
         drift: Drift function having signature `drift(x, theta)` and returning a vector of size `n_dims`.
         diff: Diffusion function having signature `diff(x, theta)` and returning a vector of size `n_dims`.
         theta: Parameter value.
-        key: PRNG key.
 
     Returns:
         Simulated SDE values in a matrix of size `n_steps x n_dims`.
@@ -98,11 +98,12 @@ class SDEModel(object):
         """
         self._dt = dt
         self._n_res = n_res
+        self._diff_diag = diff_diag  # currently only used for testing
         # instantiate methods euler_sim and euler_lpdf from free functions
         if diff_diag:
-            def euler_sim(self, n_steps, x, dt, theta, key):
-                return euler_sim_diag(n_steps, x, dt,
-                                      self.drift, self.diff, theta, key)
+            def euler_sim(self, key, n_steps, x, dt, theta):
+                return euler_sim_diag(key, n_steps, x, dt,
+                                      self.drift, self.diff, theta)
 
             def euler_lpdf(self, x, dt, theta):
                 return euler_lpdf_diag(x, dt, self.drift, self.diff, theta)
@@ -110,17 +111,15 @@ class SDEModel(object):
             setattr(self.__class__, 'euler_sim', euler_sim)
             setattr(self.__class__, 'euler_lpdf', euler_lpdf)
         else:
-            def euler_sim(self, n_steps, x, dt, theta, key):
-                return euler_sim_var(n_steps, x, dt,
-                                     self.drift, self.diff, theta, key)
+            def euler_sim(self, key, n_steps, x, dt, theta):
+                return euler_sim_var(key, n_steps, x, dt,
+                                     self.drift, self.diff, theta)
 
             def euler_lpdf(self, x, dt, theta):
                 return euler_lpdf_var(x, dt, self.drift, self.diff, theta)
 
             setattr(self.__class__, 'euler_sim', euler_sim)
             setattr(self.__class__, 'euler_lpdf', euler_lpdf)
-        # currently only used for testing
-        self._diff_diag = diff_diag
 
     def state_lpdf(self, x_curr, x_prev, theta):
         """
@@ -172,38 +171,36 @@ class SDEModel(object):
                 ))
         return lp
 
-    def state_sample(self, x_prev, theta, key):
+    def state_sample(self, key, x_prev, theta):
         """
         Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
 
         Args:
+            key: PRNG key.
             x_prev: State variable at previous time `t-1`.
             theta: Parameter value.
-            key: PRNG key.
 
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
         return self.euler_sim(
+            key=key,
             n_steps=self._n_res,
             x=x_prev[self._n_res-1],
             dt=self._dt/self._n_res,
-            # drift=self.drift,
-            # diff=self.diff,
-            theta=theta,
-            key=key
+            theta=theta
         )
 
-    def state_sample_for(self, x_prev, theta, key):
+    def state_sample_for(self, key, x_prev, theta):
         """
         Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
 
         For-loop version for testing.
 
         Args:
+            key: PRNG key.
             x_prev: State variable at previous time `t-1`.
             theta: Parameter value.
-            key: PRNG key.
 
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
@@ -224,7 +221,7 @@ class SDEModel(object):
             x_curr = x_curr.at[t].set(x_state)
         return x_curr
 
-    def pf_step(self, x_prev, y_curr, theta, key):
+    def pf_step(self, key, x_prev, y_curr, theta):
         """
         Update particle and calculate log-weight for a bootstrap particle filter.
 
@@ -240,6 +237,6 @@ class SDEModel(object):
             - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
             - logw: The log-weight of `x_curr`.
         """
-        x_curr = self.state_sample(x_prev, theta, key)
+        x_curr = self.state_sample(key, x_prev, theta)
         logw = self.meas_lpdf(y_curr, x_curr, theta)
         return x_curr, logw

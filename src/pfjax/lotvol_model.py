@@ -119,16 +119,16 @@ class LotVolModel(sde.SDEModel):
             ))
         return lp
 
-    def state_sample_for(self, x_prev, theta, key):
+    def state_sample_for(self, key, x_prev, theta):
         """
         Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
 
         For-loop version for testing.
 
         Args:
+            key: PRNG key.
             x_prev: State variable at previous time `t-1`.
             theta: Parameter value.
-            key: PRNG key.
 
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
@@ -162,14 +162,14 @@ class LotVolModel(sde.SDEModel):
                                   loc=jnp.exp(x_curr[-1]), scale=tau)
         )
 
-    def meas_sample(self, x_curr, theta, key):
+    def meas_sample(self, key, x_curr, theta):
         """
         Sample from `p(y_curr | x_curr, theta)`.
 
         Args:
+            key: PRNG key.
             x_curr: State variable at current time `t`.
             theta: Parameter value.
-            key: PRNG key.
 
         Returns:
             Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
@@ -178,16 +178,16 @@ class LotVolModel(sde.SDEModel):
         return jnp.exp(x_curr[-1]) + \
             tau * random.normal(key, (self._n_state[1],))
 
-    def pf_init(self, y_init, theta, key):
+    def pf_init(self, key, y_init, theta):
         """
         Importance sampler for `x_init`.  
 
         See file comments for exact sampling distribution of `p(x_init | y_init, theta)`, i.e., we have a "perfect" importance sampler with `logw = CONST(theta)`.
 
         Args:
+            key: PRNG key.
             y_init: Measurement variable at initial time `t = 0`.
             theta: Parameter value.
-            key: PRNG key.
 
         Returns:
             - x_init: A sample from the proposal distribution for `x_init`.

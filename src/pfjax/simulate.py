@@ -16,11 +16,9 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 from jax import random
 from jax import lax
-from jax.experimental.maps import xmap
-from functools import partial
 
 
-def simulate_for(model, n_obs, x_init, theta, key):
+def simulate_for(model, key, n_obs, x_init, theta):
     """
     Simulate data from the state-space model.
 
@@ -28,10 +26,10 @@ def simulate_for(model, n_obs, x_init, theta, key):
 
     Args:
         model: Object specifying the state-space model.
+        key: PRNG key.
         n_obs: Number of observations to generate.
         x_init: Initial state value at time `t = 0`.
         theta: Parameter value.
-        key: PRNG key.
 
     Returns:
         y_meas: The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
@@ -42,30 +40,30 @@ def simulate_for(model, n_obs, x_init, theta, key):
     x_state = x_state.at[0].set(x_init)
     # initial observation
     key, subkey = random.split(key)
-    y_meas = y_meas.at[0].set(model.meas_sample(x_init, theta, subkey))
+    y_meas = y_meas.at[0].set(model.meas_sample(subkey, x_init, theta))
     for t in range(1, n_obs):
         key, *subkeys = random.split(key, num=3)
         x_state = x_state.at[t].set(
-            model.state_sample(x_state[t-1], theta, subkeys[0])
+            model.state_sample(subkeys[0], x_state[t-1], theta)
         )
         y_meas = y_meas.at[t].set(
-            model.meas_sample(x_state[t], theta, subkeys[1])
+            model.meas_sample(subkeys[1], x_state[t], theta)
         )
     return y_meas, x_state
 
 # @partial(jax.jit, static_argnums=0)
 
 
-def simulate(model, n_obs, x_init, theta, key):
+def simulate(model, key, n_obs, x_init, theta):
     """
     Simulate data from the state-space model.
 
     Args:
         model: Object specifying the state-space model.
+        key: PRNG key.
         n_obs: Number of observations to generate.
         x_init: Initial state value at time `t = 0`.
         theta: Parameter value.
-        key: PRNG key.
 
     Returns:
         y_meas: The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
@@ -75,14 +73,14 @@ def simulate(model, n_obs, x_init, theta, key):
     # scan function
     def fun(carry, x):
         key, *subkeys = random.split(carry["key"], num=3)
-        x_state = model.state_sample(carry["x_state"], theta, subkeys[0])
-        y_meas = model.meas_sample(x_state, theta, subkeys[1])
+        x_state = model.state_sample(subkeys[0], carry["x_state"], theta)
+        y_meas = model.meas_sample(subkeys[1], x_state, theta)
         res = {"y_meas": y_meas, "x_state": x_state, "key": key}
         return res, res
     # scan initial value
     key, subkey = random.split(key)
     init = {
-        "y_meas": model.meas_sample(x_init, theta, subkey),
+        "y_meas": model.meas_sample(subkey, x_init, theta),
         "x_state": x_init,
         "key": key
     }
