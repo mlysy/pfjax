@@ -10,10 +10,10 @@ from jax import random
 from jax import lax
 from jax.experimental.maps import xmap
 from functools import partial
-from pfjax import particle_loglik, particle_filter
+from pfjax import particle_loglik, particle_filter, particle_resample_mvn
 
 
-def get_sum_lweights(theta, key, n_particles, y_meas, model):
+def get_sum_lweights(theta, key, n_particles, y_meas, model, **kwargs):
     """
 
     Args:
@@ -25,14 +25,24 @@ def get_sum_lweights(theta, key, n_particles, y_meas, model):
     Returns:
         The sum of the particle log weights from the particle filters.
     """
-
     ret = particle_filter(model, key, y_meas, theta, n_particles)
     sum_particle_lweights = particle_loglik(ret['logw'])
     return sum_particle_lweights
 
 
+def get_sum_lweights_mvn(theta, key, n_particles, y_meas, model):
+    """
+    FIXME: plz delete me, only for testing 
+    """
+    # model, key, y_meas, theta, n_particles,particle_sampler=particle_resample):
+    ret = particle_filter(model = model, y_meas = y_meas, theta = theta, n_particles = n_particles,
+                          key = key, particle_sampler=particle_resample_mvn)
+    sum_particle_lweights = particle_loglik(ret['logw'])
+    return sum_particle_lweights
+
+
 def update_params(params, subkey, opt_state, grad_fun=None, n_particles=100, y_meas=None, model=None, learning_rate=0.01, mask=None,
-                  optimizer=None):
+                  optimizer=None, **kwargs):
     params_update = jax.grad(grad_fun, argnums=0)(
         params, subkey, n_particles, y_meas, model)
     params_update = jnp.where(mask, params_update, 0)
@@ -41,7 +51,7 @@ def update_params(params, subkey, opt_state, grad_fun=None, n_particles=100, y_m
 
 
 def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
-              learning_rate=0.01, key=1, mask=None, **kwargs):
+              learning_rate=0.01, key=1, mask=None):
     """
     Args:
         model: The model class for which all of the functions are defined.

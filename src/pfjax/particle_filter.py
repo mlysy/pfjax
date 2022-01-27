@@ -17,7 +17,6 @@ from jax import random
 from jax import lax
 from jax.experimental.maps import xmap
 
-
 @jax.jit
 def _lweight_to_prob(logw):
     """Returns normalized propabilities from unnormalized log weights
@@ -73,43 +72,43 @@ def particle_resample(key, x_particles_prev, logw):
     }
 
 
-# @partial(jax.jit, static_argnums=(0,))
-@jax.jit
-def particle_resample_mvn(key, x_particles_prev, logw):
-    """
-    Approximate particle distribution with MVN. Uses weighted mean and covariance of `x_particles_prev` to construct a MVN. Weights are normalized `logw`
-
-    Args:
-        key: PRNG key.
-        x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
-        logw: Vector of corresponding `n_particles` unnormalized log-weights.
-    Returns:
-        A dictionary with elements:
-            - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step. 
-            - `x_particles_mu`: Mean vector of the MVN approximation 
-    
-    """
-    assert len(x_particles_prev.shape) == 2, "Invalid particle shape, must have dimension (n_particles, n_states), got {0}".format(
-        x_particles_prev.shape)
-    n_particles, n_states = x_particles_prev.shape
+def particle_resample_mvn_for(key, x_particles_prev, logw):
+    p_shape = x_particles_prev.shape
+    n_particles = p_shape[0]
+    # n_states = p_shape[1] * p_shape[2]  # n_res * n_states
     prob = _lweight_to_prob(logw)
 
-    # variables are the rows in jnp.cov()
-    cov_mat = jnp.cov(jnp.transpose(x_particles_prev), aweights=prob)
-    mu = jnp.average(x_particles_prev, axis=0, weights=prob).reshape(-1, )
-
-    # FIXME: replace with lax.cond(n_states == 1, cov_mat = cov_mat.reshape(-1, 1))
-    if n_states == 1:
-        cov_mat = cov_mat.reshape(-1, 1)  # change int into matrix
-    # cov_mat = lax.cond(n_states == 1,  # true_fun and false_fun output must have identical types...
-    #                    true_fun = lambda x: x.reshape(-1, 1),
-    #                    false_fun = lambda x: x,
-    #                    operand = cov_mat)  # change int into matrix
-    samples = random.multivariate_normal(key, mean=mu,
-                                         cov=cov_mat,
-                                         shape=(n_particles, n_states))
-    ret_val = {"x_particles": jnp.squeeze(samples), 
+    samples = jnp.zeros(p_shape)
+    # FIXME: remove this loop in place of JAX construct
+    for i in range(p_shape[1]):
+        mu = jnp.average(x_particles_prev[:, i, :], axis=0, weights=prob)
+        cov_mat = jnp.cov(jnp.transpose(
+            x_particles_prev[:, i, :]), aweights=prob)
+        _samples = random.multivariate_normal(key, mean=mu,
+                                              cov=cov_mat,
+                                              shape=(n_particles, 1))
+        samples = samples.at[:, i, :].set(jnp.squeeze(_samples))
+    ret_val = {"x_particles": samples,
                "x_particles_mu": mu}
+    return ret_val
+
+
+def particle_resample_mvn(key, x_particles_prev, logw):
+    p_shape = x_particles_prev.shape
+    n_particles = p_shape[0]
+    prob = _lweight_to_prob(logw)
+
+    def _mvn_sampler(x):
+        mu = jnp.average(x, axis=0, weights=prob)
+        cov_mat = jnp.cov(jnp.transpose(x), aweights=prob)
+        _samples = random.multivariate_normal(key, mean=mu,
+                                              cov=cov_mat,
+                                              shape=(n_particles, 1))
+        return jnp.squeeze(_samples)
+
+    samples = jax.vmap(_mvn_sampler, in_axes=1, out_axes=1)(x_particles_prev)
+
+    ret_val = {"x_particles": samples} # FIXME: find a way to add x_particles_mu to the output
     return ret_val
 
 
