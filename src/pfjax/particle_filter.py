@@ -94,6 +94,7 @@ def particle_resample_mvn_for(key, x_particles_prev, logw):
 
 
 def particle_resample_mvn(key, x_particles_prev, logw):
+    const_key = random.PRNGKey(0)
     p_shape = x_particles_prev.shape
     n_particles = p_shape[0]
     prob = _lweight_to_prob(logw)
@@ -101,7 +102,7 @@ def particle_resample_mvn(key, x_particles_prev, logw):
     def _mvn_sampler(x):
         mu = jnp.average(x, axis=0, weights=prob)
         cov_mat = jnp.cov(jnp.transpose(x), aweights=prob)
-        _samples = random.multivariate_normal(key, mean=mu,
+        _samples = random.multivariate_normal(const_key, mean=mu,
                                               cov=cov_mat,
                                               shape=(n_particles, 1))
         return jnp.squeeze(_samples)
