@@ -89,7 +89,7 @@ def particle_filter_for(model, y_meas, theta, n_particles, key):
     Returns:
         A dictionary with elements:
             - `X_particles_mu`: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
-            - `logw_particles`: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
+            - `logw`: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
     """
     # memory allocation
     n_obs = y_meas.shape[0]
@@ -129,7 +129,7 @@ def particle_filter_for(model, y_meas, theta, n_particles, key):
 
     return {
         "X_particles_mu": X_particles_mu,  
-        "logw_particles": logw_particles,
+        "logw": logw_particles,
     }
 
 
@@ -151,7 +151,7 @@ def particle_filter(model, y_meas, theta, n_particles, key):
     Returns:
         A dictionary with elements:
             - `X_particles_mu`: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the mean of the MVN at each timestep. Note that this is different from the vanilla particle filter, which returns the particles at each timestep
-            - `logw_particles`: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
+            - `logw`: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
     """
     n_obs = y_meas.shape[0]
 
@@ -164,7 +164,7 @@ def particle_filter(model, y_meas, theta, n_particles, key):
         # resampling step
         key, subkey = random.split(carry["key"])
         resampled_particles = particle_resample_mvn(particles = jnp.squeeze(carry["X_particles"]), 
-                                                    logw = carry["logw_particles"], 
+                                                    logw=carry["logw"],
                                                     key = subkey) 
         X_particles = resampled_particles[0]
         X_particles_mu = resampled_particles[1]
@@ -177,7 +177,7 @@ def particle_filter(model, y_meas, theta, n_particles, key):
         )(X_particles, jnp.array(subkeys))
 
         res = {
-            "logw_particles": logw_particles,
+            "logw": logw_particles,
             "X_particles": X_particles,
             "X_particles_mu": X_particles_mu,
             "key": key
@@ -191,7 +191,7 @@ def particle_filter(model, y_meas, theta, n_particles, key):
     prob = _lweight_to_prob(logw_particles_init)
     init = {
         "X_particles": X_particles_init,
-        "logw_particles": logw_particles_init,
+        "logw": logw_particles_init,
         "X_particles_mu": jnp.average(X_particles_init, axis=0, weights=prob).reshape(-1, ),
         "key": key
     }
@@ -201,7 +201,7 @@ def particle_filter(model, y_meas, theta, n_particles, key):
     # append initial values
     out = {
         k: jnp.append(jnp.expand_dims(init[k], axis=0), full[k], axis=0)
-        for k in ["logw_particles", "X_particles_mu"]
+        for k in ["logw", "X_particles_mu"]
     }
     return out
 
@@ -238,7 +238,7 @@ def get_sum_lweights_mvn(theta, key, n_particles, y_meas, model):
     """
 
     ret = particle_filter(model, y_meas, theta, n_particles, key)
-    sum_particle_lweights = particle_loglik(ret['logw_particles'])
+    sum_particle_lweights = particle_loglik(ret['logw'])
     return sum_particle_lweights
 
 
@@ -266,6 +266,6 @@ def log_posterior(theta, key, n_particles, y_meas, model, prior):
         loglik ([type]): log-likelihood
     """
     ret = particle_filter(model, y_meas, theta, n_particles, key)
-    sum_particle_lweights = particle_loglik(ret['logw_particles'])
+    sum_particle_lweights = particle_loglik(ret['logw'])
     lprior = jnp.log(prior(theta))
     return sum_particle_lweights + lprior
