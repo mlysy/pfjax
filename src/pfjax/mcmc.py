@@ -8,7 +8,9 @@ import jax.scipy as jsp
 from jax import random
 from jax import lax
 from jax.experimental.maps import xmap
-from functools import partial
+from .full_loglik import *
+
+# --- a few priors -------------------------------------------------------------
 
 
 class FlatPrior:
@@ -17,64 +19,45 @@ class FlatPrior:
     """
 
     def lpdf(self, theta):
+        """
+        Calculate the log-pdf.
+
+        Args:
+            theta: Parameter value.
+
+        Returns:
+            The log-pdf of the prior.
+        """
         return jnp.array(0.)
 
 
-def full_loglik_for(model, y_meas, x_state, theta):
-    """
-    Calculate the joint loglikelihood `p(y_{0:T} | x_{0:T}, theta) * p(x_{0:T} | theta)`.
+class NormalDiagPrior(object):
+    def __init__(self, loc, scale):
+        """
+        Normal prior class with diagonal variance matrix.
 
-    For-loop version for testing.
+        Args:
+            loc: Vector of means.
+            scale: Vector of standard deviations.
+        """
+        self._loc = loc
+        self._scale = scale
 
-    Args:
-        model: Object specifying the state-space model.
-        y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
-        x_state: The sequence of `n_obs` state variables `x_state = (x_0, ..., x_T)`.
-        theta: Parameter value.
+    def lpdf(self, theta):
+        """
+        Calculate the log-pdf.
 
-    Returns:
-        The value of the loglikelihood.
-    """
-    n_obs = y_meas.shape[0]
-    loglik = model.meas_lpdf(y_curr=y_meas[0], x_curr=x_state[0],
-                             theta=theta)
-    for t in range(1, n_obs):
-        loglik = loglik + \
-            model.state_lpdf(x_curr=x_state[t], x_prev=x_state[t-1],
-                             theta=theta)
-        loglik = loglik + \
-            model.meas_lpdf(y_curr=y_meas[t], x_curr=x_state[t],
-                            theta=theta)
-    return loglik
+        Args:
+            theta: Parameter value.
+
+        Returns:
+            The log-pdf of the prior.
+        """
+        return jnp.sum(jsp.stats.norm.logpdf(theta,
+                                             loc=self._loc, scale=self._scale))
 
 
-def full_loglik(model, y_meas, x_state, theta):
-    """
-    Calculate the joint loglikelihood `p(y_{0:T} | x_{0:T}, theta) * p(x_{0:T} | theta)`.
-
-    Args:
-        model: Object specifying the state-space model.
-        y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
-        x_state: The sequence of `n_obs` state variables `x_state = (x_0, ..., x_T)`.
-        theta: Parameter value.
-
-    Returns:
-        The value of the loglikelihood.
-    """
-    n_obs = y_meas.shape[0]
-    # initial measurement
-    ll_init = model.meas_lpdf(y_curr=y_meas[0], x_curr=x_state[0],
-                              theta=theta)
-    # subsequent measurements and state variables
-    ll_step = jax.vmap(lambda t:
-                       model.state_lpdf(x_curr=x_state[t],
-                                        x_prev=x_state[t-1],
-                                        theta=theta) +
-                       model.meas_lpdf(y_curr=y_meas[t],
-                                       x_curr=x_state[t],
-                                       theta=theta))(jnp.arange(1, n_obs))
-    return ll_init + jnp.sum(ll_step)
-
+# --- parameter updates --------------------------------------------------------
 
 def param_mwg_update_for(model, prior, key, theta, x_state, y_meas, rw_sd, theta_order):
     """

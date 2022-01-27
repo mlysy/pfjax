@@ -8,20 +8,6 @@ import pfjax.mcmc as mcmc
 # import bm_model as bm
 
 
-class NormalDiagPrior(object):
-    """
-    Normal prior with diagonal variance matrix (specified via vector of standard deviations).
-    """
-
-    def __init__(self, loc, scale):
-        self._loc = loc
-        self._scale = scale
-
-    def lpdf(self, theta):
-        return jnp.sum(jsp.stats.norm.logpdf(theta,
-                                             loc=self._loc, scale=self._scale))
-
-
 key = random.PRNGKey(0)
 # parameter values
 mu = 5

@@ -30,44 +30,32 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
 import pfjax as pf
-import pfjax.mcmc
+import pfjax.mcmc as mcmc
 import utils
 
 
-def bm_setup(self):
-    """
-    Creates input arguments to tests.
-    """
-    self.key = random.PRNGKey(0)
-    # parameter values
-    mu = 5
-    sigma = 1
-    tau = .1
-    self.theta = jnp.array([mu, sigma, tau])
-    # data specification
-    self.model_args = {"dt": .1}
-    self.n_obs = 5
-    self.x_init = jnp.array([0.])
-    # particle filter specification
-    self.n_particles = 7
-    # model specification
-    self.Model = pf.BMModel
-
-
-class TestFor(utils.TestForBase):
+class TestFor(unittest.TestCase):
     """
     Test whether for-loop version of functions is identical to xmap/scan version.
     """
 
-    setUp = bm_setup
+    setUp = utils.bm_setup
+
+    test_sim = utils.test_for_sim
+    test_pf = utils.test_for_pf
+    test_loglik = utils.test_for_loglik
 
 
-class TestJit(utils.TestJitBase):
+class TestJit(unittest.TestCase):
     """
     Check whether jit with and without grad gives the same result.
     """
 
-    setUp = bm_setup
+    setUp = utils.bm_setup
+
+    test_sim = utils.test_jit_sim
+    test_pf = utils.test_jit_pf
+    test_loglik = utils.test_jit_loglik
 
 
 if __name__ == '__main__':

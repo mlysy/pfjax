@@ -3,11 +3,13 @@ Unit tests for SDE methods.
 
 Things to test:
 
-- [ ] SDE base class works as expected, i.e., switches between `euler_{sim/lpdf}_diag()` and `euler_{sim/lpdf}_var()` at instantiation.
+- [x] SDE base class works as expected, i.e., switches between `euler_{sim/lpdf}_diag()` and `euler_{sim/lpdf}_var()` at instantiation.
 
 - [x] `jit` + `grad` return without errors.
 
 - [x] JAX constructs (e.g., `vmap`, `xmap`, `lax.scan`, etc.) give the same result as for-loops, etc.
+
+    In this case just need to check this for `state_sample` and `state_lpdf`, as inference method checks are conducted elsewhere.
 
 """
 
@@ -19,96 +21,39 @@ import jax.scipy as jsp
 import jax.random as random
 import pfjax as pf
 import pfjax.mcmc as mcmc
-import lotvol_model as lv
 import utils
 
 
-def test_setup():
-    """
-    Creates input arguments to tests.
-
-    Use this instead of TestCase.setUp because I don't want to prefix every variable by `self`.
-    """
-    key = random.PRNGKey(0)
-    # parameter values
-    alpha = 1.02
-    beta = 1.02
-    gamma = 4.
-    delta = 1.04
-    sigma_H = .1
-    sigma_L = .2
-    tau_H = .25
-    tau_L = .35
-    theta = jnp.array([alpha, beta, gamma, delta,
-                       sigma_H, sigma_L, tau_H, tau_L])
-    # data specification
-    dt = .09
-    n_res = 3
-    n_obs = 7
-    x_init = jnp.block([[jnp.zeros((n_res-1, 2))],
-                        [jnp.log(jnp.array([5., 3.]))]])
-    return key, theta, dt, n_res, n_obs, x_init
-
-
-def lv_setup(self):
-    """
-    Creates input arguments to tests.
-    """
-    self.key = random.PRNGKey(0)
-    # parameter values
-    alpha = 1.02
-    beta = 1.02
-    gamma = 4.
-    delta = 1.04
-    sigma_H = .1
-    sigma_L = .2
-    tau_H = .25
-    tau_L = .35
-    self.theta = jnp.array([alpha, beta, gamma, delta,
-                            sigma_H, sigma_L, tau_H, tau_L])
-    # data specification
-    dt = .09
-    n_res = 3
-    self.model_args = {"dt": dt, "n_res": n_res}
-    self.n_obs = 7
-    self.x_init = jnp.block([[jnp.zeros((n_res-1, 2))],
-                             [jnp.log(jnp.array([5., 3.]))]])
-    self.n_particles = 2
-    self.Model = pf.LotVolModel
-    self.Model2 = lv.LotVolModel
-
-
-class TestInherit(utils.TestModelsBase):
+class TestInherit(unittest.TestCase):
     """
     Check that inheritance from SDEModel works as expected.
     """
 
-    setUp = lv_setup
+    setUp = utils.lv_setup
+
+    test_sim = utils.test_models_sim
+    test_loglik = utils.test_models_loglik
+    test_pf = utils.test_models_pf
 
 
-class TestJit(utils.TestJitBase):
+class TestJit(unittest.TestCase):
     """
     Check whether jit with and without grad gives the same result.
     """
 
-    setUp = lv_setup
+    setUp = utils.lv_setup
+
+    test_sim = utils.test_jit_sim
+    test_pf = utils.test_jit_pf
+    test_loglik = utils.test_jit_loglik
 
 
-class TestFor(utils.TestForBase):
+class TestFor(unittest.TestCase):
     """
     Test whether for-loop version of functions is identical to xmap/scan version.
     """
 
-    setUp = lv_setup
-
-    def test_sim(self):
-        pass
-
-    def test_pf(self):
-        pass
-
-    def test_loglik(self):
-        pass
+    setUp = utils.lv_setup
 
     def test_state_sample(self):
         # un-self setUp members
@@ -152,3 +97,7 @@ class TestFor(utils.TestForBase):
         lp1 = model.state_lpdf_for(x_curr, x_prev, theta)
         lp2 = model.state_lpdf(x_curr, x_prev, theta)
         self.assertAlmostEqual(utils.rel_err(lp1, lp2), 0.0)
+
+
+if __name__ == '__main__':
+    unittest.main()
