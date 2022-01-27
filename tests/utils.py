@@ -71,6 +71,9 @@ def lv_setup(self):
 
 
 def test_for_sim(self):
+    """
+    Test that `simulate_for()` and `simulate()` return identical results.
+    """
     # un-self setUp members
     key = self.key
     theta = self.theta

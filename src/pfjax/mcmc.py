@@ -68,7 +68,6 @@ def param_mwg_update_for(model, prior, key, theta, x_state, y_meas, rw_sd, theta
     **Notes:**
 
     - Assumes the parameters are real valued.  Next step might be to provide a parameter validator to the model.
-    - Gets size of `theta` from `theta` itself, rather than e.g., `model.n_param`.  
     - Potentially wastes an initial evaluation of `full_loglik(theta)`.  Could be passed in from a previous calculation but a bit cumbersome.
 
     Args:
@@ -123,7 +122,6 @@ def param_mwg_update(model, prior, key, theta, x_state, y_meas, rw_sd, theta_ord
     **Notes:**
 
     - Assumes the parameters are real valued.  Next step might be to provide a parameter validator to the model.
-    - Gets size of `theta` from `theta` itself, rather than e.g., `model.n_param`.  
     - Potentially wastes an initial evaluation of `full_loglik(theta)`.  Could be passed in from a previous calculation but a bit cumbersome.
 
     Args:
@@ -178,3 +176,32 @@ def param_mwg_update(model, prior, key, theta, x_state, y_meas, rw_sd, theta_ord
     # scan itself
     last, full = lax.scan(fun, init, theta_order)
     return last["theta_curr"], full["accept"]
+
+
+def mwg_adapt(rw_sd, accept_rate, n_iter,
+              adapt_max=.01, adapt_rate=.5):
+    """
+    Adapt random walk jump sizes of MWG proposals.
+
+    Given a vector of random walk jump sizes, increase or decrease each of them depending on whether the cumulative acceptance rate is above or below 0.44.  The amount of change on log-scale is 
+
+    ```
+    delta = min(adapt_max, 1/n_iter^adapt_rate)
+    ```
+
+    Args:
+        rw_sd: Vector of `n_params` standard deviations (jump sizes) for the componentwise random walk proposal.
+        accept_rate: Vector of `n_params` cumulative acceptance rates (i.e., between 0 and 1).
+        n_iter: Number of MCMC iterations so far.
+        adapt_max: Scalar or vector of `n_params` maximum adaptation amounts.
+        adapt_rate: Scalar or vector of `n_params` adaptation rates.
+
+    Returns:
+        Vector of `n_params` adapted standard deviations.
+    """
+
+    targ_acc = 0.44  # target acceptance rate
+    delta = jnp.power(n_iter, -adapt_rate)
+    delta = jnp.maximum(delta, adapt_max)
+    low_acc = jnp.less(accept_rate, targ_acc)
+    return jnp.exp(jnp.log(rw_sd) - delta * low_acc + (not delta) * low_acc)
