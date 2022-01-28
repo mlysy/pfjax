@@ -20,7 +20,6 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
 import pfjax as pf
-import pfjax.mcmc as mcmc
 import utils
 from jax.config import config
 config.update("jax_enable_x64", True)
