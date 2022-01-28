@@ -36,7 +36,6 @@ class TestInherit(unittest.TestCase):
     test_loglik = utils.test_models_loglik
     test_pf = utils.test_models_pf
 
-
 class TestJit(unittest.TestCase):
     """
     Check whether jit with and without grad gives the same result.
@@ -54,7 +53,7 @@ class TestFor(unittest.TestCase):
     Test whether for-loop version of functions is identical to xmap/scan version.
     """
 
-    setUp = utils.lv_setup
+    setUp = utils.pg_setup
 
     def test_state_sample(self):
         # un-self setUp members
@@ -68,8 +67,7 @@ class TestFor(unittest.TestCase):
         model = self.Model(**model_args)
         # generate previous timepoint
         key, subkey = random.split(key)
-        x_prev = jnp.block([[jnp.zeros((n_res-1, 2))],
-                            [jnp.log(jnp.array([5., 3.]))]])
+        x_prev = self.x_init
         x_prev = x_prev + random.normal(subkey, x_prev.shape)
         # simulate state using for-loop
         x_state1 = model.state_sample_for(key, x_prev, theta)
@@ -89,8 +87,7 @@ class TestFor(unittest.TestCase):
         model = self.Model(**model_args)
         # generate previous timepoint
         key, subkey = random.split(key)
-        x_prev = jnp.block([[jnp.zeros((n_res-1, 2))],
-                            [jnp.log(jnp.array([5., 3.]))]])
+        x_prev = self.x_init
         x_prev = x_prev + random.normal(subkey, x_prev.shape)
         # simulate state using lax.scan
         x_curr = model.state_sample(key, x_prev, theta)
@@ -98,7 +95,6 @@ class TestFor(unittest.TestCase):
         lp1 = model.state_lpdf_for(x_curr, x_prev, theta)
         lp2 = model.state_lpdf(x_curr, x_prev, theta)
         self.assertAlmostEqual(utils.rel_err(lp1, lp2), 0.0)
-
 
 if __name__ == '__main__':
     unittest.main()

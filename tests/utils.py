@@ -7,7 +7,7 @@ import jax.random as random
 import pfjax as pf
 import pfjax.mcmc as mcmc
 import lotvol_model as lv
-
+import pgnet_model as pg
 
 def rel_err(X1, X2):
     """
@@ -69,6 +69,25 @@ def lv_setup(self):
     self.Model = pf.LotVolModel
     self.Model2 = lv.LotVolModel
 
+def pg_setup(self):
+    """
+    Creates input arguments to tests for LotVolModel.
+    """
+    self.key = random.PRNGKey(0)
+    # parameter values
+    theta = np.array([0.1, 0.7, 0.35, 0.2, 0.1, 0.9, 0.3, 0.1])
+    tau = np.array([0.15, 0.2, 0.25, 0.3])
+    self.theta = np.append(theta, tau)
+    # data specification
+    dt = .09
+    n_res = 4
+    self.model_args = {"dt": dt, "n_res": n_res}
+    self.n_obs = 9
+    self.x_init = jnp.block([[jnp.zeros((n_res-1, 4))],
+                             [jnp.log(jnp.array([8., 8., 8., 5.]))]])
+    self.n_particles = 2
+    self.Model = pf.PGNETModel
+    self.Model2 = pg.PGNETModel
 
 def test_for_sim(self):
     # un-self setUp members

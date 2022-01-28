@@ -119,7 +119,7 @@ def euler_sim_var(key, n_steps, x, dt, drift, diff, theta):
         dr = x + drift(x, theta) * dt
         chol_Sigma = jnp.linalg.cholesky(diff(x, theta))
         df = chol_Sigma * jnp.sqrt(dt)
-        #x = random.multivariate_normal(subkey, dr, diff(x, theta)*dt)
+        #x = random.multivariate_normal(subkey, mean=dr, cov=diff(x, theta)*dt)
         x = dr + jnp.matmul(df, random.normal(subkey, (x.shape[0],)))
         res = {"x": x, "key": key}
         return res, res
@@ -152,6 +152,7 @@ def euler_lpdf_var(x, dt, drift, diff, theta):
                       mean=x0[t] + drift(x0[t], theta) * dt,
                       cov=diff(x0[t], theta) * dt
                   ))(jnp.arange(x0.shape[0]))
+
     return jnp.sum(lp)
 
 class SDEModel(object):
@@ -260,7 +261,7 @@ class SDEModel(object):
                 lp = lp + jnp.sum(jsp.stats.multivariate_normal.logpdf(
                     x=x1[t],
                     mean=x0[t] + self.drift(x0[t], theta) * dt_res,
-                    cov=self.diff(x0[t], theta) * jnp.sqrt(dt_res)
+                    cov=self.diff(x0[t], theta) * dt_res
                 ))
         return lp
 
