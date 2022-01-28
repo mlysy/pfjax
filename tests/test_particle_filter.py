@@ -42,8 +42,9 @@ class TestFor(unittest.TestCase):
     setUp = utils.bm_setup
 
     test_sim = utils.test_for_sim
-    test_pf = utils.test_for_pf
     test_loglik = utils.test_for_loglik
+    test_pf = utils.test_for_pf
+    test_smooth = utils.test_for_smooth
 
 
 class TestJit(unittest.TestCase):
@@ -54,8 +55,9 @@ class TestJit(unittest.TestCase):
     setUp = utils.bm_setup
 
     test_sim = utils.test_jit_sim
-    test_pf = utils.test_jit_pf
     test_loglik = utils.test_jit_loglik
+    test_pf = utils.test_jit_pf
+    test_smooth = utils.test_jit_smooth
 
 
 if __name__ == '__main__':

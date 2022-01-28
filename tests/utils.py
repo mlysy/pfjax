@@ -35,9 +35,9 @@ def bm_setup(self):
     # data specification
     self.model_args = {"dt": .1}
     self.n_obs = 5
-    self.x_init = jnp.array([0.])
+    self.x_init = jnp.array(0.)
     # particle filter specification
-    self.n_particles = 7
+    self.n_particles = 3
     # model specification
     self.Model = pf.BMModel
 
@@ -71,9 +71,6 @@ def lv_setup(self):
 
 
 def test_for_sim(self):
-    """
-    Test that `simulate_for()` and `simulate()` return identical results.
-    """
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -101,9 +98,9 @@ def test_for_pf(self):
     n_particles = self.n_particles
     model = self.Model(**model_args)
     # simulate without for-loop
-    y_meas, x_state = pf.simulate(model, key, n_obs, x_init, theta)
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
     # particle filter specification
-    n_particles = 7
     key, subkey = random.split(key)
     # pf with for-loop
     pf_out1 = pf.particle_filter_for(model, subkey,
@@ -114,6 +111,40 @@ def test_for_pf(self):
     for k in pf_out1.keys():
         with self.subTest(k=k):
             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+
+
+def test_for_smooth(self):
+    # un-self setUp members
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model = self.Model(**model_args)
+    # simulate without for-loop
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
+    # pf without for-loop
+    key, subkey = random.split(key)
+    pf_out = pf.particle_filter(
+        model, subkey, y_meas, theta, n_particles)
+    # pf_smooth with for-loop
+    key, subkey = random.split(key)
+    x_state1 = pf.particle_smooth_for(
+        key=subkey,
+        logw=pf_out["logw"][n_obs-1],
+        x_particles=pf_out["x_particles"],
+        ancestors=pf_out["ancestors"]
+    )
+    # pf_smooth without for-loop
+    x_state2 = pf.particle_smooth(
+        key=subkey,
+        logw=pf_out["logw"][n_obs-1],
+        x_particles=pf_out["x_particles"],
+        ancestors=pf_out["ancestors"]
+    )
+    self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
 
 
 def test_for_loglik(self):
@@ -146,7 +177,8 @@ def test_for_mwg(self):
     n_particles = self.n_particles
     model = self.Model(**model_args)
     # simulate without for-loop
-    y_meas, x_state = pf.simulate(model, key, n_obs, x_init, theta)
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
     # mwg setup
     prior = mcmc.NormalDiagPrior(loc=theta, scale=jnp.abs(theta))
     rw_sd = jnp.array([.1] * theta.size)
@@ -213,9 +245,9 @@ def test_jit_pf(self):
     n_particles = self.n_particles
     model = self.Model(**model_args)
     # simulate data
-    y_meas, x_state = pf.simulate(model, key, n_obs, x_init, theta)
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
     # particle filter specification
-    n_particles = 7
     key, subkey = random.split(key)
     # pf without jit
     pf_out1 = pf.particle_filter(
@@ -240,6 +272,58 @@ def test_jit_pf(self):
     self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
 
 
+def test_jit_smooth(self):
+    # un-self setUp members
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model = self.Model(**model_args)
+    # simulate data
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
+    # particle filter specification
+    key, subkey = random.split(key)
+    # pf without jit
+    pf_out = pf.particle_filter(
+        model, subkey, y_meas, theta, n_particles)
+    # pf_smooth without jit
+    key, subkey = random.split(key)
+    x_state1 = pf.particle_smooth(
+        key=subkey,
+        logw=pf_out["logw"][n_obs-1],
+        x_particles=pf_out["x_particles"],
+        ancestors=pf_out["ancestors"]
+    )
+    # pf_smooth with jit
+    x_state2 = jax.jit(pf.particle_smooth)(
+        key=subkey,
+        logw=pf_out["logw"][n_obs-1],
+        x_particles=pf_out["x_particles"],
+        ancestors=pf_out["ancestors"]
+    )
+    self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
+
+    # objective function for gradient
+    def obj_fun(model, key, y_meas, theta, n_particles):
+        pf_out = pf.particle_filter(model, key, y_meas, theta, n_particles)
+        return jnp.sum(pf.particle_smooth(
+            key=subkey,
+            logw=pf_out["logw"][n_obs-1],
+            x_particles=pf_out["x_particles"],
+            ancestors=pf_out["ancestors"]
+        ))
+    # grad without jit
+    grad1 = jax.grad(obj_fun, argnums=3)(
+        model, key, y_meas, theta, n_particles)
+    # grad with jit
+    grad2 = jax.jit(jax.grad(obj_fun, argnums=3), static_argnums=(0, 4))(
+        model, key, y_meas, theta, n_particles)
+    self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
+
+
 def test_jit_loglik(self):
     # un-self setUp members
     key = self.key
@@ -250,7 +334,8 @@ def test_jit_loglik(self):
     n_particles = self.n_particles
     model = self.Model(**model_args)
     # simulate data
-    y_meas, x_state = pf.simulate(model, key, n_obs, x_init, theta)
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
     # joint loglikelihood without jit
     loglik1 = pf.full_loglik(model,
                              y_meas, x_state, theta)
@@ -280,7 +365,8 @@ def test_jit_mwg(self):
     n_particles = self.n_particles
     model = self.Model(**model_args)
     # simulate data
-    y_meas, x_state = pf.simulate(model, key, n_obs, x_init, theta)
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
     # mwg setup
     prior = mcmc.NormalDiagPrior(loc=theta, scale=jnp.abs(theta))
     rw_sd = jnp.array([.1] * theta.size)
@@ -299,10 +385,10 @@ def test_jit_mwg(self):
             self.assertAlmostEqual(rel_err(mwg_out1[i], mwg_out2[i]), 0.0)
 
     # objective function for gradient
-    def obj_fun(model, prior, subkey, theta, x_state, y_meas,
+    def obj_fun(model, prior, key, theta, x_state, y_meas,
                 rw_sd, theta_order):
         theta_update, accept = mcmc.param_mwg_update(
-            model, prior, subkey, theta,
+            model, prior, key, theta,
             x_state, y_meas, rw_sd, theta_order)
         return jnp.sum(theta_update)
     # grad without jit
@@ -371,7 +457,6 @@ def test_models_pf(self):
     # simulate with inherited class
     y_meas, x_state = pf.simulate(model2, key, n_obs, x_init, theta)
     # particle filter specification
-    n_particles = 2
     key, subkey = random.split(key)
     # pf with non-inherited class
     pf_out1 = pf.particle_filter(

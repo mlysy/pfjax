@@ -5,7 +5,66 @@ import jax.scipy as jsp
 import jax.random as random
 import pfjax as pf
 
-breakpoint()
+
+key = random.PRNGKey(0)
+# parameter values
+mu = 5
+sigma = 1
+tau = .1
+theta = jnp.array([mu, sigma, tau])
+# data specification
+dt = .1
+n_obs = 5
+x_init = jnp.array(0.)
+bm_model = pf.BMModel(dt=dt)
+# simulate without for-loop
+y_meas, x_state = pf.simulate(bm_model, key, n_obs, x_init, theta)
+
+# check jit
+y_meas2, x_state2 = jax.jit(pf.simulate, static_argnums=(0, 2))(
+    bm_model, key, n_obs, x_init, theta)
+
+(y_meas, y_meas2)
+(x_state, x_state2)
+
+# particle filter specification
+n_particles = 7
+key, subkey = random.split(key)
+# # pf with for-loop
+pf_out1 = pf.particle_filter_for(
+    bm_model, subkey, y_meas, theta, n_particles)
+# pf without for-loop
+pf_out2 = pf.particle_filter(
+    bm_model, subkey, y_meas, theta, n_particles)
+
+max_diff = {
+    k: jnp.max(jnp.abs(pf_out1[k] - pf_out2[k]))
+    for k in pf_out1.keys()
+}
+
+max_diff
+
+# particle smoothing
+# with for-loop
+x_smooth1 = pf.particle_smooth_for(
+    key=key,
+    logw=pf_out1["logw"][n_obs-1],
+    x_particles=pf_out1["x_particles"],
+    ancestors=pf_out1["ancestors"]
+)
+# without for-loop
+x_smooth2 = pf.particle_smooth(
+    key=key,
+    logw=pf_out1["logw"][n_obs-1],
+    x_particles=pf_out1["x_particles"],
+    ancestors=pf_out1["ancestors"]
+)
+
+(x_smooth1,
+ x_smooth2,
+ pf_out1["x_particles"])
+
+# --- particle resampler with mvn ----------------------------------------------
 
 
 def particle_resample_mvn(key, x_particles_prev, logw):
@@ -29,42 +88,6 @@ def particle_resample_mvn(key, x_particles_prev, logw):
     }
 
 
-key = random.PRNGKey(0)
-# parameter values
-mu = 5
-sigma = 1
-tau = .1
-theta = jnp.array([mu, sigma, tau])
-# data specification
-dt = .1
-n_obs = 5
-x_init = jnp.array(0.)
-bm_model = pf.BMModel(dt=dt)
-# simulate without for-loop
-y_meas, x_state = pf.simulate(bm_model, key, n_obs, x_init, theta)
-
-# # check jit
-# y_meas, x_state = jax.jit(pf.simulate, static_argnums=(0, 2))(
-#     bm_model, key, n_obs, x_init, theta)
-
-# particle filter specification
-n_particles = 7
-key, subkey = random.split(key)
-# # pf with for-loop
-pf_out1 = pf.particle_filter_for(
-    bm_model, subkey, y_meas, theta, n_particles)
-# particle_resample_mvn(key,
-#                       x_particles_prev=pf_out1["x_particles"][1],
-#                       logw=pf_out1["logw"][1])
-# pf without for-loop
-pf_out2 = pf.particle_filter(
-    bm_model, subkey, y_meas, theta, n_particles)
-
-breakpoint()
-
-max_diff = {
-    k: jnp.max(jnp.abs(pf_out1[k] - pf_out2[k]))
-    for k in pf_out1.keys()
-}
-
-max_diff
+particle_resample_mvn(key,
+                      x_particles_prev=pf_out1["x_particles"][1],
+                      logw=pf_out1["logw"][1])

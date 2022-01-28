@@ -81,7 +81,6 @@ def particle_filter_for(model, key, y_meas, theta, n_particles):
     This is the testing version which does the following:
 
     - Uses for-loops instead of `lax.scan` and `vmap/xmap`.
-    - Only performs a bootstrap particle filter using `state_sample()` and `meas_lpdf()`.
     - Only does basic particle sampling using `particle_resample_old()`.
     """
     # memory allocation
@@ -115,14 +114,22 @@ def particle_filter_for(model, key, y_meas, theta, n_particles):
         # update
         key, *subkeys = random.split(key, num=n_particles+1)
         for p in range(n_particles):
-            x_particles = x_particles.at[t, p].set(
-                model.state_sample(subkeys[p],
-                                   x_particles[t-1, ancestors[t-1, p]],
-                                   theta)
+            xp, lw = model.pf_step(
+                subkeys[p],
+                x_prev=x_particles[t-1, ancestors[t-1, p]],
+                y_curr=y_meas[t],
+                theta=theta
             )
-            logw = logw.at[t, p].set(
-                model.meas_lpdf(y_meas[t], x_particles[t, p], theta)
-            )
+            x_particles = x_particles.at[t, p].set(xp)
+            logw = logw.at[t, p].set(lw)
+            # x_particles = x_particles.at[t, p].set(
+            #     model.state_sample(subkeys[p],
+            #                        x_particles[t-1, ancestors[t-1, p]],
+            #                        theta)
+            # )
+            # logw = logw.at[t, p].set(
+            #     model.meas_lpdf(y_meas[t], x_particles[t, p], theta)
+            # )
     return {
         "x_particles": x_particles,
         "logw": logw,
@@ -274,13 +281,17 @@ def particle_smooth(key, logw, x_particles, ancestors):
     def fun(carry, t):
         # ancestor particle index
         i_part = ancestors[t, carry["i_part"]]
-        res_carry = {"i_part": i_part}
-        res_stack = {"i_part": i_part, "x_state": x_particles[t, i_part]}
-        return res_carry, res_stack
+        res = {"i_part": i_part}
+        return res, res
+        # res_carry = {"i_part": i_part}
+        # res_stack = {"i_part": i_part, "x_state": x_particles[t, i_part]}
+        # return res_carry, res_stack
     # scan initial value
     init = {
         "i_part": random.choice(key, a=jnp.arange(n_particles), p=prob)
     }
     # lax.scan itself
     last, full = lax.scan(fun, init, jnp.flip(jnp.arange(n_obs-1)))
-    return full
+    # particle indices in forward order
+    i_part = jnp.flip(jnp.append(init["i_part"], full["i_part"]))
+    return x_particles[jnp.arange(n_obs), i_part, ...]  # , i_part

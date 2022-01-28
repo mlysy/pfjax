@@ -35,8 +35,8 @@ def simulate_for(model, key, n_obs, x_init, theta):
         y_meas: The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
         x_state: The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
     """
-    y_meas = jnp.zeros((n_obs, model.n_meas))
-    x_state = jnp.zeros((n_obs, model.n_state))
+    y_meas = jnp.zeros((n_obs, ) + model.n_meas)
+    x_state = jnp.zeros((n_obs, ) + model.n_state)
     x_state = x_state.at[0].set(x_init)
     # initial observation
     key, subkey = random.split(key)
