@@ -85,18 +85,21 @@ def particle_filter_for(model, key, y_meas, theta, n_particles):
     """
     # memory allocation
     n_obs = y_meas.shape[0]
-    x_particles = jnp.zeros((n_obs, n_particles) + model.n_state)
+    # x_particles = jnp.zeros((n_obs, n_particles) + model.n_state)
     logw = jnp.zeros((n_obs, n_particles))
     ancestors = jnp.zeros((n_obs-1, n_particles), dtype=int)
+    x_particles = []
     # # initial particles have no ancestors
     # ancestors = ancestors.at[0].set(-1)
     # initial time point
     key, *subkeys = random.split(key, num=n_particles+1)
+    x_part = []
     for p in range(n_particles):
         xp, lw = model.pf_init(subkeys[p],
                                y_init=y_meas[0],
                                theta=theta)
-        x_particles = x_particles.at[0, p].set(xp)
+        x_part.append(xp)
+        # x_particles = x_particles.at[0, p].set(xp)
         logw = logw.at[0, p].set(lw)
         # x_particles = x_particles.at[0, p].set(
         #     model.init_sample(subkeys[p], y_meas[0], theta)
@@ -104,6 +107,7 @@ def particle_filter_for(model, key, y_meas, theta, n_particles):
         # logw = logw.at[0, p].set(
         #     model.init_logw(x_particles[0, p], y_meas[0], theta)
         # )
+    x_particles.append(x_part)
     # subsequent time points
     for t in range(1, n_obs):
         # resampling step
@@ -113,14 +117,17 @@ def particle_filter_for(model, key, y_meas, theta, n_particles):
         )
         # update
         key, *subkeys = random.split(key, num=n_particles+1)
+        x_part = []
         for p in range(n_particles):
             xp, lw = model.pf_step(
                 subkeys[p],
-                x_prev=x_particles[t-1, ancestors[t-1, p]],
+                # x_prev=x_particles[t-1, ancestors[t-1, p]],
+                x_prev=x_particles[t-1][ancestors[t-1, p]],
                 y_curr=y_meas[t],
                 theta=theta
             )
-            x_particles = x_particles.at[t, p].set(xp)
+            x_part.append(xp)
+            # x_particles = x_particles.at[t, p].set(xp)
             logw = logw.at[t, p].set(lw)
             # x_particles = x_particles.at[t, p].set(
             #     model.state_sample(subkeys[p],
@@ -130,8 +137,9 @@ def particle_filter_for(model, key, y_meas, theta, n_particles):
             # logw = logw.at[t, p].set(
             #     model.meas_lpdf(y_meas[t], x_particles[t, p], theta)
             # )
+        x_particles.append(x_part)
     return {
-        "x_particles": x_particles,
+        "x_particles": jnp.array(x_particles),
         "logw": logw,
         "ancestors": ancestors
     }
