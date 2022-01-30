@@ -24,28 +24,28 @@ import utils
 from jax.config import config
 config.update("jax_enable_x64", True)
 
-class TestInherit(unittest.TestCase):
-    """
-    Check that inheritance from SDEModel works as expected.
-    """
+# class TestInherit(unittest.TestCase):
+#     """
+#     Check that inheritance from SDEModel works as expected.
+#     """
 
-    setUp = utils.lv_setup
+#     setUp = utils.lv_setup
 
-    test_sim = utils.test_models_sim
-    test_loglik = utils.test_models_loglik
-    test_pf = utils.test_models_pf
+#     test_sim = utils.test_models_sim
+#     test_loglik = utils.test_models_loglik
+#     test_pf = utils.test_models_pf
 
 
-class TestJit(unittest.TestCase):
-    """
-    Check whether jit with and without grad gives the same result.
-    """
+# class TestJit(unittest.TestCase):
+#     """
+#     Check whether jit with and without grad gives the same result.
+#     """
 
-    setUp = utils.lv_setup
+#     setUp = utils.lv_setup
 
-    test_sim = utils.test_jit_sim
-    test_pf = utils.test_jit_pf
-    test_loglik = utils.test_jit_loglik
+#     test_sim = utils.test_jit_sim
+#     test_pf = utils.test_jit_pf
+#     test_loglik = utils.test_jit_loglik
 
 
 class TestFor(unittest.TestCase):
@@ -98,6 +98,42 @@ class TestFor(unittest.TestCase):
         lp2 = model.state_lpdf(x_curr, x_prev, theta)
         self.assertAlmostEqual(utils.rel_err(lp1, lp2), 0.0)
 
-
+    def test_bridge(self):
+        key = self.key
+        theta = self.theta
+        x_init = self.x_init
+        model_args = self.model_args
+        n_res = model_args["n_res"]
+        n_obs = self.n_obs
+        n_particles = self.n_particles
+        model = self.Model(**model_args)
+        # generate previous timepoint
+        key, subkey = random.split(key)
+        x_prev = jnp.block([[jnp.zeros((n_res-1, 2))],
+                            [jnp.log(jnp.array([5., 3.]))]])
+        y_meas = jnp.exp(x_prev[-1]) + \
+            theta[6:8] * random.normal(subkey, (x_prev.shape[1],))
+        
+        # bridge proposal using lax.scan
+        x_curr1, logw1 = model.bridge_prop(
+            key=key,
+            x_prev=x_prev,
+            Y=jnp.log(y_meas),
+            theta=theta,
+            A=jnp.eye(2),
+            Omega=jnp.eye(2)
+        )
+        # bridge proposal using for
+        x_curr2, logw2 = model.bridge_prop_for(
+            key=key,
+            x_prev=x_prev,
+            Y=jnp.log(y_meas),
+            theta=theta,
+            A=jnp.eye(2),
+            Omega=jnp.eye(2)
+        )
+        self.assertAlmostEqual(utils.rel_err(x_curr1, x_curr2), 0.0)
+        self.assertAlmostEqual(utils.rel_err(logw1, logw2), 0.0)
+        
 if __name__ == '__main__':
     unittest.main()

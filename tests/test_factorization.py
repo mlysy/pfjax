@@ -3,8 +3,8 @@ Unit tests for the factorizations of pdfs used in the bridge proposal.
 In particular, suppose we are given
 
 ```
-W ~ N(\mu_W, \Sigma_W)
-X | W ~ N(W + \mu_{X|W}, \Sigma_{X|W})
+        W ~ N(\mu_W, \Sigma_W)
+    X | W ~ N(W + \mu_XW, \Sigma_XW)
 Y | X, W ~ N(AX, \Omega)
 ```
 

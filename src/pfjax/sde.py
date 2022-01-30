@@ -404,5 +404,51 @@ class SDEModel(object):
             x_prev=x_prev,
             theta=theta
         )
-        logw = logw + self.meas_lpdf(y_meas, x_curr, theta) - last["lp"]
+        logw = logw + self.meas_lpdf(Y, x_prop, theta) - last["lp"]
         return x_prop, logw
+
+    
+    def bridge_prop_for(self, key, x_prev, Y, theta, A, Omega):
+        """
+        For-loop version of bridge_prop() for testing.
+        """
+
+        dt_res = self._dt / self._n_res
+        x = x_prev[self._n_res - 1]
+        x_prop = []
+        lp_prop = jnp.array(0.0)
+        for t in range(self._n_res):
+            k = self._n_res - t
+            dr = self.drift(x, theta) * dt_res
+            df = self.diff_full(x, theta) * dt_res
+            mu_W = x + dr
+            Sigma_W = df
+            mu_Y = jnp.matmul(A, x + k*dr)
+            AS_W = jnp.matmul(A, Sigma_W)
+            Sigma_Y = k * jnp.linalg.multi_dot([A, df, A.T]) + Omega
+            # solve both linear systems simultaneously
+            sol = jnp.matmul(AS_W.T, jnp.linalg.solve(
+                Sigma_Y, jnp.hstack([jnp.array([Y-mu_Y]).T, AS_W])))
+            mu_bridge = mu_W + jnp.squeeze(sol[:, 0])
+            Sigma_bridge = Sigma_W - sol[:, 1:]
+            # bridge proposal
+            key, subkey = random.split(key)
+            x = random.multivariate_normal(key,
+                                           mean=mu_bridge,
+                                           cov=Sigma_bridge)
+            x_prop.append(x)
+            # bridge log-pdf
+            lp_prop = lp_prop + jsp.stats.multivariate_normal.logpdf(
+                x=x,
+                mean=mu_bridge,
+                cov=Sigma_bridge
+            )
+        x_prop = jnp.array(x_prop)
+        logw = self.state_lpdf(
+            x_curr=x_prop,
+            x_prev=x_prev,
+            theta=theta
+        )
+        logw = logw + self.meas_lpdf(Y, x_prop, theta) - lp_prop
+        return x_prop, logw
+        
