@@ -142,32 +142,6 @@ class PGNETModel(sde.SDEModel):
         tau = theta[8:12]
         return jnp.exp(x_curr[-1]) + tau * random.normal(key, (self._n_state[1],))
 
-    def init_sample(self, key, y_init, theta):
-        """
-        Sampling distribution for initial state variable `x_init`.
-
-        Samples from an importance sampling proposal distribution
-        ```
-        x_init ~ q(x_init) = q(x_init | y_init, theta)
-        ```
-        See `init_logw()` for details.
-
-        Args:
-            y_init: Measurement variable at initial time `t = 0`.
-            theta: Parameter value.
-            key: PRNG key.
-
-        Returns:
-            Sample from the proposal distribution for `x_init`.
-        """
-        tau = theta[8:12]
-        key, subkey = random.split(key)
-        # FIxME: Implement a truncated normal instead of just a normal here
-        x_init = jnp.log(y_init + 
-                tau * random.normal(subkey, (self._n_state[1],)))
-        return jnp.append(jnp.zeros((self._n_res-1,) + x_init.shape),
-                          jnp.expand_dims(x_init, axis=0), axis=0)
-
     def pf_init(self, key, y_init, theta):
         """
         Particle filter calculation for `x_init`.
