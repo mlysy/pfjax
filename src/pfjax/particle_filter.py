@@ -24,7 +24,7 @@ def _lweight_to_prob(logw):
     Args:
         logw ([type]): [description]
     """
-    wgt = jnp.exp(logw - jnp.max(logw))  # jnp.maximum
+    wgt = jnp.exp(logw - jnp.max(logw)) 
     prob = wgt / jnp.sum(wgt)
     return prob
 
@@ -77,9 +77,7 @@ def particle_resample_mvn_for(key, x_particles_prev, logw):
     n_particles = p_shape[0]
     # n_states = p_shape[1] * p_shape[2]  # n_res * n_states
     prob = _lweight_to_prob(logw)
-
     samples = jnp.zeros(p_shape)
-    # FIXME: remove this loop in place of JAX construct
     for i in range(p_shape[1]):
         mu = jnp.average(x_particles_prev[:, i, :], axis=0, weights=prob)
         cov_mat = jnp.cov(jnp.transpose(
