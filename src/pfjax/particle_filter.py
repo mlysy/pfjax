@@ -107,9 +107,11 @@ def particle_resample_mvn(key, x_particles_prev, logw):
                                               shape=(n_particles, 1))
         return jnp.squeeze(_samples)
 
+    # reparameterization trick
     samples = jax.vmap(_mvn_sampler, in_axes=1, out_axes=1)(x_particles_prev)
 
-    ret_val = {"x_particles": samples} # FIXME: find a way to add x_particles_mu to the output
+    ret_val = {"x_particles": samples,
+               "x_particles_mu": jnp.average(samples, axis=0, weights=prob).reshape(-1, )}
     return ret_val
 
 
