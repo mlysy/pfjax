@@ -66,6 +66,8 @@ def particle_resample(key, x_particles_prev, logw):
     ancestors = random.choice(key,
                               a=jnp.arange(n_particles),
                               shape=(n_particles,), p=prob)
+    tmp = x_particles_prev[ancestors, ...]
+    # breakpoint()
     return {
         "x_particles": x_particles_prev[ancestors, ...],
         "ancestors": ancestors
@@ -73,44 +75,52 @@ def particle_resample(key, x_particles_prev, logw):
 
 
 def particle_resample_mvn_for(key, x_particles_prev, logw):
-    p_shape = x_particles_prev.shape
-    n_particles = p_shape[0]
-    # n_states = p_shape[1] * p_shape[2]  # n_res * n_states
+    """ FIXME: for-loop version for testing """
+    n_particles, n_res, n_states = x_particles_prev.shape
+    n_dim = n_res * n_states
     prob = _lweight_to_prob(logw)
-    samples = jnp.zeros(p_shape)
-    for i in range(p_shape[1]):
-        mu = jnp.average(x_particles_prev[:, i, :], axis=0, weights=prob)
-        cov_mat = jnp.cov(jnp.transpose(
-            x_particles_prev[:, i, :]), aweights=prob)
-        _samples = random.multivariate_normal(key, mean=mu,
-                                              cov=cov_mat,
-                                              shape=(n_particles, 1))
-        samples = samples.at[:, i, :].set(jnp.squeeze(_samples))
-    ret_val = {"x_particles": samples,
-               "x_particles_mu": mu}
+    flat = x_particles_prev.reshape((n_particles, n_dim))
+    mu = jnp.average(flat, axis=0, weights=prob)
+    cov_mat = jnp.zeros((n_dim, n_dim))
+    for i in range(n_dim):
+        # cov_mat = cov_mat.at[i, i].set(jnp.cov(flat[:, i], aweights=prob)) # diagonal cov matrix:
+        for j in range(i, n_dim):
+            c = jnp.cov(flat[:, i], flat[:, j], aweights=prob)
+            cov_mat = cov_mat.at[i, j].set(c[0][1])
+            cov_mat = cov_mat.at[j, i].set(cov_mat[i, j])
+    cov_mat += jnp.diag(jnp.ones(n_dim) * 1e-10)  # for numeric stability
+    # print("Is positive definite?: ", np.all(np.linalg.eigvals(cov_mat) >= 0))
+    samples = random.multivariate_normal(key,
+                                         mean=mu,
+                                         cov=cov_mat,
+                                         shape=(n_particles,))
+    ret_val = {"x_particles": samples.reshape(x_particles_prev.shape),
+               "x_particles_mu": mu,
+               "cov_mat": cov_mat}
     return ret_val
 
-
+@jax.jit 
 def particle_resample_mvn(key, x_particles_prev, logw):
-    const_key = random.PRNGKey(0)
-    p_shape = x_particles_prev.shape
+    cont_key = random.PRNGKey(0)
+    wgt = jnp.exp(logw - jnp.max(logw))
+    prob = wgt / jnp.sum(wgt)
+    p_shape = x_particles_prev.shape  
     n_particles = p_shape[0]
-    prob = _lweight_to_prob(logw)
-
-    def _mvn_sampler(x):
-        mu = jnp.average(x, axis=0, weights=prob)
-        cov_mat = jnp.cov(jnp.transpose(x), aweights=prob)
-        _samples = random.multivariate_normal(const_key, mean=mu,
-                                              cov=cov_mat,
-                                              shape=(n_particles, 1))
-        return jnp.squeeze(_samples)
-
-    # reparameterization trick
-    samples = jax.vmap(_mvn_sampler, in_axes=1, out_axes=1)(x_particles_prev)
-
-    ret_val = {"x_particles": samples,
-               "x_particles_mu": jnp.average(samples, axis=0, weights=prob).reshape(-1, )}
-    return ret_val
+    # calculate weighted mean and variance
+    x_particles = jnp.transpose(x_particles_prev.reshape((n_particles, -1)))
+    mvn_mean = jnp.average(x_particles, axis=1, weights=prob)
+    mvn_cov = jnp.atleast_2d(jnp.cov(x_particles, aweights=prob))
+    # for numeric stability
+    mvn_cov += jnp.diag(jnp.ones(p_shape[1]*p_shape[2]) * 1e-10)
+    x_particles = random.multivariate_normal(cont_key,
+                                             mean=mvn_mean,
+                                             cov=mvn_cov,
+                                             shape=(n_particles,))
+    return {
+        "x_particles": jnp.reshape(x_particles, newshape=p_shape),
+        "x_particles_mu": mvn_mean,
+        "x_particles_cov": mvn_cov
+    }
 
 
 def particle_filter_for(model, key, y_meas, theta, n_particles):
@@ -208,7 +218,6 @@ def particle_filter(model, key, y_meas, theta, n_particles,
         x_particles, logw = jax.vmap(
             lambda xs, k: model.pf_step(k, xs, y_meas[t], theta)
         )(new_particles["x_particles"], jnp.array(subkeys))
-        # breakpoint()
         # output
         res_carry = {
             "x_particles": x_particles,
@@ -241,6 +250,7 @@ def particle_filter(model, key, y_meas, theta, n_particles,
     # lax.scan itself
     last, full = lax.scan(fun, init, jnp.arange(1, n_obs))
     # append initial values of x_particles and logw
+    # breakpoint()
     full["x_particles"] = jnp.append(
         jnp.expand_dims(init["x_particles"], axis=0),
         full["x_particles"], axis=0)
@@ -262,7 +272,9 @@ def particle_loglik(logw):
         ```
     """
     n_particles = logw.shape[1]
-    return jnp.sum(jsp.special.logsumexp(logw, axis=1) - jnp.log(n_particles))
+    loglik = jnp.sum(jsp.special.logsumexp(logw, axis=1) - jnp.log(n_particles))
+    # breakpoint()
+    return loglik
 
 
 def particle_smooth_for(key, logw, x_particles, ancestors, n_sample=1):
