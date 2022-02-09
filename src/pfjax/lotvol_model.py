@@ -1,5 +1,6 @@
 """
 Lotka-Volterra predator-prey model.
+
 The model is:
 ```
 exp(x_m0) = exp( (logH_m0, logL_m0) ) ~ pi(x_m0) \propto 1

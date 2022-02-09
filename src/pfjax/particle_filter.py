@@ -17,12 +17,14 @@ from jax import random
 from jax import lax
 from jax.experimental.maps import xmap
 
-@jax.jit
-def _lweight_to_prob(logw):
-    """Returns normalized propabilities from unnormalized log weights
 
+def _lweight_to_prob(logw):
+    """
+    Returns normalized propabilities from unnormalized log weights
     Args:
-        logw ([type]): [description]
+        logw: Vector of `n_particles` unnormalized log-weights.
+    Returns: 
+        Vector of `n_particles` normalized weights that sum to 1.
     """
     wgt = jnp.exp(logw - jnp.max(logw)) 
     prob = wgt / jnp.sum(wgt)
@@ -66,8 +68,6 @@ def particle_resample(key, x_particles_prev, logw):
     ancestors = random.choice(key,
                               a=jnp.arange(n_particles),
                               shape=(n_particles,), p=prob)
-    tmp = x_particles_prev[ancestors, ...]
-    # breakpoint()
     return {
         "x_particles": x_particles_prev[ancestors, ...],
         "ancestors": ancestors
@@ -75,7 +75,7 @@ def particle_resample(key, x_particles_prev, logw):
 
 
 def particle_resample_mvn_for(key, x_particles_prev, logw):
-    """ FIXME: for-loop version for testing """
+    """ for-loop version for testing """
     n_particles, n_res, n_states = x_particles_prev.shape
     n_dim = n_res * n_states
     prob = _lweight_to_prob(logw)
@@ -89,7 +89,6 @@ def particle_resample_mvn_for(key, x_particles_prev, logw):
             cov_mat = cov_mat.at[i, j].set(c[0][1])
             cov_mat = cov_mat.at[j, i].set(cov_mat[i, j])
     cov_mat += jnp.diag(jnp.ones(n_dim) * 1e-10)  # for numeric stability
-    # print("Is positive definite?: ", np.all(np.linalg.eigvals(cov_mat) >= 0))
     samples = random.multivariate_normal(key,
                                          mean=mu,
                                          cov=cov_mat,
@@ -99,8 +98,20 @@ def particle_resample_mvn_for(key, x_particles_prev, logw):
                "cov_mat": cov_mat}
     return ret_val
 
-@jax.jit 
+
 def particle_resample_mvn(key, x_particles_prev, logw):
+    """
+    Particle resampler with Multivariate Normal approximation
+    Args:
+        key: PRNG key.
+        x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
+        logw: Vector of corresponding `n_particles` unnormalized log-weights.
+    Returns:
+        A dictionary with elements:
+            - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.  These are sampled with replacement from `x_particles_prev` with probability vector `exp(logw) / sum(exp(logw))`.
+            - `x_particles_mu`: Vector of `n_res * n_state` representing the mean of the MVN
+            - `x_particles_cov`: Matrix of `n_res * n_state` representing the covariance matrix of the MVN            
+    """
     cont_key = random.PRNGKey(0)
     wgt = jnp.exp(logw - jnp.max(logw))
     prob = wgt / jnp.sum(wgt)
@@ -273,7 +284,6 @@ def particle_loglik(logw):
     """
     n_particles = logw.shape[1]
     loglik = jnp.sum(jsp.special.logsumexp(logw, axis=1) - jnp.log(n_particles))
-    # breakpoint()
     return loglik
 
 
