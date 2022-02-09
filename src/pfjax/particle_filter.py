@@ -21,8 +21,10 @@ from jax.experimental.maps import xmap
 def _lweight_to_prob(logw):
     """
     Returns normalized propabilities from unnormalized log weights
+
     Args:
         logw: Vector of `n_particles` unnormalized log-weights.
+    
     Returns: 
         Vector of `n_particles` normalized weights that sum to 1.
     """
@@ -36,9 +38,11 @@ def particle_resample_old(key, logw):
     Particle resampler.
     This basic one just does a multinomial sampler, i.e., sample with replacement proportional to weights.
     Old API, to be depreciated after testing against `particle_filter_for()`.
+    
     Args:
         key: PRNG key.
         logw: Vector of `n_particles` unnormalized log-weights.
+
     Returns:
         Vector of `n_particles` integers between 0 and `n_particles-1`, sampled with replacement with probability vector `exp(logw) / sum(exp(logw))`.
     """
@@ -54,10 +58,12 @@ def particle_resample(key, x_particles_prev, logw):
     """
     Particle resampler.
     This basic one just does a multinomial sampler, i.e., sample with replacement proportional to weights.
+
     Args:
         key: PRNG key.
         x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
         logw: Vector of corresponding `n_particles` unnormalized log-weights.
+    
     Returns:
         A dictionary with elements:
             - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.  These are sampled with replacement from `x_particles_prev` with probability vector `exp(logw) / sum(exp(logw))`.
@@ -102,10 +108,12 @@ def particle_resample_mvn_for(key, x_particles_prev, logw):
 def particle_resample_mvn(key, x_particles_prev, logw):
     """
     Particle resampler with Multivariate Normal approximation
+    
     Args:
         key: PRNG key.
         x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
         logw: Vector of corresponding `n_particles` unnormalized log-weights.
+
     Returns:
         A dictionary with elements:
             - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.  These are sampled with replacement from `x_particles_prev` with probability vector `exp(logw) / sum(exp(logw))`.
@@ -143,12 +151,14 @@ def particle_filter_for(model, key, y_meas, theta, n_particles):
     - Only performs a bootstrap particle filter using `state_sample()` and `meas_lpdf()`.
     - Only does basic particle sampling using `particle_resample_old()`.
     **FIXME:** Move this to the `tests` module.
+
     Args:
         model: Object specifying the state-space model.
         key: PRNG key.
         y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
         theta: Parameter value.
         n_particles: Number of particles.
+
     Returns:
         A dictionary with elements:
             - `x_particles`: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
@@ -201,6 +211,7 @@ def particle_filter(model, key, y_meas, theta, n_particles,
     """
     Apply particle filter for given value of `theta`.
     Closely follows Algorithm 2 of https://arxiv.org/pdf/1306.3277.pdf.
+
     Args:
         model: Object specifying the state-space model.
         key: PRNG key.
@@ -208,6 +219,7 @@ def particle_filter(model, key, y_meas, theta, n_particles,
         theta: Parameter value.
         n_particles: Number of particles.
         particle_sampler: Function used at step `t` to obtain sample of particles from `p(x_{t-1} | y_{0:t-1}, theta)`.  The inputs to the function are `particle_sampler(x_particles, logw, key)`, and the return value is a dictionary with mandatory element `x_particles` and optional elements that get stacked to the final output using `lax.scan()`.  Default value is `particle_resample()`.
+
     Returns:
         A dictionary with elements:
             - `x_particles`: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
@@ -274,8 +286,10 @@ def particle_filter(model, key, y_meas, theta, n_particles,
 def particle_loglik(logw):
     """
     Calculate particle filter marginal loglikelihood.
+
     Args:
         logw: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
+    
     Returns:
         Particle filter approximation of
         ```
@@ -294,12 +308,14 @@ def particle_smooth_for(key, logw, x_particles, ancestors, n_sample=1):
     **FIXME:** 
     - Currently written in numpy...
     - Will probably need to change inputs to "generalize" to other resampling methods.
+
     Args:
         key: PRNG key.
         logw: Vector of `n_particles` unnormalized log-weights at the last time point `t = n_obs-1`.
         x_particles: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.        
         ancestors: An integer `ndarray` of shape `(n_obs, n_particles)` where each element gives the index of the particle's ancestor at the previous time point.
         n_sample: Number of draws of `x_state` to return.
+
     Returns:
         An `ndarray` with leading dimension `n_sample` corresponding to as many samples from the particle filter approximation to the posterior distribution `p(x_state | x_meas, theta)`.
     """

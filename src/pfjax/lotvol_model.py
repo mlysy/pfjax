@@ -2,6 +2,7 @@
 Lotka-Volterra predator-prey model.
 
 The model is:
+
 ```
 exp(x_m0) = exp( (logH_m0, logL_m0) ) ~ pi(x_m0) \propto 1
 logH_mt ~ N(logH_{m,t-1} + (alpha - beta exp(logL_{m,t-1})) dt/m,
@@ -10,22 +11,28 @@ logL_mt ~ N(logL_{m,t-1} + (-gamma + delta exp(logH_{m,t-1})) dt/m,
             sigma_L^2 dt/m)
 y_t ~ N( exp(x_{m,mt}), diag(tau_H^2, tau_L^2) )
 ```
+
 - Model parameters: `theta = (alpha, beta, gamma, delta, sigma_H, sigma_L, tau_H, tau_L)`.
 - Global constants: `dt` and `n_res`, i.e., `m`.
 - State dimensions: `n_state = (n_res, 2)`.
 - Measurement dimensions: `n_meas = 2`.
+
 **Notes:**
 - The measurement `y_t` corresponds to `x_t = (x_{m,(t-1)m+1}, ..., x_{m,tm})`, i.e., aligns with the last element of `x_t`.
 - The prior is such that `p(x_0 | y_0, theta)` is given by:
+
     ```
     x_{m,n} = 0 for n = -m+1, ..., -1,
     exp(x_{m0}) ~ TruncatedNormal( y_0, diag(tau_H^2, tau_L^2) ),
     ```
+
     where
+
     ```
     z ~ TruncatedNormal(mu, diag(sigma^2)) <=>
     z = mu + diag(sigma) Z_0,   Z_0 ~iid N(0,1) truncated at -mu.
     ```
+
 """
 
 import jax
