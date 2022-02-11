@@ -49,7 +49,6 @@ def Teps(a, f, c, eps):
 def potentials(a, b, u, v, eps, n_iter):
     """
     Sinkhorn algorithm as described in Corenflos et al (2021).
-
     Returns f, g, P, and C.
     """
     n = a.size
