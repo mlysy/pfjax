@@ -5,7 +5,7 @@ import jax.scipy as jsp
 import jax.random as random
 import pfjax as pf
 import pfjax.sde
-import lotvol_model as lv
+# import lotvol_model as lv
 
 
 key = random.PRNGKey(0)
@@ -26,11 +26,26 @@ n_obs = 7
 x_init = jnp.block([[jnp.zeros((n_res-1, 2))],
                     [jnp.log(jnp.array([5., 3.]))]])
 # simulate with inherited class
+lv_model = pf.LotVolModel(dt=dt, n_res=n_res)
+y_meas, x_state = pf.simulate(lv_model, key, n_obs, x_init, theta)
+
+# bridge proposal
+lv_model.bridge_step(
+    key=key,
+    x_prev=x_state[0],
+    Y=jnp.log(y_meas[1]),
+    theta=theta,
+    A=jnp.eye(2),
+    Omega=jnp.eye(2)
+)
+
+
+# simulate with inherited class
 lv_model1 = pf.LotVolModel(dt=dt, n_res=n_res)
-y_meas1, x_state1 = pf.simulate(lv_model1, n_obs, x_init, theta, key)
+y_meas1, x_state1 = pf.simulate(lv_model1, key, n_obs, x_init, theta)
 # simulate with non-inherited class
 lv_model2 = lv.LotVolModel(dt=dt, n_res=n_res)
-y_meas2, x_state2 = pf.simulate(lv_model2, n_obs, x_init, theta, key)
+y_meas2, x_state2 = pf.simulate(lv_model2, key, n_obs, x_init, theta)
 
 y_meas1 - y_meas2
 x_state1 - x_state2
