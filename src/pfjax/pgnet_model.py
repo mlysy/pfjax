@@ -72,7 +72,7 @@ class PGNETModel(sde.SDEModel):
         """
         Calculates the SDE drift function.
         """
-        x = jnp.exp(x)
+        #x = jnp.exp(x)
         K = self._K
         mu = self.premu(x, theta, K)
         Sigma  = self.preSigma(x, theta, K)
@@ -83,13 +83,13 @@ class PGNETModel(sde.SDEModel):
         f_pp = jnp.array([-1/x[0]/x[0], -1/x[1]/x[1], -1/x[2]/x[2], -1/x[3]/x[3]])
         
         mu_trans = f_p * mu + 0.5 * f_pp * jnp.diag(Sigma)
-        return mu_trans
+        return mu
 
     def diff(self, x, theta):
         """
         Calculates the SDE diffusion function.
         """
-        x = jnp.exp(x)
+        #x = jnp.exp(x)
         K = self._K
         Sigma = self.preSigma(x, theta, K)
 
@@ -97,7 +97,7 @@ class PGNETModel(sde.SDEModel):
         f_p = jnp.array([1/x[0], 1/x[1], 1/x[2], 1/x[3]])
         Sigma_trans = jnp.outer(f_p, f_p) * Sigma
 
-        return Sigma_trans
+        return Sigma
 
     # def drift(self, x, theta):
     #     K = self.K
@@ -124,7 +124,7 @@ class PGNETModel(sde.SDEModel):
         """
         tau = theta[8:12]
         return jnp.sum(
-            jsp.stats.norm.logpdf(y_curr, loc=jnp.exp(x_curr[-1]), scale=tau)
+            jsp.stats.norm.logpdf(y_curr, loc=x_curr[-1], scale=tau)
         )
 
     def meas_sample(self, key, x_curr, theta):
@@ -140,7 +140,7 @@ class PGNETModel(sde.SDEModel):
             Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
         """
         tau = theta[8:12]
-        return jnp.exp(x_curr[-1]) + tau * random.normal(key, (self._n_state[1],))
+        return x_curr[-1] + tau * random.normal(key, (self._n_state[1],))
 
     def pf_init(self, key, y_init, theta):
         """
@@ -178,7 +178,7 @@ class PGNETModel(sde.SDEModel):
         #     jnp.zeros(())
 
         key, subkey = random.split(key)
-        x_init = jnp.log(y_init + tau * random.truncated_normal(
+        x_init = (y_init + tau * random.truncated_normal(
             subkey,
             lower=-y_init/tau,
             upper=jnp.inf,
@@ -189,3 +189,24 @@ class PGNETModel(sde.SDEModel):
             jnp.append(jnp.zeros((self._n_res-1,) + x_init.shape),
                        jnp.expand_dims(x_init, axis=0), axis=0), \
             logw
+
+    def pf_step(self, key, x_prev, y_curr, theta, method='boot'):
+        """
+        Choose between bootstrap filter and bridge proposal.
+
+        Args:
+            x_prev: State variable at previous time `t-1`.
+            y_curr: Measurement variable at current time `t`.
+            theta: Parameter value.
+            key: PRNG key.
+            method: Bootstrap filter or bridge proposal.
+
+        Returns:
+            - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
+            - logw: The log-weight of `x_curr`.
+        """
+        if method == 'boot':
+            x_curr, logw = super().pf_step(key, x_prev, y_curr, theta)
+        else:
+            x_curr, logw = self.bridge_prop(key, x_prev, y_curr, theta, jnp.eye(4), jnp.diag(theta[8:]**2))
+        return x_curr, logw

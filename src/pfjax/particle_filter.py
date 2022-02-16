@@ -146,7 +146,7 @@ def particle_filter_for(model, key, y_meas, theta, n_particles):
 
 
 def particle_filter(model, key, y_meas, theta, n_particles,
-                    particle_sampler=particle_resample):
+                    particle_sampler=particle_resample, method='boot'):
     """
     Apply particle filter for given value of `theta`.
 
@@ -179,7 +179,7 @@ def particle_filter(model, key, y_meas, theta, n_particles,
         # update particles to current time point (and get weights)
         key, *subkeys = random.split(key, num=n_particles+1)
         x_particles, logw = jax.vmap(
-            lambda xs, k: model.pf_step(k, xs, y_meas[t], theta)
+            lambda xs, k: model.pf_step(k, xs, y_meas[t], theta, method)
         )(new_particles["x_particles"], jnp.array(subkeys))
         # breakpoint()
         # output
