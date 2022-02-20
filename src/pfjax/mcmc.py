@@ -202,6 +202,6 @@ def mwg_adapt(rw_sd, accept_rate, n_iter,
 
     targ_acc = 0.44  # target acceptance rate
     delta = jnp.power(n_iter, -adapt_rate)
-    delta = jnp.maximum(delta, adapt_max)
-    low_acc = jnp.less(accept_rate, targ_acc)
-    return jnp.exp(jnp.log(rw_sd) - delta * low_acc + (not delta) * low_acc)
+    delta = jnp.minimum(delta, adapt_max)
+    low_acc = jnp.sign(targ_acc - accept_rate)
+    return jnp.exp(jnp.log(rw_sd) - delta * low_acc)
