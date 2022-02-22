@@ -259,7 +259,6 @@ def particle_loglik(logw):
         log p(y_meas | theta) = log int p(y_meas | x_state, theta) * p(x_state | theta) dx_state
         ```
     """
-<<<<<<< HEAD:tests/particle_filter.py
     return jnp.sum(jsp.special.logsumexp(logw_particles, axis=1))
 
 
@@ -309,6 +308,3 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
         params = update_fn(params, subkey)
         print(params)
     return params
-=======
-    return jnp.sum(jsp.special.logsumexp(logw, axis=1))
->>>>>>> 7dec00da2b81f2735a58aa1f5def7fceba521f31:tests/deprecated/particle_filter.py
