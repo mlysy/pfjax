@@ -89,7 +89,7 @@ class PGNETModel(sde.SDEModel):
         """
         Calculates the SDE diffusion function.
         """
-        #x = jnp.exp(x)
+        x = jnp.exp(x)
         K = self._K
         Sigma = self.preSigma(x, theta, K)
 
