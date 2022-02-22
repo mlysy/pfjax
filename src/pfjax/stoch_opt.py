@@ -43,6 +43,19 @@ def get_sum_lweights_mvn(theta, key, n_particles, y_meas, model):
 
 def update_params(params, subkey, opt_state, grad_fun=None, n_particles=100, y_meas=None, model=None, learning_rate=0.01, mask=None,
                   optimizer=None, **kwargs):
+    '''
+    Args:
+        params: A jnp.array that represents the values of the parameters before the gradient update.
+        subkey: The subkey for the current loop iteration.
+        opt_state: The optimizer state of the parameters.
+        grad_fun: The function with which to take the gradients with respect to.
+        n_particles: The number of particles for the particle filter.
+        y_meas: The observed data `y_meas`
+        model: The model class which has the predefined methods to run the forward pass.
+        learning_rate: The learning rate for the stochastic optimization method.
+        mask: A mask (0 or 1 vector) which represents the parameters that we wish to update in an iteration.
+        optimizer: The choice of stochastic optimizer (e.g. Adam/Adagrad)
+    '''
     params_update = jax.grad(grad_fun, argnums=0)(
         params, subkey, n_particles, y_meas, model)
     params_update = jnp.where(mask, params_update, 0)
