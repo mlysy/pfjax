@@ -101,7 +101,7 @@ def particle_resample_mvn_for(key, x_particles_prev, logw):
                                          shape=(n_particles,))
     ret_val = {"x_particles": samples.reshape(x_particles_prev.shape),
                "x_particles_mu": mu,
-               "cov_mat": cov_mat}
+               "x_particles_cov": cov_mat}
     return ret_val
 
 
@@ -121,8 +121,7 @@ def particle_resample_mvn(key, x_particles_prev, logw):
             - `x_particles_cov`: Matrix of `n_res * n_state` representing the covariance matrix of the MVN            
     """
     cont_key = random.PRNGKey(0)
-    wgt = jnp.exp(logw - jnp.max(logw))
-    prob = wgt / jnp.sum(wgt)
+    prob = _lweight_to_prob(logw)
     p_shape = x_particles_prev.shape  
     n_particles = p_shape[0]
     # calculate weighted mean and variance

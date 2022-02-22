@@ -60,6 +60,28 @@ def test_setup():
     return key, theta, dt, n_obs, x_init
 
 
+def lotvol_test_setup():
+    """
+    Creates input arguments to tests for lotvol model.
+    """
+    key = random.PRNGKey(0)
+    # parameter values
+    alpha = 1.0
+    beta = 1.0
+    gamma = 4.0
+    delta = 1.0
+    sigma_h = 0.1
+    sigma_l = 0.1
+    tau_h = 0.25  # low noise = 0.1
+    tau_l = 0.25  # low noise = 0.1
+    theta = np.array([alpha, beta, gamma, delta, sigma_h, sigma_l, tau_h, tau_l])
+    dt = 0.1
+    n_res = 5
+    n_obs = 50
+    x_init = jnp.block([[jnp.zeros((n_res-1, 2))],
+                        [jnp.log(jnp.array([5., 3.]))]])
+    return key, theta, dt, n_obs, n_res, x_init
+
 class TestFor(unittest.TestCase):
     """
     Test whether for-loop version of functions is identical to xmap/scan version.
@@ -156,6 +178,72 @@ class TestFor(unittest.TestCase):
 #         for k in pf_out1.keys():
 #             with self.subTest(k=k):
 #                 self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+
+
+class TestMVN(unittest.TestCase):
+    """
+    Test whether for-loop version of MVN sampling function is identical to xmap/scan version.
+    """
+
+    # def BM_test_pf_mvn(self):
+    #     key, theta, dt, n_obs, x_init = test_setup()
+    #     model = pf.BMModel(dt=dt)
+    #     # simulate without for-loop
+    #     y_meas, x_state = pf.simulate(model, key, n_obs, x_init, theta)
+    #     # particle filter specification
+    #     n_particles = 7
+    #     key, subkey = random.split(key)
+    #     # pf with for-loop MVN sampling
+    #     pf_out1 = pf.particle_filter(
+    #         model, 
+    #         subkey,
+    #         y_meas, 
+    #         theta, 
+    #         n_particles,
+    #         particle_sampler=pf.particle_resample_mvn_for)
+    #     # pf without for-loop for MVN sampling
+    #     pf_out2 = pf.particle_filter(
+    #         model,
+    #         subkey, 
+    #         y_meas, 
+    #         theta, 
+    #         n_particles,
+    #         particle_sampler = pf.particle_resample_mvn)
+    #     for k in pf_out1.keys():
+    #         with self.subTest(k=k):
+    #             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+
+    def lotvol_test_pf_mvn(self):
+        key, theta, dt, n_obs, n_res, x_init = lotvol_test_setup()
+        model = pf.LotVolModel(dt, n_res)
+        # simulate without for-loop
+        y_meas, x_state = pf.simulate(model, key, n_obs, x_init, theta)
+        # particle filter specification
+        n_particles = 10
+        key, subkey = random.split(key)
+        # pf with for-loop MVN sampling
+        pf_out1 = pf.particle_filter(
+            model, 
+            subkey,
+            y_meas, 
+            theta, 
+            n_particles,
+            particle_sampler=pf.particle_resample_mvn_for)
+        # pf without for-loop for MVN sampling
+        pf_out2 = pf.particle_filter(
+            model,
+            subkey, 
+            y_meas, 
+            theta, 
+            n_particles,
+            particle_sampler = pf.particle_resample_mvn)
+        print(pf_out2.keys())
+        print(pf_out1.keys())
+        for k in pf_out1.keys():
+            with self.subTest(k=k):
+                self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+
+
 
 
 class TestJit(unittest.TestCase):
