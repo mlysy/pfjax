@@ -1,6 +1,8 @@
 """
 Generic methods for SDEs.
+
 **Notes:**
+
 - `euler_{sim/lpdf}_{diag/var}()` are designed to be used independently of the SDE base class.  If we abandon this requirement then we can avoid quite a bit of code duplication by having these functions do one data point only and putting the `vmap`/`scan` constructs into the `state_{sample/lpdf}` methods.
 """
 
@@ -37,6 +39,7 @@ def mvn_bridge_pars(mu_W, Sigma_W, mu_XW, Sigma_XW, Y, A, Omega):
 def euler_sim_diag(key, n_steps, x, dt, drift, diff, theta):
     """
     Simulate SDE with diagonal diffusion using Euler-Maruyama discretization.
+
     Args:
         key: PRNG key.
         n_steps: Number of steps to simulate.
@@ -45,6 +48,7 @@ def euler_sim_diag(key, n_steps, x, dt, drift, diff, theta):
         drift: Drift function having signature `drift(x, theta)` and returning a vector of size `n_dims`.
         diff: Diffusion function having signature `diff(x, theta)` and returning a vector of size `n_dims`.
         theta: Parameter value.
+    
     Returns:
         Simulated SDE values in a matrix of size `n_steps x n_dims`.
     """
@@ -69,12 +73,14 @@ def euler_sim_diag(key, n_steps, x, dt, drift, diff, theta):
 def euler_lpdf_diag(x, dt, drift, diff, theta):
     """
     Calculate the log PDF of observations from an SDE with diagonal diffusion using the Euler-Maruyama discretization.
+
     Args:
         x: SDE observations.  An array of size `n_obs x n_dims`.
         dt: Interobservation time.
         drift: Drift function having signature `drift(x, theta)` and returning a vector of size `n_dims`.
         diff: Diffusion function having signature `diff(x, theta)` and returning a vector of size `n_dims`.
         theta: Parameter value.
+    
     Returns:
         The log-density of the SDE observations.
     """
@@ -92,16 +98,21 @@ def euler_lpdf_diag(x, dt, drift, diff, theta):
 class SDEModel(object):
     """
     Base class for SDE models.
+
     This class should set up a PF model class with methods `state_lpdf()`, `state_sim()`, and `pf_step()`,  with the user only needing to specify SDE drift and diffusion functions, and whether the diffusion is on the `diag` scale.
+
     For the latter, methods `euler_sim()` and `euler_lpdf()` are supplied at instantiation time from either `euler_{sim/lpdf}_diag()` or `euler_{sim/lpdf}_var()`, with arguments identical to those of the free functions except `drift` and `diff`, which are supplied by `self.drift()` and `self.diff()`.  Hopefully this won't be a problem when we come to jitting, gradding, etc.
     For `pf_step()`, a bootstrap filter is assumed, for which the user needs to specify `meas_lpdf()`.
+
     **Notes:**
+
     - Currently contains `state_sample_for()` and `state_lpdf_for()` for testing purposes.  May want to move these elsewhere at some point to obfuscate from users...
     """
 
     def __init__(self, dt, n_res, diff_diag):
         """
         Class constructor.
+
         Args:
             dt: SDE interobservation time.
             n_res: SDE resolution number.  There are `n_res` latent variables per observation, equally spaced with interobservation time `dt/n_res`.
@@ -146,10 +157,12 @@ class SDEModel(object):
     def state_lpdf(self, x_curr, x_prev, theta):
         """
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
+
         Args:
             x_curr: State variable at current time `t`.
             x_prev: State variable at previous time `t-1`.
             theta: Parameter value.
+
         Returns:
             The log-density of `p(x_curr | x_prev, theta)`.
         """
@@ -162,10 +175,12 @@ class SDEModel(object):
         """
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
         For-loop version for testing.
+
         Args:
             x_curr: State variable at current time `t`.
             x_prev: State variable at previous time `t-1`.
             theta: Parameter value.
+
         Returns:
             The log-density of `p(x_curr | x_prev, theta)`.
         """
@@ -192,10 +207,12 @@ class SDEModel(object):
     def state_sample(self, key, x_prev, theta):
         """
         Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
+
         Args:
             key: PRNG key.
             x_prev: State variable at previous time `t-1`.
             theta: Parameter value.
+
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
@@ -211,10 +228,12 @@ class SDEModel(object):
         """
         Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
         For-loop version for testing.
+
         Args:
             key: PRNG key.
             x_prev: State variable at previous time `t-1`.
             theta: Parameter value.
+
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
@@ -240,11 +259,13 @@ class SDEModel(object):
         """
         Update particle and calculate log-weight for a bootstrap particle filter.
         **FIXME:** This method is completely generic, i.e., is not specific to SDEs.  May wish to put it elsewhere...
+
         Args:
             x_prev: State variable at previous time `t-1`.
             y_curr: Measurement variable at current time `t`.
             theta: Parameter value.
             key: PRNG key.
+
         Returns:
             - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
             - logw: The log-weight of `x_curr`.

@@ -1,13 +1,17 @@
 """
 Particle filter in JAX.
+
 The API requires the user to define a model class with the following methods:
+
 - `pf_init()`
 - `pf_step()`
+
 The provided functions are:
 - `particle_filter()`
 - `particle_loglik()`
 - `particle_smooth()`
 - `particle_resample()`
+
 """
 
 import jax
@@ -36,9 +40,11 @@ def _lweight_to_prob(logw):
 def particle_resample_old(key, logw):
     """
     Particle resampler.
+
     This basic one just does a multinomial sampler, i.e., sample with replacement proportional to weights.
-    Old API, to be depreciated after testing against `particle_filter_for()`.
     
+    Old API, to be depreciated after testing against `particle_filter_for()`.
+
     Args:
         key: PRNG key.
         logw: Vector of `n_particles` unnormalized log-weights.
@@ -57,13 +63,14 @@ def particle_resample_old(key, logw):
 def particle_resample(key, x_particles_prev, logw):
     """
     Particle resampler.
+
     This basic one just does a multinomial sampler, i.e., sample with replacement proportional to weights.
 
     Args:
         key: PRNG key.
         x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
         logw: Vector of corresponding `n_particles` unnormalized log-weights.
-    
+
     Returns:
         A dictionary with elements:
             - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.  These are sampled with replacement from `x_particles_prev` with probability vector `exp(logw) / sum(exp(logw))`.
@@ -81,7 +88,20 @@ def particle_resample(key, x_particles_prev, logw):
 
 
 def particle_resample_mvn_for(key, x_particles_prev, logw):
-    """ for-loop version for testing """
+    """
+    Particle resampler with Multivariate Normal approximation using for-loop for testing
+    
+    Args:
+        key: PRNG key.
+        x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
+        logw: Vector of corresponding `n_particles` unnormalized log-weights.
+
+    Returns:
+        A dictionary with elements:
+            - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.  These are sampled with replacement from `x_particles_prev` with probability vector `exp(logw) / sum(exp(logw))`.
+            - `x_particles_mu`: Vector of `n_res * n_state` representing the mean of the MVN
+            - `x_particles_cov`: Matrix of `n_res * n_state` representing the covariance matrix of the MVN            
+    """
     const_key = random.PRNGKey(0)
     particle_shape = x_particles_prev.shape
     n_particles = particle_shape[0]
@@ -152,6 +172,7 @@ def particle_filter_for(model, key, y_meas, theta, n_particles):
     Closely follows Algorithm 2 of https://arxiv.org/pdf/1306.3277.pdf.
     
     This is the testing version which does the following:
+
     - Uses for-loops instead of `lax.scan` and `vmap/xmap`.
     - Only does basic particle sampling using `particle_resample_old()`.
 
@@ -234,6 +255,7 @@ def particle_filter(model, key, y_meas, theta, n_particles,
                     particle_sampler=particle_resample):
     """
     Apply particle filter for given value of `theta`.
+
     Closely follows Algorithm 2 of https://arxiv.org/pdf/1306.3277.pdf.
 
     Args:
@@ -297,7 +319,6 @@ def particle_filter(model, key, y_meas, theta, n_particles,
     # lax.scan itself
     last, full = lax.scan(fun, init, jnp.arange(1, n_obs))
     # append initial values of x_particles and logw
-    # breakpoint()
     full["x_particles"] = jnp.append(
         jnp.expand_dims(init["x_particles"], axis=0),
         full["x_particles"], axis=0)
@@ -313,7 +334,7 @@ def particle_loglik(logw):
 
     Args:
         logw: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
-    
+
     Returns:
         Particle filter approximation of
         ```
@@ -321,8 +342,7 @@ def particle_loglik(logw):
         ```
     """
     n_particles = logw.shape[1]
-    loglik = jnp.sum(jsp.special.logsumexp(logw, axis=1) - jnp.log(n_particles))
-    return loglik
+    return jnp.sum(jsp.special.logsumexp(logw, axis=1) - jnp.log(n_particles))
 
 
 def particle_neg_loglik(theta, key, n_particles, y_meas, model):
@@ -362,6 +382,11 @@ def particle_neg_loglik_mvn(theta, key, n_particles, y_meas, model):
 
 
 def particle_smooth_for(key, logw, x_particles, ancestors, n_sample=1):
+    """
+    Draw a sample from `p(x_state | x_meas, theta)` using the basic particle smoothing algorithm.
+
+    For-loop version for testing.
+    """
     wgt = jnp.exp(logw - jnp.max(logw))
     prob = wgt / jnp.sum(wgt)
     n_particles = logw.size
