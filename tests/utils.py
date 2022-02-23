@@ -113,34 +113,6 @@ def test_for_pf(self):
             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
 
 
-def test_for_pf_mvn (self):
-    """ particle filter with mvn """
-    # un-self setUp members
-    key = self.key
-    theta = self.theta
-    x_init = self.x_init
-    model_args = self.model_args
-    n_obs = self.n_obs
-    n_particles = self.n_particles
-    model = self.Model(**model_args)
-    # simulate without for-loop
-    key, subkey = random.split(key)
-    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
-    # particle filter specification
-    key, subkey = random.split(key)
-    # pf with for-loop
-    pf_out1 = pf.particle_filter(
-        model, subkey, y_meas, theta, n_particles,
-        particle_sampler = pf.particle_resample_mvn_for)
-    # pf without for-loop
-    pf_out2 = pf.particle_filter(
-        model, subkey, y_meas, theta, n_particles,
-        particle_sampler = pf.particle_resample_mvn)
-    for k in pf_out1.keys():
-        with self.subTest(k=k):
-            self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
-
-
 def test_for_mvn_resampler (self):
     """ particle filter with mvn resampling function test """
     # un-self setUp members
@@ -158,7 +130,6 @@ def test_for_mvn_resampler (self):
     key, *subkeys = random.split(key, num=n_particles+1)
     x_particles, logw = jax.vmap(
         lambda k: model.pf_init(k, y_meas[0], theta))(jnp.array(subkeys))
-    print(x_particles.shape)
     new_particles_for = pf.particle_resample_mvn_for(
         subkey,
         x_particles,
