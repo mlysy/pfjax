@@ -51,16 +51,21 @@ y_meas, x_state = pf.simulate(model=lotvol_model,
 
 n_particles = 50
 
+pf_out1 = pf.particle_filter(lotvol_model, subkey,
+                                y_meas, theta, n_particles,
+                                particle_sampler = pf.particle_resample_mvn)
+
+print(pf_out1)
 # breakpoint()
 
-params = stoch_opt(model = lotvol_model, 
-                #    params = jnp.array([1.,1., 4., 1., 0.1, 0.1, 0.25, 0.25]), 
-                   params = jnp.array([1.00001, 1.00001, 3.99999, 1.00001, 0.09999, 0.09999, 0.24999, 0.25001]),
-                   grad_fun=particle_neg_loglik,
-                   y_meas = y_meas, key=key, 
-                   n_particles=n_particles,
-                   learning_rate=1e-5, 
-                   iterations=10,
-mask=np.array([1,1,1,1,1,1,1,1]))
-print(params)
+# params = stoch_opt(model = lotvol_model, 
+#                 #    params = jnp.array([1.,1., 4., 1., 0.1, 0.1, 0.25, 0.25]), 
+#                    params = jnp.array([1.00001, 1.00001, 3.99999, 1.00001, 0.09999, 0.09999, 0.24999, 0.25001]),
+#                    grad_fun=particle_neg_loglik,
+#                    y_meas = y_meas, key=key, 
+#                    n_particles=n_particles,
+#                    learning_rate=1e-5, 
+#                    iterations=10,
+# mask=np.array([1,1,1,1,1,1,1,1]))
+# print(params)
 

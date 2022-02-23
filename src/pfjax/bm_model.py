@@ -20,9 +20,9 @@ from jax import random
 
 class BMModel:
     def __init__(self, dt):
-        self.n_state = 1
-        self.n_meas = 1
-        self.dt = dt
+        self.n_state = ()
+        self.n_meas = ()
+        self._dt = dt
 
     def state_lpdf(self, x_curr, x_prev, theta):
         """
@@ -39,8 +39,8 @@ class BMModel:
         mu = theta[0]
         sigma = theta[1]
         return jnp.squeeze(
-            jsp.stats.norm.logpdf(x_curr, loc=x_prev + mu * self.dt,
-                                  scale=sigma * jnp.sqrt(self.dt))
+            jsp.stats.norm.logpdf(x_curr, loc=x_prev + mu * self._dt,
+                                  scale=sigma * jnp.sqrt(self._dt))
         )
 
     def state_sample(self, key, x_prev, theta):
@@ -57,8 +57,8 @@ class BMModel:
         """
         mu = theta[0]
         sigma = theta[1]
-        x_mean = x_prev + mu * self.dt
-        x_sd = sigma * jnp.sqrt(self.dt)
+        x_mean = x_prev + mu * self._dt
+        x_sd = sigma * jnp.sqrt(self._dt)
         return x_mean + x_sd * random.normal(key=key)
 
     def meas_lpdf(self, y_curr, x_curr, theta):
@@ -161,7 +161,7 @@ class BMModel:
             - x_init: A sample from the proposal distribution for `x_init`.
             - logw: The log-weight of `x_init`.
         """
-        return self.meas_sample(key, y_init, theta), jnp.zeros(())
+        return self.meas_sample(key, y_init, theta).reshape(-1, 1), jnp.zeros(())
 
     def pf_step(self, key, x_prev, y_curr, theta):
         """
