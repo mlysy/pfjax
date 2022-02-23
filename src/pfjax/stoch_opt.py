@@ -70,3 +70,4 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
     for subkey in keys:
         params = update_fn(params, subkey, opt_state)
     return params 
+    
