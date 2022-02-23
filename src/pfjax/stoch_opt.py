@@ -14,7 +14,7 @@ from pfjax import particle_loglik, particle_filter, particle_resample_mvn
 
 
 def update_params(params, subkey, opt_state, grad_fun=None, n_particles=100, y_meas=None, model=None, learning_rate=0.01, mask=None,
-                  optimizer=None, **kwargs):
+                  optimizer=None):
     '''
     Args:
         params: A jnp.array that represents the values of the parameters before the gradient update.
@@ -33,16 +33,16 @@ def update_params(params, subkey, opt_state, grad_fun=None, n_particles=100, y_m
     '''
     # First we obtain the gradients of the gradient function with respect to the `grad_fun`.
     params_update = jax.grad(grad_fun, argnums=0)(
-        params, subkey, n_particles, y_meas, model, **kwargs)
+        params, subkey, n_particles, y_meas, model)
     # Updating the params with respect to the mask.
     params_update = jnp.where(mask, params_update, 0)
     # Applying the updates to the parameters except for those that are masked.
     updates, opt_state = optimizer.update(params_update, opt_state)
-    return optax.apply_updates(params, updates) #, grad_fun(params, subkey, n_particles, y_meas, model)
+    return optax.apply_updates(params, updates) 
 
 
 def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
-              learning_rate=0.01, key=1, mask=None, **kwargs):
+              learning_rate=0.01, key=1, mask=None):
     """
     Args:
         model: The model class for which all of the functions are defined.
@@ -63,7 +63,7 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
     # Partially evaluate the function with respect to all of the parameters that do not change over time.
     partial_update_params = partial(update_params, n_particles=n_particles, y_meas=y_meas,
                                     model=model, learning_rate=learning_rate, mask=mask, grad_fun=grad_fun, 
-                                    optimizer=optimizer, **kwargs)
+                                    optimizer=optimizer)
     # JIT the update step.
     update_fn = jax.jit(partial_update_params, donate_argnums=(0,))
     # Every iteration, the keys must be split to obtain several subkeys for which we have to take the update step.
