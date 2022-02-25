@@ -30,11 +30,12 @@ from pfjax import sde as sde
 
 # --- main functions -----------------------------------------------------------
 class PGNETModel(sde.SDEModel):
-    def __init__(self, dt, n_res):
+    def __init__(self, dt, n_res, bootstrap):
         # creates "private" variables self._dt and self._n_res
         super().__init__(dt, n_res, diff_diag=False)
         self._n_state = (self._n_res, 4)
         self._K = 10
+        self._bootstrap = bootstrap
 
     def premu(self, x, theta, K):
         """
@@ -99,17 +100,6 @@ class PGNETModel(sde.SDEModel):
 
         return Sigma_trans
 
-    # def drift(self, x, theta):
-    #     K = self.K
-    #     mu = self.premu(x, theta, K)
-    #     return mu
-
-    # def diff(self, x, theta):
-    #     K = self.K
-    #     Sigma = self.preSigma(x, theta, K)
-    #     return Sigma
-        
-
     def meas_lpdf(self, y_curr, x_curr, theta):
         """
         Log-density of `p(y_curr | x_curr, theta)`.
@@ -123,8 +113,9 @@ class PGNETModel(sde.SDEModel):
             The log-density of `p(y_curr | x_curr, theta)`.
         """
         tau = theta[8:12]
+        quad = tau / jnp.exp(x_curr[-1])
         return jnp.sum(
-            jsp.stats.norm.logpdf(y_curr, loc=x_curr[-1], scale=tau)
+            jsp.stats.norm.logpdf(y_curr, loc=x_curr[-1], scale=quad)
         )
 
     def meas_sample(self, key, x_curr, theta):
@@ -140,7 +131,7 @@ class PGNETModel(sde.SDEModel):
             Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
         """
         tau = theta[8:12]
-        return x_curr[-1] + tau * random.normal(key, (self._n_state[1],))
+        return jnp.exp(x_curr[-1]) + tau * random.normal(key, (self._n_state[1],))
 
     def pf_init(self, key, y_init, theta):
         """
@@ -194,7 +185,7 @@ class PGNETModel(sde.SDEModel):
             logw
 
         
-    def pf_step(self, key, x_prev, y_curr, theta, method='boot'):
+    def pf_step(self, key, x_prev, y_curr, theta):
         """
         Choose between bootstrap filter and bridge proposal.
 
@@ -209,8 +200,10 @@ class PGNETModel(sde.SDEModel):
             - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
             - logw: The log-weight of `x_curr`.
         """
-        if method == 'boot':
-            x_curr, logw = super().pf_step(key, x_prev, y_curr, theta)
+        if self._bootstrap:
+            x_curr, logw = super().pf_step(key, x_prev, jnp.log(y_curr), theta)
         else:
-            x_curr, logw = self.bridge_prop(key, x_prev, y_curr, theta, jnp.eye(4), jnp.diag(theta[8:12]**2))
+            #omega = (theta[8:12] * (x_prev[-1]- jnp.log(y_curr)) / (y_curr - jnp.exp(x_prev[-1])))**2
+            #print(omega)
+            x_curr, logw = self.bridge_prop(key, x_prev, jnp.log(y_curr), theta, jnp.eye(4), jnp.diag(theta[8:12]**2 / jnp.exp(x_prev[-1])**2))
         return x_curr, logw
