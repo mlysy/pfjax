@@ -117,7 +117,7 @@ class PGNETModel(sde.SDEModel):
             return jnp.sum(
                 jsp.stats.norm.logpdf(y_curr, loc=jnp.exp(x_curr[-1]), scale=tau)
         )
-        quad = tau / jnp.exp(x_curr[-1])
+        quad = tau / jnp.exp(y_curr)
         return jnp.sum(
             jsp.stats.norm.logpdf(y_curr, loc=x_curr[-1], scale=quad)
         )
@@ -172,16 +172,16 @@ class PGNETModel(sde.SDEModel):
         #                jnp.expand_dims(x_init, axis=0), axis=0), \
         #     jnp.zeros(())
 
-        # key, subkey = random.split(key)
-        # x_init = jnp.log(y_init + tau * random.truncated_normal(
-        #     subkey,
-        #     lower=-y_init/tau,
-        #     upper=jnp.inf,
-        #     shape=(self._n_state[1],)
-        # ))
-        # logw = jnp.sum(jsp.stats.norm.logcdf(y_init/tau))
-        x_init = theta[12:16]
-        logw = -jnp.float_(0)
+        key, subkey = random.split(key)
+        x_init = jnp.log(y_init + tau * random.truncated_normal(
+            subkey,
+            lower=-y_init/tau,
+            upper=jnp.inf,
+            shape=(self._n_state[1],)
+        ))
+        logw = jnp.sum(jsp.stats.norm.logcdf(y_init/tau))
+        #x_init = theta[12:16]
+        #logw = -jnp.float_(0)
 
         return \
             jnp.append(jnp.zeros((self._n_res-1,) + x_init.shape),
@@ -205,9 +205,8 @@ class PGNETModel(sde.SDEModel):
             - logw: The log-weight of `x_curr`.
         """
         if self._bootstrap:
-            x_curr, logw = super().pf_step(key, x_prev, y_curr, theta)
+            x_curr, logw = super().pf_step(key, x_prev, jnp.log(y_curr), theta)
         else:
-            #omega = (theta[8:12] * (x_prev[-1]- jnp.log(y_curr)) / (y_curr - jnp.exp(x_prev[-1])))**2
-            #print(omega)
-            x_curr, logw = self.bridge_prop(key, x_prev, jnp.log(y_curr), theta, jnp.eye(4), jnp.diag((theta[8:12] / jnp.exp(x_prev[-1]))**2))
+            omega = (theta[8:12] / y_curr)**2
+            x_curr, logw = self.bridge_prop(key, x_prev, jnp.log(y_curr), theta, jnp.eye(4), jnp.diag(omega))
         return x_curr, logw
