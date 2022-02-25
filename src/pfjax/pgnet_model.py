@@ -30,7 +30,7 @@ from pfjax import sde as sde
 
 # --- main functions -----------------------------------------------------------
 class PGNETModel(sde.SDEModel):
-    def __init__(self, dt, n_res, bootstrap):
+    def __init__(self, dt, n_res, bootstrap=True):
         # creates "private" variables self._dt and self._n_res
         super().__init__(dt, n_res, diff_diag=False)
         self._n_state = (self._n_res, 4)
@@ -113,6 +113,10 @@ class PGNETModel(sde.SDEModel):
             The log-density of `p(y_curr | x_curr, theta)`.
         """
         tau = theta[8:12]
+        if self._bootstrap:
+            return jnp.sum(
+                jsp.stats.norm.logpdf(y_curr, loc=jnp.exp(x_curr[-1]), scale=tau)
+        )
         quad = tau / jnp.exp(x_curr[-1])
         return jnp.sum(
             jsp.stats.norm.logpdf(y_curr, loc=x_curr[-1], scale=quad)
@@ -201,9 +205,9 @@ class PGNETModel(sde.SDEModel):
             - logw: The log-weight of `x_curr`.
         """
         if self._bootstrap:
-            x_curr, logw = super().pf_step(key, x_prev, jnp.log(y_curr), theta)
+            x_curr, logw = super().pf_step(key, x_prev, y_curr, theta)
         else:
             #omega = (theta[8:12] * (x_prev[-1]- jnp.log(y_curr)) / (y_curr - jnp.exp(x_prev[-1])))**2
             #print(omega)
-            x_curr, logw = self.bridge_prop(key, x_prev, jnp.log(y_curr), theta, jnp.eye(4), jnp.diag(theta[8:12]**2 / jnp.exp(x_prev[-1])**2))
+            x_curr, logw = self.bridge_prop(key, x_prev, jnp.log(y_curr), theta, jnp.eye(4), jnp.diag((theta[8:12] / jnp.exp(x_prev[-1]))**2))
         return x_curr, logw
