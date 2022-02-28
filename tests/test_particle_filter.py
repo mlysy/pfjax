@@ -45,6 +45,7 @@ class TestFor(unittest.TestCase):
     test_loglik = utils.test_for_loglik
     test_pf = utils.test_for_pf
     test_mvn_sampler = utils.test_for_mvn_resampler
+    test_mvn_shape = utils.test_mvn_resample_shape
     test_smooth = utils.test_for_smooth
 
 

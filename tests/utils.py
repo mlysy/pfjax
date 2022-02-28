@@ -65,7 +65,7 @@ def lv_setup(self):
     self.n_obs = 7
     self.x_init = jnp.block([[jnp.zeros((n_res-1, 2))],
                              [jnp.log(jnp.array([5., 3.]))]])
-    self.n_particles = 15
+    self.n_particles = 25
     self.Model = pf.LotVolModel
     self.Model2 = lv.LotVolModel
 
@@ -130,6 +130,7 @@ def test_for_mvn_resampler (self):
     key, *subkeys = random.split(key, num=n_particles+1)
     x_particles, logw = jax.vmap(
         lambda k: model.pf_init(k, y_meas[0], theta))(jnp.array(subkeys))
+    # x_particles = jnp.expand_dims(x_particles, 1)
     new_particles_for = pf.particle_resample_mvn_for(
         subkey,
         x_particles,
@@ -143,6 +144,26 @@ def test_for_mvn_resampler (self):
             self.assertAlmostEqual(rel_err(new_particles[k], new_particles_for[k]), 0.0)
     
 
+def test_mvn_resample_shape (self):
+    """ particle filter with mvn resampling function test """
+    # un-self setUp members
+    key = self.key
+    key, subkey = random.split(key)
+    n_particles = 25
+    logw = jnp.zeros(n_particles)
+    particles = jax.random.normal(subkey, shape = (n_particles, 5, 2, 2))
+    new_particles_for = pf.particle_resample_mvn_for(
+        subkey,
+        particles,
+        logw)
+    new_particles = pf.particle_resample_mvn(
+        subkey,
+        particles,
+        logw)
+    for k in new_particles.keys():
+        with self.subTest(k=k):
+            self.assertAlmostEqual(new_particles[k].shape, new_particles_for[k].shape)
+  
 
 def test_for_smooth(self):
     # un-self setUp members

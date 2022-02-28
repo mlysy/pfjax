@@ -161,7 +161,7 @@ class BMModel:
             - x_init: A sample from the proposal distribution for `x_init`.
             - logw: The log-weight of `x_init`.
         """
-        return self.meas_sample(key, y_init, theta).reshape(-1, 1), jnp.zeros(())
+        return self.meas_sample(key, y_init, theta), jnp.zeros(())
 
     def pf_step(self, key, x_prev, y_curr, theta):
         """
