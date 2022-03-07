@@ -10,39 +10,10 @@ from jax import random
 from jax import lax
 from jax.experimental.maps import xmap
 from functools import partial
-from pfjax import particle_loglik, particle_filter, particle_resample_mvn
-
-
-def get_sum_lweights(theta, key, n_particles, y_meas, model, **kwargs):
-    """
-
-    Args:
-        theta: A `jnp.array` that represents the values of the parameters.
-        key: The key required for the prng.
-        n_particles: The number of particles to use in the particle filter.
-        y_meas: The measurements of the observations required for the particle filter.
-
-    Returns:
-        The sum of the particle log weights from the particle filters.
-    """
-    ret = particle_filter(model, key, y_meas, theta, n_particles)
-    sum_particle_lweights = particle_loglik(ret['logw'])
-    return sum_particle_lweights
-
-
-def get_sum_lweights_mvn(theta, key, n_particles, y_meas, model):
-    """
-    FIXME: plz delete me, only for testing 
-    """
-    # model, key, y_meas, theta, n_particles,particle_sampler=particle_resample):
-    ret = particle_filter(model = model, y_meas = y_meas, theta = theta, n_particles = n_particles,
-                          key = key, particle_sampler=particle_resample_mvn)
-    sum_particle_lweights = particle_loglik(ret['logw'])
-    return sum_particle_lweights
 
 
 def update_params(params, subkey, opt_state, grad_fun=None, n_particles=100, y_meas=None, model=None, learning_rate=0.01, mask=None,
-                  optimizer=None, **kwargs):
+                  optimizer=None):
     '''
     Args:
         params: A jnp.array that represents the values of the parameters before the gradient update.
@@ -66,7 +37,7 @@ def update_params(params, subkey, opt_state, grad_fun=None, n_particles=100, y_m
     params_update = jnp.where(mask, params_update, 0)
     # Applying the updates to the parameters except for those that are masked.
     updates, opt_state = optimizer.update(params_update, opt_state)
-    return optax.apply_updates(params, updates)
+    return optax.apply_updates(params, updates) 
 
 
 def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
@@ -90,11 +61,13 @@ def stoch_opt(model, params, grad_fun, y_meas, n_particles=100, iterations=10,
     opt_state = optimizer.init(params)
     # Partially evaluate the function with respect to all of the parameters that do not change over time.
     partial_update_params = partial(update_params, n_particles=n_particles, y_meas=y_meas,
-                                    model=model, learning_rate=learning_rate, mask=mask, grad_fun=grad_fun, optimizer=optimizer)
+                                    model=model, learning_rate=learning_rate, mask=mask, grad_fun=grad_fun, 
+                                    optimizer=optimizer)
     # JIT the update step.
     update_fn = jax.jit(partial_update_params, donate_argnums=(0,))
     # Every iteration, the keys must be split to obtain several subkeys for which we have to take the update step.
     keys = random.split(key, iterations)
     for subkey in keys:
         params = update_fn(params, subkey, opt_state)
-    return params
+    return params 
+    
