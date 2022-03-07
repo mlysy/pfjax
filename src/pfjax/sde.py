@@ -48,7 +48,7 @@ def euler_sim_diag(key, n_steps, x, dt, drift, diff, theta):
         drift: Drift function having signature `drift(x, theta)` and returning a vector of size `n_dims`.
         diff: Diffusion function having signature `diff(x, theta)` and returning a vector of size `n_dims`.
         theta: Parameter value.
-
+    
     Returns:
         Simulated SDE values in a matrix of size `n_steps x n_dims`.
     """
@@ -80,7 +80,7 @@ def euler_lpdf_diag(x, dt, drift, diff, theta):
         drift: Drift function having signature `drift(x, theta)` and returning a vector of size `n_dims`.
         diff: Diffusion function having signature `diff(x, theta)` and returning a vector of size `n_dims`.
         theta: Parameter value.
-
+    
     Returns:
         The log-density of the SDE observations.
     """
@@ -102,7 +102,6 @@ class SDEModel(object):
     This class should set up a PF model class with methods `state_lpdf()`, `state_sim()`, and `pf_step()`,  with the user only needing to specify SDE drift and diffusion functions, and whether the diffusion is on the `diag` scale.
 
     For the latter, methods `euler_sim()` and `euler_lpdf()` are supplied at instantiation time from either `euler_{sim/lpdf}_diag()` or `euler_{sim/lpdf}_var()`, with arguments identical to those of the free functions except `drift` and `diff`, which are supplied by `self.drift()` and `self.diff()`.  Hopefully this won't be a problem when we come to jitting, gradding, etc.
-
     For `pf_step()`, a bootstrap filter is assumed, for which the user needs to specify `meas_lpdf()`.
 
     **Notes:**
@@ -171,10 +170,10 @@ class SDEModel(object):
                        x_curr, axis=0)
         return self.euler_lpdf(x, self._dt/self._n_res, theta)
 
+
     def state_lpdf_for(self, x_curr, x_prev, theta):
         """
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
-
         For-loop version for testing.
 
         Args:
@@ -228,7 +227,6 @@ class SDEModel(object):
     def state_sample_for(self, key, x_prev, theta):
         """
         Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
-
         For-loop version for testing.
 
         Args:
@@ -260,7 +258,6 @@ class SDEModel(object):
     def pf_step(self, key, x_prev, y_curr, theta):
         """
         Update particle and calculate log-weight for a bootstrap particle filter.
-
         **FIXME:** This method is completely generic, i.e., is not specific to SDEs.  May wish to put it elsewhere...
 
         Args:
