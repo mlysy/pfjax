@@ -11,6 +11,29 @@ from jax import random
 from jax import lax
 
 
+def mvn_bridge_pars(mu_W, Sigma_W, mu_XW, Sigma_XW, Y, A, Omega):
+    """
+    Calculate the mean and variance of a normal bridge distribution.
+
+    Suppose we have the multivariate normal model
+
+    ```
+           W ~ N(mu_W, Sigma_W)
+       X | W ~ N(W + mu_XW, Sigma_XW)
+    Y | X, W ~ N(AX, Omega)
+    ```
+
+    This function returns the mean and variance of `p(W | Y)`.
+    """
+    mu_Y = jnp.matmul(A, mu_W + mu_XW)
+    AS_W = jnp.matmul(A, Sigma_W)
+    Sigma_Y = jnp.linalg.multi_dot([A, Sigma_W + Sigma_XW, A.T]) + Omega
+    # solve both linear systems simultaneously
+    sol = jnp.matmul(AS_W.T, jnp.linalg.solve(
+        Sigma_Y, jnp.hstack([jnp.array([Y-mu_Y]).T, AS_W])))
+    return mu_W + jnp.squeeze(sol[:, 0]), Sigma_W - sol[:, 1:]
+
+
 def euler_sim_diag(key, n_steps, x, dt, drift, diff, theta):
     """
     Simulate SDE with diagonal diffusion using Euler-Maruyama discretization.
@@ -86,9 +109,12 @@ class SDEModel(object):
         """
         self._dt = dt
         self._n_res = n_res
-        self._diff_diag = diff_diag  # currently only used for testing
-        # instantiate methods euler_sim and euler_lpdf from free functions
+        # the following members are only used for testing
+        self._diff_diag = diff_diag
+        # also have self._n_state for testing,
+        # defined in the derived model class
         if diff_diag:
+            # instantiate methods depending on whether the diffusion is diagonal
             def euler_sim(self, key, n_steps, x, dt, theta):
                 return euler_sim_diag(key, n_steps, x, dt,
                                       self.drift, self.diff, theta)
@@ -96,8 +122,12 @@ class SDEModel(object):
             def euler_lpdf(self, x, dt, theta):
                 return euler_lpdf_diag(x, dt, self.drift, self.diff, theta)
 
+            def diff_full(self, x, theta):
+                return jnp.diag(self.diff(x, theta))
+
             setattr(self.__class__, 'euler_sim', euler_sim)
             setattr(self.__class__, 'euler_lpdf', euler_lpdf)
+            setattr(self.__class__, 'diff_full', diff_full)
         else:
             def euler_sim(self, key, n_steps, x, dt, theta):
                 return euler_sim_var(key, n_steps, x, dt,
@@ -106,8 +136,12 @@ class SDEModel(object):
             def euler_lpdf(self, x, dt, theta):
                 return euler_lpdf_var(x, dt, self.drift, self.diff, theta)
 
+            def diff_full(self, x, theta):
+                return self.diff(x, theta)
+
             setattr(self.__class__, 'euler_sim', euler_sim)
             setattr(self.__class__, 'euler_lpdf', euler_lpdf)
+            setattr(self.__class__, 'diff_full', diff_full)
 
     def state_lpdf(self, x_curr, x_prev, theta):
         """
@@ -135,23 +169,23 @@ class SDEModel(object):
         Returns:
             The log-density of `p(x_curr | x_prev, theta)`.
         """
-        dt_res = self.dt/self.n_res
+        dt_res = self._dt/self._n_res
         x0 = jnp.append(jnp.expand_dims(
-            x_prev[self.n_res-1], axis=0), x_curr[:self.n_res-1], axis=0)
+            x_prev[self._n_res-1], axis=0), x_curr[:self._n_res-1], axis=0)
         x1 = x_curr
         lp = jnp.array(0.0)
-        for t in range(self.n_res):
+        for t in range(self._n_res):
             if self._diff_diag:
                 lp = lp + jnp.sum(jsp.stats.norm.logpdf(
                     x=x1[t],
-                    loc=x0[t] + drift(x0[t], theta) * dt_res,
-                    scale=diff(x0[t], theta) * jnp.sqrt(dt_res)
+                    loc=x0[t] + self.drift(x0[t], theta) * dt_res,
+                    scale=self.diff(x0[t], theta) * jnp.sqrt(dt_res)
                 ))
             else:
                 lp = lp + jnp.sum(jsp.stats.multivariate_normal.logpdf(
                     x=x1[t],
-                    loc=x0[t] + drift(x0[t], theta) * dt_res,
-                    scale=diff(x0[t], theta) * jnp.sqrt(dt_res)
+                    mean=x0[t] + self.drift(x0[t], theta) * dt_res,
+                    cov=self.diff(x0[t], theta) * jnp.sqrt(dt_res)
                 ))
         return lp
 
@@ -184,21 +218,23 @@ class SDEModel(object):
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
-        dt_res = self.dt/self.n_res
-        x_curr = jnp.zeros(self.n_state)
-        x_state = x_prev[self.n_res-1]
-        for t in range(self.n_res):
+        dt_res = self._dt/self._n_res
+        # x_curr = jnp.zeros(self._n_state)
+        x_curr = []
+        x_state = x_prev[self._n_res-1]
+        for t in range(self._n_res):
             key, subkey = random.split(key)
             if self._diff_diag:
-                dr = x_state + drift(x_state, theta) * dt_res
-                df = diff(x_state, theta) * jnp.sqrt(dt_res)
+                dr = x_state + self.drift(x_state, theta) * dt_res
+                df = self.diff(x_state, theta) * jnp.sqrt(dt_res)
                 x_state = dr + df * random.normal(subkey, (x_state.shape[0],))
             else:
-                dr = x_state + drift(x_state, theta) * dt_res
-                df = diff(x_state, theta) * dt_res
+                dr = x_state + self.drift(x_state, theta) * dt_res
+                df = self.diff(x_state, theta) * dt_res
                 x_state = random.multivariate_normal(subkey, mean=dr, cov=df)
-            x_curr = x_curr.at[t].set(x_state)
-        return x_curr
+            x_curr.append(x_state)
+            # x_curr = x_curr.at[t].set(x_state)
+        return jnp.array(x_curr)
 
     def pf_step(self, key, x_prev, y_curr, theta):
         """
@@ -215,4 +251,78 @@ class SDEModel(object):
         """
         x_curr = self.state_sample(key, x_prev, theta)
         logw = self.meas_lpdf(y_curr, x_curr, theta)
+<<<<<<< HEAD
         return x_curr, logw
+=======
+        return x_curr, logw
+
+    def bridge_prop(self, key, x_prev, Y, theta, A, Omega):
+        """
+        Bridge proposal.
+
+        **Notes:**
+
+        - The measurement input is `Y` instead of `y_meas`.  The reason is that the proposal can be used with carefully chosen `Y = g(y_meas)` when the measurement error model is not `y_meas ~ N(A x_state, Omega)`.
+
+        - Only implements the general version with arbitrary `A` and `Omega`.  Specific cases can be done more rapidly, but it's not clear where to put these different methods.  Inside the class?  As free functions?
+
+        - Duplicates a lot of code from `mvn_bridge_pars()`, because `Sigma_Y` and `mu_Y` inside the latter can be computed very easily here.
+
+        - Computes the Euler part of the log-weights using `vmap` after the bridge part which used `lax.scan()`.  On one core, it's definitely faster to do both inside `lax.scan()`.  On multiple cores that may or may not be the case, but probably would need quite a few cores see the speed increase.  However, it's unlikely that we'll explicitly parallelize across cores for this, since the parallellization would typically be over particles.
+
+        - The drift and diffusion functions are each calculated twice, once for proposal and once for Euler.  This is somewhat inefficient, but to circumvent this would need to redesign `euler_lpdf()`...
+        """
+        # lax.scan setup
+        def scan_fun(carry, n):
+            key = carry["key"]
+            x = carry["x"]
+            # calculate mean and variance of bridge proposal
+            k = self._n_res - n
+            dt_res = self._dt / self._n_res
+            dr = self.drift(x, theta) * dt_res
+            df = self.diff_full(x, theta) * dt_res
+            mu_W = x + dr
+            Sigma_W = df
+            mu_Y = jnp.matmul(A, x + k*dr)
+            AS_W = jnp.matmul(A, Sigma_W)
+            Sigma_Y = k * jnp.linalg.multi_dot([A, df, A.T]) + Omega
+            # solve both linear systems simultaneously
+            sol = jnp.matmul(AS_W.T, jnp.linalg.solve(
+                Sigma_Y, jnp.hstack([jnp.array([Y-mu_Y]).T, AS_W])))
+            mu_bridge = mu_W + jnp.squeeze(sol[:, 0])
+            Sigma_bridge = Sigma_W - sol[:, 1:]
+            # bridge proposal
+            key, subkey = random.split(key)
+            x_prop = random.multivariate_normal(key,
+                                                mean=mu_bridge,
+                                                cov=Sigma_bridge)
+            # bridge log-pdf
+            lp_prop = jsp.stats.multivariate_normal.logpdf(
+                x=x_prop,
+                mean=mu_bridge,
+                cov=Sigma_bridge
+            )
+            res_carry = {
+                "x": x_prop,
+                "key": key,
+                "lp": carry["lp"] + lp_prop
+            }
+            res_stack = {"x": x_prop}
+            return res_carry, res_stack
+        scan_init = {
+            "x": x_prev[self._n_res-1],
+            "key": key,
+            "lp": jnp.array(0.)
+        }
+        last, full = lax.scan(scan_fun, scan_init, jnp.arange(self._n_res))
+        # return last, full
+        x_prop = full["x"]  # bridge proposal
+        # log-weight for the proposal
+        logw = self.state_lpdf(
+            x_curr=x_prop,
+            x_prev=x_prev,
+            theta=theta
+        )
+        logw = logw + self.meas_lpdf(y_meas, x_curr, theta) - last["lp"]
+        return x_prop, logw
+>>>>>>> fff2a24e91f8de0350bf05bcaaaa2f4452f34452
