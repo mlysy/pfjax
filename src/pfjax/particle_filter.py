@@ -20,6 +20,9 @@ import jax.scipy as jsp
 from jax import random
 from jax import lax
 from jax.experimental.maps import xmap
+import ott
+from ott.geometry import pointcloud
+from ott.core import sinkhorn
 
 
 def _lweight_to_prob(logw):
@@ -28,11 +31,11 @@ def _lweight_to_prob(logw):
 
     Args:
         logw: Vector of `n_particles` unnormalized log-weights.
-    
-    Returns: 
+
+    Returns:
         Vector of `n_particles` normalized weights that sum to 1.
     """
-    wgt = jnp.exp(logw - jnp.max(logw)) 
+    wgt = jnp.exp(logw - jnp.max(logw))
     prob = wgt / jnp.sum(wgt)
     return prob
 
@@ -42,7 +45,7 @@ def particle_resample_old(key, logw):
     Particle resampler.
 
     This basic one just does a multinomial sampler, i.e., sample with replacement proportional to weights.
-    
+
     Old API, to be depreciated after testing against `particle_filter_for()`.
 
     Args:
@@ -52,8 +55,9 @@ def particle_resample_old(key, logw):
     Returns:
         Vector of `n_particles` integers between 0 and `n_particles-1`, sampled with replacement with probability vector `exp(logw) / sum(exp(logw))`.
     """
-    wgt = jnp.exp(logw - jnp.max(logw))
-    prob = wgt / jnp.sum(wgt)
+    # wgt = jnp.exp(logw - jnp.max(logw))
+    # prob = wgt / jnp.sum(wgt)
+    prob = _lweight_to_prob(logw)
     n_particles = logw.size
     return random.choice(key,
                          a=jnp.arange(n_particles),
@@ -89,8 +93,8 @@ def particle_resample(key, x_particles_prev, logw):
 
 def particle_resample_mvn_for(key, x_particles_prev, logw):
     """
-    Particle resampler with Multivariate Normal approximation using for-loop for testing
-    
+    Particle resampler with Multivariate Normal approximation using for-loop for testing.
+
     Args:
         key: PRNG key.
         x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
@@ -98,9 +102,9 @@ def particle_resample_mvn_for(key, x_particles_prev, logw):
 
     Returns:
         A dictionary with elements:
-            - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.  These are sampled with replacement from `x_particles_prev` with probability vector `exp(logw) / sum(exp(logw))`.
-            - `x_particles_mu`: Vector of `n_res * n_state` representing the mean of the MVN
-            - `x_particles_cov`: Matrix of `n_res * n_state` representing the covariance matrix of the MVN            
+            - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.
+            - `x_particles_mu`: Vector of length `n_state = prod(x_particles.shape[1:])` representing the mean of the MVN.
+            - `x_particles_cov`: Matrix of size `n_state x n_state` representing the covariance matrix of the MVN.
     """
     particle_shape = x_particles_prev.shape
     n_particles = particle_shape[0]
@@ -128,8 +132,8 @@ def particle_resample_mvn_for(key, x_particles_prev, logw):
 
 def particle_resample_mvn(key, x_particles_prev, logw):
     """
-    Particle resampler with Multivariate Normal approximation
-    
+    Particle resampler with Multivariate Normal approximation.
+
     Args:
         key: PRNG key.
         x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
@@ -137,9 +141,9 @@ def particle_resample_mvn(key, x_particles_prev, logw):
 
     Returns:
         A dictionary with elements:
-            - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.  These are sampled with replacement from `x_particles_prev` with probability vector `exp(logw) / sum(exp(logw))`.
-            - `x_particles_mu`: Vector of `n_res * n_state` representing the mean of the MVN
-            - `x_particles_cov`: Matrix of `n_res * n_state` representing the covariance matrix of the MVN            
+            - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.
+            - `x_particles_mu`: Vector of length `n_state = prod(x_particles.shape[1:])` representing the mean of the MVN.
+            - `x_particles_cov`: Matrix of size `n_state x n_state` representing the covariance matrix of the MVN.
     """
     prob = _lweight_to_prob(logw)
     p_shape = x_particles_prev.shape
@@ -161,12 +165,58 @@ def particle_resample_mvn(key, x_particles_prev, logw):
     }
 
 
+def particle_resample_ot(key, x_particles_prev, logw,
+                         pointcloud_kwargs={},
+                         sinkhorn_kwargs={}):
+    """
+    Particle resampler using optimal transport.
+
+    Based on Algorithms 2 and 3 of Corenflos et al 2021 <https://arxiv.org/abs/2102.07850>.
+
+    **Notes:**
+
+    - Argument `jit` to `ott.sinkhorn.sinkhorn()` is ignored, i.e., always set to `False`.
+
+    Args:
+        key: PRNG key.
+        x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
+        logw: Vector of corresponding `n_particles` unnormalized log-weights.
+        pointcloud_kwargs: Dictionary of additional arguments to `ott.pointcloud.PointCloud()`.
+        sinkhorn_kwargs: Dictionary of additional arguments to `ott.sinkhorn.sinkhorn()`.
+
+    Returns:
+        A dictionary with elements:
+            - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.
+            - `geom`: An `ott.Geometry` object.
+            - `sink`: The output of the call to `ott.sinkhorn.sinkhorn()`.
+    """
+    sinkhorn_kwargs.update(jit=False)
+    prob = _lweight_to_prob(logw)
+    p_shape = x_particles_prev.shape
+    n_particles = p_shape[0]
+    x_particles = x_particles_prev.reshape((n_particles, -1))
+    geom = pointcloud.PointCloud(x=x_particles, y=x_particles,
+                                 **pointcloud_kwargs)
+    sink = sinkhorn.sinkhorn(geom,
+                             a=prob,
+                             b=jnp.ones(n_particles),
+                             **sinkhorn_kwargs)
+    x_particles = geom.apply_transport_from_potentials(
+        f=sink.f, g=sink.g, vec=x_particles.T
+    )
+    return {
+        "x_particles": jnp.reshape(x_particles.T, newshape=p_shape),
+        "geom": geom,
+        "sink": sink
+    }
+
+
 def particle_filter_for(model, key, y_meas, theta, n_particles):
     """
     Apply particle filter for given value of `theta`.
-    
-    Closely follows Algorithm 2 of https://arxiv.org/pdf/1306.3277.pdf.
-    
+
+    Closely follows Algorithm 2 of Murray 2013 <https://arxiv.org/abs/1306.3277>.
+
     This is the testing version which does the following:
 
     - Uses for-loops instead of `lax.scan` and `vmap/xmap`.
@@ -252,7 +302,7 @@ def particle_filter(model, key, y_meas, theta, n_particles,
     """
     Apply particle filter for given value of `theta`.
 
-    Closely follows Algorithm 2 of https://arxiv.org/pdf/1306.3277.pdf.
+    Closely follows Algorithm 2 of Murray 2013 <https://arxiv.org/abs/1306.3277>.
 
     Args:
         model: Object specifying the state-space model.
@@ -312,6 +362,8 @@ def particle_filter(model, key, y_meas, theta, n_particles,
         "logw": logw,
         "key": key
     }
+    particle_sampler(key=init["key"], x_particles_prev=init["x_particles"],
+                     logw=init["logw"])
     # lax.scan itself
     last, full = lax.scan(fun, init, jnp.arange(1, n_obs))
     # append initial values of x_particles and logw
@@ -352,7 +404,7 @@ def particle_neg_loglik(theta, key, n_particles, y_meas, model):
         y_meas: The measurements of the observations required for the particle filter.
 
     Returns:
-        Estimate of the negative log-likelihood evaluated at \theta. 
+        Estimate of the negative log-likelihood evaluated at \theta.
     """
     ret = particle_filter(model, key, y_meas, theta, n_particles)
     sum_particle_lweights = particle_loglik(ret['logw'])
@@ -370,9 +422,10 @@ def particle_neg_loglik_mvn(theta, key, n_particles, y_meas, model):
         y_meas: The measurements of the observations required for the particle filter.
 
     Returns:
-        Estimate of the negative log-likelihood evaluated at \theta. 
+        Estimate of the negative log-likelihood evaluated at \theta.
     """
-    ret = particle_filter(model, key, y_meas, theta, n_particles, particle_sampler=particle_resample_mvn)
+    ret = particle_filter(model, key, y_meas, theta,
+                          n_particles, particle_sampler=particle_resample_mvn)
     sum_particle_lweights = particle_loglik(ret['logw'])
     return -sum_particle_lweights
 
