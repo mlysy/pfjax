@@ -6,3 +6,4 @@ build
 pfjax.egg-info
 examples/*.Rmd
 examples/*.html
+.tox
