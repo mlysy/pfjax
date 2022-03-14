@@ -103,8 +103,8 @@ def particle_resample_mvn_for(key, x_particles_prev, logw):
     Returns:
         A dictionary with elements:
             - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.
-            - `x_particles_mu`: Vector of length `n_state = prod(x_particles.shape[1:])` representing the mean of the MVN.
-            - `x_particles_cov`: Matrix of size `n_state x n_state` representing the covariance matrix of the MVN.
+            - `mvn_mean`: Vector of length `n_state = prod(x_particles.shape[1:])` representing the mean of the MVN.
+            - `mvn_cov`: Matrix of size `n_state x n_state` representing the covariance matrix of the MVN.
     """
     particle_shape = x_particles_prev.shape
     n_particles = particle_shape[0]
@@ -125,8 +125,8 @@ def particle_resample_mvn_for(key, x_particles_prev, logw):
                                          cov=cov_mat,
                                          shape=(n_particles,))
     ret_val = {"x_particles": samples.reshape(x_particles_prev.shape),
-               "x_particles_mu": mu,
-               "x_particles_cov": cov_mat}
+               "mvn_mean": mu,
+               "mvn_cov": cov_mat}
     return ret_val
 
 
@@ -142,8 +142,8 @@ def particle_resample_mvn(key, x_particles_prev, logw):
     Returns:
         A dictionary with elements:
             - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.
-            - `x_particles_mu`: Vector of length `n_state = prod(x_particles.shape[1:])` representing the mean of the MVN.
-            - `x_particles_cov`: Matrix of size `n_state x n_state` representing the covariance matrix of the MVN.
+            - `mvn_mean`: Vector of length `n_state = prod(x_particles.shape[1:])` representing the mean of the MVN.
+            - `mvn_cov`: Matrix of size `n_state x n_state` representing the covariance matrix of the MVN.
     """
     prob = _lweight_to_prob(logw)
     p_shape = x_particles_prev.shape
@@ -160,8 +160,8 @@ def particle_resample_mvn(key, x_particles_prev, logw):
                                              shape=(n_particles,))
     return {
         "x_particles": jnp.reshape(x_particles, newshape=p_shape),
-        "x_particles_mu": mvn_mean,
-        "x_particles_cov": mvn_cov
+        "mvn_mean": mvn_mean,
+        "mvn_cov": mvn_cov
     }
 
 
@@ -391,43 +391,6 @@ def particle_loglik(logw):
     """
     n_particles = logw.shape[1]
     return jnp.sum(jsp.special.logsumexp(logw, axis=1) - jnp.log(n_particles))
-
-
-def particle_neg_loglik(theta, key, n_particles, y_meas, model):
-    """
-    Evaluate the bootstrap particle filter estimate of the negative log-likelihood at parameter values \theta. Runs the particle filter for each timestep in y_meas and sums the log-weights for each particle
-
-    Args:
-        theta: A `jnp.array` that represents the values of the parameters.
-        key: The key required for the prng.
-        n_particles: The number of particles to use in the particle filter.
-        y_meas: The measurements of the observations required for the particle filter.
-
-    Returns:
-        Estimate of the negative log-likelihood evaluated at \theta.
-    """
-    ret = particle_filter(model, key, y_meas, theta, n_particles)
-    sum_particle_lweights = particle_loglik(ret['logw'])
-    return -sum_particle_lweights
-
-
-def particle_neg_loglik_mvn(theta, key, n_particles, y_meas, model):
-    """
-    Evaluate the MVN particle filter estimate of the negative log-likelihood at parameter values \theta. Runs the particle filter for each timestep in y_meas and sums the log-weights for each particle
-
-    Args:
-        theta: A `jnp.array` that represents the values of the parameters.
-        key: The key required for the prng.
-        n_particles: The number of particles to use in the particle filter.
-        y_meas: The measurements of the observations required for the particle filter.
-
-    Returns:
-        Estimate of the negative log-likelihood evaluated at \theta.
-    """
-    ret = particle_filter(model, key, y_meas, theta,
-                          n_particles, particle_sampler=particle_resample_mvn)
-    sum_particle_lweights = particle_loglik(ret['logw'])
-    return -sum_particle_lweights
 
 
 def particle_smooth_for(key, logw, x_particles, ancestors, n_sample=1):
