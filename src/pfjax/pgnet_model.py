@@ -198,7 +198,6 @@ class PGNETModel(sde.SDEModel):
             y_curr: Measurement variable at current time `t`.
             theta: Parameter value.
             key: PRNG key.
-            method: Bootstrap filter or bridge proposal.
 
         Returns:
             - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.

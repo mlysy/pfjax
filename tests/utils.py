@@ -6,8 +6,8 @@ import jax.scipy as jsp
 import jax.random as random
 import pfjax as pf
 import pfjax.mcmc as mcmc
-import lotvol_model as lv
-import pgnet_model as pg
+import pfjax.lotvol_model as lv
+import pfjax.pgnet_model as pg
 
 def rel_err(X1, X2):
     """

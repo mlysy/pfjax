@@ -29,7 +29,7 @@ class TestInherit(unittest.TestCase):
     Check that inheritance from SDEModel works as expected.
     """
 
-    setUp = utils.lv_setup
+    setUp = utils.pg_setup
 
     test_sim = utils.test_models_sim
     test_loglik = utils.test_models_loglik
@@ -40,7 +40,7 @@ class TestJit(unittest.TestCase):
     Check whether jit with and without grad gives the same result.
     """
 
-    setUp = utils.lv_setup
+    setUp = utils.pg_setup
 
     test_sim = utils.test_jit_sim
     test_pf = utils.test_jit_pf
