@@ -6,6 +6,7 @@ import jax.scipy as jsp
 import jax.random as random
 import pfjax as pf
 import pfjax.mcmc as mcmc
+import pfjax.models
 import lotvol_model as lv
 
 
@@ -39,7 +40,7 @@ def bm_setup(self):
     # particle filter specification
     self.n_particles = 3
     # model specification
-    self.Model = pf.BMModel
+    self.Model = pf.models.BMModel
 
 
 def lv_setup(self):
@@ -66,7 +67,7 @@ def lv_setup(self):
     self.x_init = jnp.block([[jnp.zeros((n_res-1, 2))],
                              [jnp.log(jnp.array([5., 3.]))]])
     self.n_particles = 25
-    self.Model = pf.LotVolModel
+    self.Model = pf.models.LotVolModel
     self.Model2 = lv.LotVolModel
 
 
@@ -113,7 +114,7 @@ def test_for_pf(self):
             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
 
 
-def test_for_mvn_resampler (self):
+def test_for_mvn_resampler(self):
     """ particle filter with mvn resampling function test """
     # un-self setUp members
     key = self.key
@@ -126,7 +127,7 @@ def test_for_mvn_resampler (self):
     # simulate without for-loop
     key, subkey = random.split(key)
     y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
-    # generate initial particles: 
+    # generate initial particles:
     key, *subkeys = random.split(key, num=n_particles+1)
     x_particles, logw = jax.vmap(
         lambda k: model.pf_init(k, y_meas[0], theta))(jnp.array(subkeys))
@@ -141,17 +142,18 @@ def test_for_mvn_resampler (self):
         logw)
     for k in new_particles.keys():
         with self.subTest(k=k):
-            self.assertAlmostEqual(rel_err(new_particles[k], new_particles_for[k]), 0.0)
-    
+            self.assertAlmostEqual(
+                rel_err(new_particles[k], new_particles_for[k]), 0.0)
 
-def test_mvn_resample_shape (self):
+
+def test_mvn_resample_shape(self):
     """ particle filter with mvn resampling function test """
     # un-self setUp members
     key = self.key
     key, subkey = random.split(key)
     n_particles = 25
     logw = jnp.zeros(n_particles)
-    particles = jax.random.normal(subkey, shape = (n_particles, 5, 2, 2))
+    particles = jax.random.normal(subkey, shape=(n_particles, 5, 2, 2))
     new_particles_for = pf.particle_resample_mvn_for(
         subkey,
         particles,
@@ -162,8 +164,9 @@ def test_mvn_resample_shape (self):
         logw)
     for k in new_particles.keys():
         with self.subTest(k=k):
-            self.assertAlmostEqual(new_particles[k].shape, new_particles_for[k].shape)
-  
+            self.assertAlmostEqual(
+                new_particles[k].shape, new_particles_for[k].shape)
+
 
 def test_for_smooth(self):
     # un-self setUp members
@@ -324,7 +327,7 @@ def test_jit_pf(self):
     self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
 
 
-def test_jit_pf_mvn (self):
+def test_jit_pf_mvn(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -340,20 +343,21 @@ def test_jit_pf_mvn (self):
     key, subkey = random.split(key)
     # pf without jit
     pf_out1 = pf.particle_filter(
-        model, subkey, y_meas, theta, n_particles, 
-        particle_sampler = pf.particle_resample_mvn)
+        model, subkey, y_meas, theta, n_particles,
+        particle_sampler=pf.particle_resample_mvn)
     # pf with jit
     pf_out2 = jax.jit(pf.particle_filter, static_argnums=(0, 4, 5))(
         model, subkey, y_meas, theta, n_particles,
-        particle_sampler = pf.particle_resample_mvn)
+        particle_sampler=pf.particle_resample_mvn)
     for k in pf_out1.keys():
         with self.subTest(k=k):
             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
     # objective function for gradient
+
     def obj_fun(model, key, y_meas, theta, n_particles):
         return pf.particle_loglik(pf.particle_filter(
             model, key, y_meas, theta, n_particles,
-            particle_sampler = pf.particle_resample_mvn)["logw"])
+            particle_sampler=pf.particle_resample_mvn)["logw"])
 
     # grad without jit
     grad1 = jax.grad(obj_fun, argnums=3)(
@@ -559,4 +563,3 @@ def test_models_pf(self):
     for k in pf_out1.keys():
         with self.subTest(k=k):
             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
-
