@@ -24,29 +24,6 @@ import utils
 from jax.config import config
 config.update("jax_enable_x64", True)
 
-class TestInherit(unittest.TestCase):
-    """
-    Check that inheritance from SDEModel works as expected.
-    """
-
-    setUp = utils.pg_setup
-
-    test_sim = utils.test_models_sim
-    test_loglik = utils.test_models_loglik
-    test_pf = utils.test_models_pf
-
-class TestJit(unittest.TestCase):
-    """
-    Check whether jit with and without grad gives the same result.
-    """
-
-    setUp = utils.pg_setup
-
-    test_sim = utils.test_jit_sim
-    test_pf = utils.test_jit_pf
-    test_loglik = utils.test_jit_loglik
-
-
 class TestFor(unittest.TestCase):
     """
     Test whether for-loop version of functions is identical to xmap/scan version.
