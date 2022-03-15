@@ -26,3 +26,4 @@ From within `pfjax/tests`:
 python3 -m unittest -v
 ```
 
+Or, install [**tox**](https://tox.wiki/en/latest/index.html), then from within `pfjax` enter command line: `tox`.

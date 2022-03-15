@@ -12,6 +12,7 @@ import jax.scipy as jsp
 from jax import random
 from jax import lax
 
+
 def mvn_bridge_pars(mu_W, Sigma_W, mu_XW, Sigma_XW, A, Omega):
     """
     Calculate the unconditional parameters of Y.
@@ -69,6 +70,7 @@ def mvn_bridge_mv(mu_W, Sigma_W, mu_Y, AS_W, Sigma_Y, Y):
     sol = jnp.matmul(AS_W.T, jsp.linalg.cho_solve(
          Sigma_chol, jnp.hstack([jnp.array([Y-mu_Y]).T, AS_W])))
     return mu_W + jnp.squeeze(sol[:, 0]), Sigma_W - sol[:, 1:]
+
 
 # def euler_sim_diag(key, n_steps, x, dt, drift, diff, theta):
 #     """
@@ -272,16 +274,21 @@ def euler_lpdf_var(x_curr, x_prev, dt, drift, diff, theta):
 class SDEModel(object):
     """
     Base class for SDE models.
+
     This class should set up a PF model class with methods `state_lpdf()`, `state_sim()`, and `pf_step()`,  with the user only needing to specify SDE drift and diffusion functions, and whether the diffusion is on the `diag` scale.
+
     For the latter, methods `euler_sim()` and `euler_lpdf()` are supplied at instantiation time from either `euler_{sim/lpdf}_diag()` or `euler_{sim/lpdf}_var()`, with arguments identical to those of the free functions except `drift` and `diff`, which are supplied by `self.drift()` and `self.diff()`.  Hopefully this won't be a problem when we come to jitting, gradding, etc.
     For `pf_step()`, a bootstrap filter is assumed, for which the user needs to specify `meas_lpdf()`.
+
     **Notes:**
+
     - Currently contains `state_sample_for()` and `state_lpdf_for()` for testing purposes.  May want to move these elsewhere at some point to obfuscate from users...
     """
 
     def __init__(self, dt, n_res, diff_diag):
         """
         Class constructor.
+
         Args:
             dt: SDE interobservation time.
             n_res: SDE resolution number.  There are `n_res` latent variables per observation, equally spaced with interobservation time `dt/n_res`.
@@ -328,10 +335,12 @@ class SDEModel(object):
     def state_lpdf(self, x_curr, x_prev, theta):
         """
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
+
         Args:
             x_curr: State variable at current time `t`.
             x_prev: State variable at previous time `t-1`.
             theta: Parameter value.
+
         Returns:
             The log-density of `p(x_curr | x_prev, theta)`.
         """
@@ -351,10 +360,12 @@ class SDEModel(object):
         """
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
         For-loop version for testing.
+
         Args:
             x_curr: State variable at current time `t`.
             x_prev: State variable at previous time `t-1`.
             theta: Parameter value.
+
         Returns:
             The log-density of `p(x_curr | x_prev, theta)`.
         """
@@ -378,14 +389,15 @@ class SDEModel(object):
                 ))
         return lp
 
-
     def state_sample(self, key, x_prev, theta):
         """
         Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
+
         Args:
             key: PRNG key.
             x_prev: State variable at previous time `t-1`.
             theta: Parameter value.
+
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
@@ -415,10 +427,12 @@ class SDEModel(object):
         """
         Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
         For-loop version for testing.
+
         Args:
             key: PRNG key.
             x_prev: State variable at previous time `t-1`.
             theta: Parameter value.
+
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
@@ -444,11 +458,13 @@ class SDEModel(object):
         """
         Update particle and calculate log-weight for a bootstrap particle filter.
         **FIXME:** This method is completely generic, i.e., is not specific to SDEs.  May wish to put it elsewhere...
+
         Args:
             x_prev: State variable at previous time `t-1`.
             y_curr: Measurement variable at current time `t`.
             theta: Parameter value.
             key: PRNG key.
+
         Returns:
             - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
             - logw: The log-weight of `x_curr`.
@@ -460,11 +476,17 @@ class SDEModel(object):
     def bridge_prop(self, key, x_prev, Y, theta, A, Omega):
         """
         Bridge proposal.
+
         **Notes:**
+
         - The measurement input is `Y` instead of `y_meas`.  The reason is that the proposal can be used with carefully chosen `Y = g(y_meas)` when the measurement error model is not `y_meas ~ N(A x_state, Omega)`.
+
         - Only implements the general version with arbitrary `A` and `Omega`.  Specific cases can be done more rapidly, but it's not clear where to put these different methods.  Inside the class?  As free functions?
+
         - Duplicates a lot of code from `mvn_bridge_pars()`, because `Sigma_Y` and `mu_Y` inside the latter can be computed very easily here.
+
         - Computes the Euler part of the log-weights using `vmap` after the bridge part which used `lax.scan()`.  On one core, it's definitely faster to do both inside `lax.scan()`.  On multiple cores that may or may not be the case, but probably would need quite a few cores see the speed increase.  However, it's unlikely that we'll explicitly parallelize across cores for this, since the parallellization would typically be over particles.
+
         - The drift and diffusion functions are each calculated twice, once for proposal and once for Euler.  This is somewhat inefficient, but to circumvent this would need to redesign `euler_lpdf()`...
         """
         # lax.scan setup
@@ -521,7 +543,7 @@ class SDEModel(object):
         logw = logw + self.meas_lpdf(Y, x_prop, theta) - last["lp"]
         return x_prop, logw
 
-    
+        
     def bridge_prop_for(self, key, x_prev, Y, theta, A, Omega):
         """
         For-loop version of bridge_prop() for testing.

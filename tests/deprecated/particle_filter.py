@@ -259,4 +259,4 @@ def particle_loglik(logw):
         log p(y_meas | theta) = log int p(y_meas | x_state, theta) * p(x_state | theta) dx_state
         ```
     """
-    return jnp.sum(jsp.special.logsumexp(logw, axis=1))
+    return jnp.sum(jsp.special.logsumexp(logw_particles, axis=1))
