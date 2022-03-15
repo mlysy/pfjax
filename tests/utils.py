@@ -8,7 +8,7 @@ import pfjax as pf
 import pfjax.mcmc as mcmc
 import pfjax.models
 import lotvol_model as lv
-import pfjax.pgnet_model as pg
+import pfjax.models.pgnet_model as pg
 
 def rel_err(X1, X2):
     """
@@ -93,7 +93,7 @@ def pg_setup(self):
     self.x_init = jnp.block([[jnp.zeros((n_res-1, 4))],
                              [jnp.log(jnp.array([8., 8., 8., 5.]))]])
     self.n_particles = 2
-    self.Model = pf.PGNETModel
+    self.Model = pg.PGNETModel
     self.Model2 = pg.PGNETModel
 
 
