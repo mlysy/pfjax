@@ -21,8 +21,7 @@ import jax.scipy as jsp
 import jax.random as random
 import pfjax as pf
 import utils
-from jax.config import config
-config.update("jax_enable_x64", True)
+
 
 class TestInherit(unittest.TestCase):
     """
@@ -134,6 +133,7 @@ class TestFor(unittest.TestCase):
         )
         self.assertAlmostEqual(utils.rel_err(x_curr1, x_curr2), 0.0)
         self.assertAlmostEqual(utils.rel_err(logw1, logw2), 0.0)
+        
         
 if __name__ == '__main__':
     unittest.main()

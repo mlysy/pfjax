@@ -46,7 +46,7 @@ def simulate_for(n_obs, x_init, theta, key):
     return y_meas, x_state
 
 
-@partial(jax.jit, static_argnums=0)
+# @partial(jax.jit, static_argnums=0)
 def simulate(n_obs, x_init, theta, key):
     """
     Simulate data from the state-space model.
@@ -167,7 +167,7 @@ def particle_filter_for(y_meas, theta, n_particles, key):
     }
 
 
-@partial(jax.jit, static_argnums=2)
+# @partial(jax.jit, static_argnums=2)
 def particle_filter(y_meas, theta, n_particles, key):
     """
     Apply particle filter for given value of `theta`.
