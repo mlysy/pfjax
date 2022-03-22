@@ -97,7 +97,7 @@ class TestFor(unittest.TestCase):
         lp2 = model.state_lpdf(x_curr, x_prev, theta)
         self.assertAlmostEqual(utils.rel_err(lp1, lp2), 0.0)
 
-    def test_bridge(self):
+    def test_bridge_for(self):
         key = self.key
         theta = self.theta
         x_init = self.x_init

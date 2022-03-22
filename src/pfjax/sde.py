@@ -245,11 +245,16 @@ def euler_sim_var(key, x, dt, drift, diff, theta):
         Simulated SDE values. A vector of size `n_dims`.
     """
 
-    dr = x + drift(x, theta) * dt
-    chol_Sigma = jnp.linalg.cholesky(diff(x, theta))
-    df = chol_Sigma * jnp.sqrt(dt)
-    return dr + jnp.matmul(df, random.normal(key, (x.shape[0],)))
-
+    # dr = x + drift(x, theta) * dt
+    # chol_Sigma = jnp.linalg.cholesky(diff(x, theta))
+    # df = chol_Sigma * jnp.sqrt(dt)
+    #return dr + jnp.matmul(df, random.normal(key, (x.shape[0],)))
+    return jax.random.multivariate_normal(
+        key, 
+        mean=x + drift(x, theta) * dt, 
+        cov=diff(x, theta) * dt
+    )
+    
 def euler_lpdf_var(x_curr, x_prev, dt, drift, diff, theta):
     """
     Calculate the log PDF of observations from an SDE with dense diffusion using the Euler-Maruyama discretization.
