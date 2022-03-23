@@ -50,12 +50,9 @@ class PGNETModel(sde.SDEModel):
     Construct the PGNET model class.
 
     Args:
-        dt (float): See sde.py for documentation.
-        n_res (int): See sde.py for documentation.
-        diff_diag (bool): See sde.py for documentation.
-        ._n_state (tuple(int, int)): Dimensions of the latent variable at each interobservation time.
-        ._K (int): Chosen parameter for the conservation law restriction.
-        ._bootstrap (bool): Flag indicating if bootstrap method is used or bridge proposal.
+        dt: SDE interobservation time.
+        n_res: SDE resolution number.  There are `n_res` latent variables per observation, equally spaced with interobservation time `dt/n_res`.
+        bootstrap (bool): Flag indicating if bootstrap method is used or bridge proposal.
     
     """
     def __init__(self, dt, n_res, bootstrap=True):
