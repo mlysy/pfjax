@@ -114,18 +114,19 @@ class LotVolModel(object):
         """
         x = jnp.append(jnp.expand_dims(x_prev[self.n_res-1], axis=0),
                        x_curr, axis=0)
-        return sde.euler_lpdf_diag(x, self.dt/self.n_res,
-                                   self.drift, self.diff, theta)
-        # x0 = jnp.append(jnp.expand_dims(
-        #      x_prev[self.n_res-1], axis=0), x_curr[:self.n_res-1], axis=0)
-        # x1 = x_curr
-        # sigma = theta[4:6] * jnp.sqrt(dt_res)
-        # lp = jax.vmap(lambda t:
-        #               jsp.stats.norm.logpdf(x1[t],
-        #                                     loc=lotvol_drift(
-        #                                         x0[t], dt_res, theta),
-        #                                     scale=sigma))(jnp.arange(self.n_res))
-        # return jnp.sum(lp)
+        # return sde.euler_lpdf_diag(x, self.dt/self.n_res,
+        #                            self.drift, self.diff, theta)
+        x0 = jnp.append(jnp.expand_dims(
+            x_prev[self.n_res-1], axis=0), x_curr[:self.n_res-1], axis=0)
+        x1 = x_curr
+        dt_res = self.dt/self.n_res
+        sigma = theta[4:6] * jnp.sqrt(dt_res)
+        lp = jax.vmap(lambda t:
+                      jsp.stats.norm.logpdf(x1[t],
+                                            loc=lotvol_drift(
+                                                x0[t], dt_res, theta),
+                                            scale=sigma))(jnp.arange(self.n_res))
+        return jnp.sum(lp)
 
     # def state_lpdf_for(self, x_curr, x_prev, theta):
     #     """
@@ -167,15 +168,30 @@ class LotVolModel(object):
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
-        return sde.euler_sim_diag(
-            key=key,
-            n_steps=self.n_res,
-            x=x_prev[self.n_res-1],
-            dt=self.dt/self.n_res,
-            drift=self.drift,
-            diff=self.diff,
-            theta=theta
-        )
+        dt_res = self.dt/self.n_res
+        sigma = theta[4:6] * jnp.sqrt(dt_res)
+        # lax.scan setup:
+
+        # scan function
+        def fun(carry, t):
+            key, subkey = random.split(carry["key"])
+            x = lotvol_drift(carry["x"], dt_res, theta) + \
+                sigma * random.normal(subkey, (2,))
+            res = {"x": x, "key": key}
+            return res, res
+        # scan initial value
+        init = {"x": x_prev[self.n_res-1], "key": key}
+        last, full = lax.scan(fun, init, jnp.arange(self.n_res))
+        return full["x"]
+        # return sde.euler_sim_diag(
+        #     key=key,
+        #     n_steps=self.n_res,
+        #     x=x_prev[self.n_res-1],
+        #     dt=self.dt/self.n_res,
+        #     drift=self.drift,
+        #     diff=self.diff,
+        #     theta=theta
+        # )
         # return euler_sim(self.n_res, x_prev[self.n_res-1], self.dt/self.n_res, theta, key, self.n_state)
 
     # def state_sample_for(self, x_prev, theta, key):

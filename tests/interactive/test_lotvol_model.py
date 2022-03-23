@@ -29,15 +29,15 @@ x_init = jnp.block([[jnp.zeros((n_res-1, 2))],
 lv_model = pf.LotVolModel(dt=dt, n_res=n_res)
 y_meas, x_state = pf.simulate(lv_model, key, n_obs, x_init, theta)
 
-# bridge proposal
-lv_model.bridge_step(
-    key=key,
-    x_prev=x_state[0],
-    Y=jnp.log(y_meas[1]),
-    theta=theta,
-    A=jnp.eye(2),
-    Omega=jnp.eye(2)
-)
+# # bridge proposal
+# lv_model.bridge_step(
+#     key=key,
+#     x_prev=x_state[0],
+#     Y=jnp.log(y_meas[1]),
+#     theta=theta,
+#     A=jnp.eye(2),
+#     Omega=jnp.eye(2)
+# )
 
 
 # simulate with inherited class
@@ -68,9 +68,11 @@ state_lp = lv_model.state_lpdf(x_curr, x_prev, theta)
 state_lp_for = lv_model.state_lpdf_for(x_curr, x_prev, theta)
 print("state_lp - state_lp_for= \n", state_lp - state_lp_for)
 
-breakpoint()
-
 # --- particle filter ----------------------------------------------------------
+
+pf.particle_filter(lv_model, key,
+                   y_meas, theta, n_particles=5,
+                   particle_sampler=pf.particle_resample_ot)
 
 key, subkey = random.split(key)
 x_init = init_sample(y_init=jnp.log(jnp.array([5., 3.])),
