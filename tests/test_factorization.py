@@ -16,11 +16,10 @@ import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
-import pfjax as pf
+from pfjax.mvn_bridge import *
 import utils
-from jax.config import config
-config.update("jax_enable_x64", True)
-
+# from jax.config import config
+# config.update("jax_enable_x64", True)
 
 class TestFact(unittest.TestCase):
 
@@ -46,10 +45,10 @@ class TestFact(unittest.TestCase):
         Check if p(W, Y) = p(Y) P(W|Y).
         """
         # joint distribution using factorization
-        mu_Y, AS_W, Sigma_Y = pf.sde.mvn_bridge_pars(self.mu_W, self.Sigma_W, self.mu_XW,
-                                                     self.Sigma_XW, self.A, self.Omega)        
-        mu_WY, Sigma_WY = pf.sde.mvn_bridge_mv(self.mu_W, self.Sigma_W, mu_Y, 
-                                               AS_W, Sigma_Y, self.Y)
+        mu_Y, AS_W, Sigma_Y = mvn_bridge_pars(self.mu_W, self.Sigma_W, self.mu_XW,
+                                              self.Sigma_XW, self.A, self.Omega)        
+        mu_WY, Sigma_WY = mvn_bridge_mv(self.mu_W, self.Sigma_W, mu_Y, 
+                                        AS_W, Sigma_Y, self.Y)
         lpdf1 = jsp.stats.multivariate_normal.logpdf(self.Y, self.mu_Y, self.Sigma_Y)
         lpdf1 = lpdf1 + jsp.stats.multivariate_normal.logpdf(self.W, mu_WY, Sigma_WY)
 

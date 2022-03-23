@@ -12,66 +12,6 @@ import jax.scipy as jsp
 from jax import random
 from jax import lax
 
-
-def mvn_bridge_pars(mu_W, Sigma_W, mu_XW, Sigma_XW, A, Omega):
-    """
-    Calculate the unconditional parameters of Y.
-
-    Suppose we have the multivariate normal model
-
-    ```
-           W ~ N(mu_W, Sigma_W)
-       X | W ~ N(W + mu_XW, Sigma_XW)
-    Y | X, W ~ N(AX, Omega)
-    ```
-
-    Args:
-        mu_W: Mean of W.
-        Sigma_W: Variance of W.
-        mu_XW: Mean fo X|W.
-        Sigma_XW: Variance of X|W.
-        A: Matrix to obtain mean of Y given X,W.
-        Omega: Variance of Y|X,W.
-    
-    Returns:
-        mu_Y: Unconditional mean of Y.
-        AS_W: Covariance of W, Y.
-        Sigma_Y: Unconditional variance of Y.
-        
-    """
-    mu_Y = jnp.matmul(A, mu_W + mu_XW)
-    AS_W = jnp.matmul(A, Sigma_W)
-    Sigma_Y = jnp.linalg.multi_dot([A, Sigma_W + Sigma_XW, A.T]) + Omega
-    return mu_Y, AS_W, Sigma_Y
-
-def mvn_bridge_mv(mu_W, Sigma_W, mu_Y, AS_W, Sigma_Y, Y):
-    """
-    Calculate the mean and variance of a normal bridge distribution given 
-    the unconditional parameters of Y.
-
-    Args:
-        mu_W: Mean of W.
-        Sigma_W: Variance of W.
-        mu_Y: Unconditional mean of Y.
-        AS_W: Covariance of Y, W.
-        Sigma_Y: Unconditional variance of Y.
-        Y: Observed Y.
-
-    Returns:    
-        mu_WY: Mean of W|Y.
-        Sigma_WY: Variance of W|Y.
-
-    """
-    # solve both linear systems simultaneously
-    # sol = jnp.matmul(AS_W.T, jnp.linalg.solve(
-    #     Sigma_Y, jnp.hstack([jnp.array([Y-mu_Y]).T, AS_W])))
-    
-    Sigma_chol = jsp.linalg.cho_factor(Sigma_Y, True)
-    sol = jnp.matmul(AS_W.T, jsp.linalg.cho_solve(
-         Sigma_chol, jnp.hstack([jnp.array([Y-mu_Y]).T, AS_W])))
-    return mu_W + jnp.squeeze(sol[:, 0]), Sigma_W - sol[:, 1:]
-
-
 # def euler_sim_diag(key, n_steps, x, dt, drift, diff, theta):
 #     """
 #     Simulate SDE with diagonal diffusion using Euler-Maruyama discretization.
