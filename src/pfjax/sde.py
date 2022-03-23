@@ -12,30 +12,6 @@ import jax.scipy as jsp
 from jax import random
 from jax import lax
 
-
-def mvn_bridge_pars(mu_W, Sigma_W, mu_XW, Sigma_XW, Y, A, Omega):
-    """
-    Calculate the mean and variance of a normal bridge distribution.
-
-    Suppose we have the multivariate normal model
-
-    ```
-           W ~ N(mu_W, Sigma_W)
-       X | W ~ N(W + mu_XW, Sigma_XW)
-    Y | X, W ~ N(AX, Omega)
-    ```
-
-    This function returns the mean and variance of `p(W | Y)`.
-    """
-    mu_Y = jnp.matmul(A, mu_W + mu_XW)
-    AS_W = jnp.matmul(A, Sigma_W)
-    Sigma_Y = jnp.linalg.multi_dot([A, Sigma_W + Sigma_XW, A.T]) + Omega
-    # solve both linear systems simultaneously
-    sol = jnp.matmul(AS_W.T, jnp.linalg.solve(
-        Sigma_Y, jnp.hstack([jnp.array([Y-mu_Y]).T, AS_W])))
-    return mu_W + jnp.squeeze(sol[:, 0]), Sigma_W - sol[:, 1:]
-
-
 # def euler_sim_diag(key, n_steps, x, dt, drift, diff, theta):
 #     """
 #     Simulate SDE with diagonal diffusion using Euler-Maruyama discretization.
@@ -136,6 +112,109 @@ def euler_lpdf_diag(x_curr, x_prev, dt, drift, diff, theta):
         scale=diff(x_prev, theta) * jnp.sqrt(dt)
     )
 
+# def euler_sim_var(key, n_steps, x, dt, drift, diff, theta):
+#     """
+#     Simulate SDE with dense diffusion using Euler-Maruyama discretization.
+#     Args:
+#         n_steps: Number of steps to simulate.
+#         x: Initial value of the SDE.  A vector of size `n_dims`.
+#         dt: Interobservation time.
+#         drift: Drift function having signature `drift(x, theta)` and returning a vector of size `n_dims`.
+#         diff: Diffusion function having signature `diff(x, theta)` and returning a vector of size `n_dims x n_dims`.
+#         theta: Parameter value.
+#         key: PRNG key.
+#     Returns:
+#         Simulated SDE values in a matrix of size `n_steps x n_dims`.
+#     """
+
+#     # setup lax.scan:
+#     # scan function
+#     def fun(carry, t):
+#         key, subkey = random.split(carry["key"])
+#         x = carry["x"]
+#         dr = x + drift(x, theta) * dt
+#         chol_Sigma = jnp.linalg.cholesky(diff(x, theta))
+#         df = chol_Sigma * jnp.sqrt(dt)
+#         #x = random.multivariate_normal(subkey, mean=dr, cov=diff(x, theta)*dt)
+#         x = dr + jnp.matmul(df, random.normal(subkey, (x.shape[0],)))
+#         res = {"x": x, "key": key}
+#         return res, res
+#     # scan initial value
+#     init = {"x": x, "key": key}
+#     # lax.scan itself
+#     last, full = lax.scan(fun, init, jnp.arange(n_steps))
+#     return full["x"]
+
+
+# def euler_lpdf_var(x, dt, drift, diff, theta):
+#     """
+#     Calculate the log PDF of observations from an SDE with dense diffusion using the Euler-Maruyama discretization.
+#     Args:
+#         x: SDE observations.  An array of size `n_obs x n_dims`.
+#         dt: Interobservation time.
+#         drift: Drift function having signature `drift(x, theta)` and returning a vector of size `n_dims`.
+#         diff: Diffusion function having signature `diff(x, theta)` and returning a matrix of size `n_dims x n_dims`.
+#         theta: Parameter value.
+#     Returns:
+#         The log-density of the SDE observations.
+#     """
+#     x0 = x[:-1, :]
+#     x1 = x[1:, :]
+#     lp = jax.vmap(lambda t:
+#                   jsp.stats.multivariate_normal.logpdf(
+#                       x=x1[t],
+#                       mean=x0[t] + drift(x0[t], theta) * dt,
+#                       cov=diff(x0[t], theta) * dt
+#                   ))(jnp.arange(x0.shape[0]))
+
+#     return jnp.sum(lp)
+
+def euler_sim_var(key, x, dt, drift, diff, theta):
+    """
+    Simulate SDE with dense diffusion using Euler-Maruyama discretization.
+
+    Args:
+        key: PRNG key.
+        x: Initial value of the SDE.  A vector of size `n_dims`.
+        dt: Interobservation time.
+        drift: Drift function having signature `drift(x, theta)` and returning a vector of size `n_dims`.
+        diff: Diffusion function having signature `diff(x, theta)` and returning a vector of size `n_dims`.
+        theta: Parameter value.
+
+    Returns:
+        Simulated SDE values. A vector of size `n_dims`.
+    """
+
+    # dr = x + drift(x, theta) * dt
+    # chol_Sigma = jnp.linalg.cholesky(diff(x, theta))
+    # df = chol_Sigma * jnp.sqrt(dt)
+    #return dr + jnp.matmul(df, random.normal(key, (x.shape[0],)))
+    return jax.random.multivariate_normal(
+        key, 
+        mean=x + drift(x, theta) * dt, 
+        cov=diff(x, theta) * dt
+    )
+    
+def euler_lpdf_var(x_curr, x_prev, dt, drift, diff, theta):
+    """
+    Calculate the log PDF of observations from an SDE with dense diffusion using the Euler-Maruyama discretization.
+
+    Args:
+        x_curr: Current SDE observations.  A vector of size `n_dims`.
+        x_prev: Previous SDE observations.  A vector of size `n_dims`.
+        dt: Interobservation time.
+        drift: Drift function having signature `drift(x, theta)` and returning a vector of size `n_dims`.
+        diff: Diffusion function having signature `diff(x, theta)` and returning a vector of size `n_dims`.
+        theta: Parameter value.
+
+    Returns:
+        The log-density of the SDE observations.
+    """
+    return jsp.stats.multivariate_normal.logpdf(
+        x=x_curr,
+        mean=x_prev + drift(x_prev, theta) * dt,
+        cov=diff(x_prev, theta) * dt
+    )
 
 class SDEModel(object):
     """
@@ -251,7 +330,7 @@ class SDEModel(object):
                 lp = lp + jnp.sum(jsp.stats.multivariate_normal.logpdf(
                     x=x1[t],
                     mean=x0[t] + self.drift(x0[t], theta) * dt_res,
-                    cov=self.diff(x0[t], theta) * jnp.sqrt(dt_res)
+                    cov=self.diff(x0[t], theta) * dt_res
                 ))
         return lp
 
@@ -406,5 +485,50 @@ class SDEModel(object):
             x_prev=x_prev,
             theta=theta
         )
-        logw = logw + self.meas_lpdf(y_meas, x_curr, theta) - last["lp"]
+        logw = logw + self.meas_lpdf(Y, x_prop, theta) - last["lp"]
+        return x_prop, logw
+
+        
+    def bridge_prop_for(self, key, x_prev, Y, theta, A, Omega):
+        """
+        For-loop version of bridge_prop() for testing.
+        """
+
+        dt_res = self._dt / self._n_res
+        x = x_prev[self._n_res - 1]
+        x_prop = []
+        lp_prop = jnp.array(0.0)
+        for t in range(self._n_res):
+            k = self._n_res - t
+            dr = self.drift(x, theta) * dt_res
+            df = self.diff_full(x, theta) * dt_res
+            mu_W = x + dr
+            Sigma_W = df
+            mu_Y = jnp.matmul(A, x + k*dr)
+            AS_W = jnp.matmul(A, Sigma_W)
+            Sigma_Y = k * jnp.linalg.multi_dot([A, df, A.T]) + Omega
+            # solve both linear systems simultaneously
+            sol = jnp.matmul(AS_W.T, jnp.linalg.solve(
+                Sigma_Y, jnp.hstack([jnp.array([Y-mu_Y]).T, AS_W])))
+            mu_bridge = mu_W + jnp.squeeze(sol[:, 0])
+            Sigma_bridge = Sigma_W - sol[:, 1:]
+            # bridge proposal
+            key, subkey = random.split(key)
+            x = random.multivariate_normal(key,
+                                           mean=mu_bridge,
+                                           cov=Sigma_bridge)
+            x_prop.append(x)
+            # bridge log-pdf
+            lp_prop = lp_prop + jsp.stats.multivariate_normal.logpdf(
+                x=x,
+                mean=mu_bridge,
+                cov=Sigma_bridge
+            )
+        x_prop = jnp.array(x_prop)
+        logw = self.state_lpdf(
+            x_curr=x_prop,
+            x_prev=x_prev,
+            theta=theta
+        )
+        logw = logw + self.meas_lpdf(Y, x_prop, theta) - lp_prop
         return x_prop, logw
