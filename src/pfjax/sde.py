@@ -188,13 +188,14 @@ def euler_sim_var(key, x, dt, drift, diff, theta):
     # dr = x + drift(x, theta) * dt
     # chol_Sigma = jnp.linalg.cholesky(diff(x, theta))
     # df = chol_Sigma * jnp.sqrt(dt)
-    #return dr + jnp.matmul(df, random.normal(key, (x.shape[0],)))
+    # return dr + jnp.matmul(df, random.normal(key, (x.shape[0],)))
     return jax.random.multivariate_normal(
-        key, 
-        mean=x + drift(x, theta) * dt, 
+        key,
+        mean=x + drift(x, theta) * dt,
         cov=diff(x, theta) * dt
     )
-    
+
+
 def euler_lpdf_var(x_curr, x_prev, dt, drift, diff, theta):
     """
     Calculate the log PDF of observations from an SDE with dense diffusion using the Euler-Maruyama discretization.
@@ -216,6 +217,7 @@ def euler_lpdf_var(x_curr, x_prev, dt, drift, diff, theta):
         cov=diff(x_prev, theta) * dt
     )
 
+
 class SDEModel(object):
     """
     Base class for SDE models.
@@ -231,7 +233,7 @@ class SDEModel(object):
     """
 
     def __init__(self, dt, n_res, diff_diag):
-        """
+        r"""
         Class constructor.
 
         Args:
@@ -488,7 +490,6 @@ class SDEModel(object):
         logw = logw + self.meas_lpdf(Y, x_prop, theta) - last["lp"]
         return x_prop, logw
 
-        
     def bridge_prop_for(self, key, x_prev, Y, theta, A, Omega):
         """
         For-loop version of bridge_prop() for testing.
