@@ -420,7 +420,7 @@ class SDEModel(object):
         logw = self.meas_lpdf(y_curr, x_curr, theta)
         return x_curr, logw
 
-    def bridge_prop(self, key, x_prev, Y, theta, A, Omega):
+    def bridge_prop(self, key, x_prev, y_curr, theta, Y, A, Omega):
         """
         Bridge proposal.
 
@@ -487,10 +487,10 @@ class SDEModel(object):
             x_prev=x_prev,
             theta=theta
         )
-        logw = logw + self.meas_lpdf(Y, x_prop, theta) - last["lp"]
+        logw = logw + self.meas_lpdf(y_curr, x_prop, theta) - last["lp"]
         return x_prop, logw
 
-    def bridge_prop_for(self, key, x_prev, Y, theta, A, Omega):
+    def bridge_prop_for(self, key, x_prev, y_curr, theta, Y, A, Omega):
         """
         For-loop version of bridge_prop() for testing.
         """
@@ -531,5 +531,5 @@ class SDEModel(object):
             x_prev=x_prev,
             theta=theta
         )
-        logw = logw + self.meas_lpdf(Y, x_prop, theta) - lp_prop
+        logw = logw + self.meas_lpdf(y_curr, x_prop, theta) - lp_prop
         return x_prop, logw
