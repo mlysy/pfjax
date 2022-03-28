@@ -141,15 +141,16 @@ def particle_resample_mvn(key, x_particles_prev, logw):
             - `x_particles_mu`: Vector of `n_res * n_state` representing the mean of the MVN
             - `x_particles_cov`: Matrix of `n_res * n_state` representing the covariance matrix of the MVN            
     """
-    prob = _lweight_to_prob(logw)
     p_shape = x_particles_prev.shape
     n_particles = p_shape[0]
+    prob = _lweight_to_prob(logw) + 1e-5/p_shape[0] # add small amount to prevent all weight from accumulating in one particle
+    prob = prob/sum(prob) # re-normalize so that sum(w^2) < 1
     # calculate weighted mean and variance
     x_particles = jnp.transpose(x_particles_prev.reshape((n_particles, -1)))
     mvn_mean = jnp.average(x_particles, axis=1, weights=prob)
     mvn_cov = jnp.atleast_2d(jnp.cov(x_particles, aweights=prob))
-    # for numeric stability
-    mvn_cov += jnp.diag(jnp.ones(mvn_cov.shape[0]) * 1e-10)
+    # for numeric stability: too small variance degenerate resampling when we are far from the true solution
+    mvn_cov += jnp.diag(jnp.ones(mvn_cov.shape[0]) * 1e-5)
     x_particles = random.multivariate_normal(key,
                                              mean=mvn_mean,
                                              cov=mvn_cov,
