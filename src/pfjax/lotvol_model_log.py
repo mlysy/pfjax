@@ -52,39 +52,46 @@ class LotVolModelLog(sde.SDEModel):
         super().__init__(dt, n_res, diff_diag=True)
         self._n_state = (self._n_res, 2)
 
-    def _drift(self, x, theta):
+    def drift(self, x, theta):
         """
         Calculates the SDE drift on the regular scale
+        Args:
+            x: 
+            theta: parameter values on the log-scale
         """
-        alpha = theta[0]
-        beta = theta[1]
-        gamma = theta[2]
-        delta = theta[3]
+        alpha = jnp.exp(theta[0])
+        beta = jnp.exp(theta[1])
+        gamma = jnp.exp(theta[2])
+        delta = jnp.exp(theta[3])
         return jnp.array([alpha - beta * jnp.exp(x[1]),
                           -gamma + delta * jnp.exp(x[0])])
 
-    def _diff(self, x, theta):
+    def diff(self, x, theta):
         """
         Calculates the SDE diffusion function on the regular scale 
+        Args:
+            x: 
+            theta: parameter values on the log-scale
         """
-        return theta[4:6]
+        return jnp.exp(theta[4:6])
 
-    def drift (self, x, theta):
-        """ 
-        Calculates the SDE drift on the log-scale
-        Uses It's lemma formulation from examples/sde.ipynb
-        """
-        A = jnp.diag(1/x)
-        b = 0.5 * (-1/x^2) * self._diff(x, theta)
-        reg_drift = self._drift(x, theta)
-        return jnp.matmul(A, reg_drift)
+    # def drift (self, x, theta):
+    #     """ 
+    #     Calculates the SDE drift on the log-scale
+    #     Uses It's lemma formulation from examples/sde.ipynb
+    #     """
+    #     A = 1/x
+    #     reg_diff = self._diff(x, theta) # diffusion on the regular scale
+    #     reg_drift = self._drift(x, theta) # drift on regular scale
+    #     b = -0.5 * (1/x**2) * (reg_diff**2)
+    #     return (A * reg_drift) + b
 
-    def diff (self, x, theta):
-        """ 
-        Calculates the SDE diffusion matrix on the log-scale
-        """
-        A = jnp.diag(1/x)
-        return A * self._diff(x, theta)
+    # def diff (self, x, theta):
+    #     """ 
+    #     Calculates the SDE diffusion matrix on the log-scale
+    #     """
+    #     A = 1/x #jnp.diag([1/x[0], 1/x[1]])
+    #     return A * self._diff(x, theta)
 
       
     def state_lpdf_for(self, x_curr, x_prev, theta):
@@ -144,7 +151,7 @@ class LotVolModelLog(sde.SDEModel):
         Returns
             The log-density of `p(y_curr | x_curr, theta)`.
         """
-        tau = theta[6:8]
+        tau = jnp.exp(theta[6:8])
         return jnp.sum(
             jsp.stats.norm.logpdf(y_curr,
                                   loc=jnp.exp(x_curr[-1]), scale=tau)
@@ -160,7 +167,7 @@ class LotVolModelLog(sde.SDEModel):
         Returns:
             Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
         """
-        tau = theta[6:8]
+        tau = jnp.exp(theta[6:8])
         return jnp.exp(x_curr[-1]) + \
             tau * random.normal(key, (self._n_state[1],))
 
@@ -176,7 +183,7 @@ class LotVolModelLog(sde.SDEModel):
             - x_init: A sample from the proposal distribution for `x_init`.
             - logw: The log-weight of `x_init`.
         """
-        tau = theta[6:8]
+        tau = jnp.exp(theta[6:8])
         key, subkey = random.split(key)
         x_init = jnp.log(y_init + tau * random.truncated_normal(
             subkey,
