@@ -146,15 +146,9 @@ class PGNETModel(sde.SDEModel):
             The log-density of `p(y_curr | x_curr, theta)`.
         """
         tau = theta[8:12]
-        if self._bootstrap:
-            return jnp.sum(jsp.stats.norm.logpdf(
-                y_curr, loc=jnp.exp(x_curr[-1]), scale=tau
-            ))
-        else:
-            quad = tau / jnp.exp(y_curr)
-            return jnp.sum(
-                jsp.stats.norm.logpdf(y_curr, loc=x_curr[-1], scale=quad)
-            )
+        return jnp.sum(
+            jsp.stats.norm.logpdf(y_curr, loc=jnp.exp(x_curr[-1]), scale=tau)
+        )
 
     def meas_sample(self, key, x_curr, theta):
         """
@@ -241,7 +235,7 @@ class PGNETModel(sde.SDEModel):
         else:
             omega = (theta[8:12] / y_curr)**2
             x_curr, logw = self.bridge_prop(
-                key, x_prev, jnp.log(y_curr),
-                theta, jnp.eye(4), jnp.diag(omega)
+                key, x_prev, y_curr, theta, 
+                jnp.log(y_curr), jnp.eye(4), jnp.diag(omega)
             )
         return x_curr, logw
