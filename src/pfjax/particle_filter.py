@@ -311,6 +311,11 @@ def particle_filter(model, key, y_meas, theta, n_particles,
         theta: Parameter value.
         n_particles: Number of particles.
         particle_sampler: Function used at step `t` to obtain sample of particles from `p(x_{t-1} | y_{0:t-1}, theta)`.  The inputs to the function are `particle_sampler(x_particles, logw, key)`, and the return value is a dictionary with mandatory element `x_particles` and optional elements that get stacked to the final output using `lax.scan()`.  Default value is `particle_resample()`.
+        collector: Function `phi(x_{t-1}, x_t, y_t)` with arguments `x_prev`, `x_curr`, and `y_curr` and outputs a JAX pytree such that the particle filter will approximate 
+
+            ```
+            E[sum(phi(y_t, x_{t-1}, x_t)) | y_{0:T}]
+            ```
 
     Returns:
         A dictionary with elements:
