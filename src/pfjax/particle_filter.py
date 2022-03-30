@@ -7,7 +7,6 @@ The API requires the user to define a model class with the following methods:
 - `pf_step()`
 
 The provided functions are:
-
 - `particle_filter()`
 - `particle_loglik()`
 - `particle_smooth()`
@@ -21,6 +20,24 @@ import jax.scipy as jsp
 from jax import random
 from jax import lax
 from jax.experimental.maps import xmap
+import ott
+from ott.geometry import pointcloud
+from ott.core import sinkhorn
+
+
+def _lweight_to_prob(logw):
+    """
+    Returns normalized propabilities from unnormalized log weights
+
+    Args:
+        logw: Vector of `n_particles` unnormalized log-weights.
+
+    Returns:
+        Vector of `n_particles` normalized weights that sum to 1.
+    """
+    wgt = jnp.exp(logw - jnp.max(logw))
+    prob = wgt / jnp.sum(wgt)
+    return prob
 
 
 def particle_resample_old(key, logw):
@@ -38,8 +55,9 @@ def particle_resample_old(key, logw):
     Returns:
         Vector of `n_particles` integers between 0 and `n_particles-1`, sampled with replacement with probability vector `exp(logw) / sum(exp(logw))`.
     """
-    wgt = jnp.exp(logw - jnp.max(logw))
-    prob = wgt / jnp.sum(wgt)
+    # wgt = jnp.exp(logw - jnp.max(logw))
+    # prob = wgt / jnp.sum(wgt)
+    prob = _lweight_to_prob(logw)
     n_particles = logw.size
     return random.choice(key,
                          a=jnp.arange(n_particles),
@@ -62,8 +80,7 @@ def particle_resample(key, x_particles_prev, logw):
             - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.  These are sampled with replacement from `x_particles_prev` with probability vector `exp(logw) / sum(exp(logw))`.
             - `ancestors`: Vector of `n_particles` integers between 0 and `n_particles-1` giving the index of each element of `x_particles_prev` corresponding to the elements of `x_particles`.
     """
-    wgt = jnp.exp(logw - jnp.max(logw))
-    prob = wgt / jnp.sum(wgt)
+    prob = _lweight_to_prob(logw)
     n_particles = logw.size
     ancestors = random.choice(key,
                               a=jnp.arange(n_particles),
@@ -74,14 +91,149 @@ def particle_resample(key, x_particles_prev, logw):
     }
 
 
+def particle_resample_mvn_for(key, x_particles_prev, logw):
+    """
+    Particle resampler with Multivariate Normal approximation using for-loop for testing.
+
+    Args:
+        key: PRNG key.
+        x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
+        logw: Vector of corresponding `n_particles` unnormalized log-weights.
+
+    Returns:
+        A dictionary with elements:
+            - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.
+            - `mvn_mean`: Vector of length `n_state = prod(x_particles.shape[1:])` representing the mean of the MVN.
+            - `mvn_cov`: Matrix of size `n_state x n_state` representing the covariance matrix of the MVN.
+    """
+    particle_shape = x_particles_prev.shape
+    n_particles = particle_shape[0]
+    prob = _lweight_to_prob(logw)
+    flat = x_particles_prev.reshape((n_particles, -1))
+    n_dim = flat.shape[1]
+    mu = jnp.average(flat, axis=0, weights=prob)
+    cov_mat = jnp.zeros((n_dim, n_dim))
+    for i in range(n_dim):
+        # cov_mat = cov_mat.at[i, i].set(jnp.cov(flat[:, i], aweights=prob)) # diagonal cov matrix:
+        for j in range(i, n_dim):
+            c = jnp.cov(flat[:, i], flat[:, j], aweights=prob)
+            cov_mat = cov_mat.at[i, j].set(c[0][1])
+            cov_mat = cov_mat.at[j, i].set(cov_mat[i, j])
+    cov_mat += jnp.diag(jnp.ones(n_dim) * 1e-10)  # for numeric stability
+    samples = random.multivariate_normal(key,
+                                         mean=mu,
+                                         cov=cov_mat,
+                                         shape=(n_particles,))
+    ret_val = {"x_particles": samples.reshape(x_particles_prev.shape),
+               "mvn_mean": mu,
+               "mvn_cov": cov_mat}
+    return ret_val
+
+
+def particle_resample_mvn(key, x_particles_prev, logw):
+    """
+    Particle resampler with Multivariate Normal approximation.
+
+    Args:
+        key: PRNG key.
+        x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
+        logw: Vector of corresponding `n_particles` unnormalized log-weights.
+
+    Returns:
+        A dictionary with elements:
+            - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.
+            - `mvn_mean`: Vector of length `n_state = prod(x_particles.shape[1:])` representing the mean of the MVN.
+            - `mvn_cov`: Matrix of size `n_state x n_state` representing the covariance matrix of the MVN.
+    """
+    prob = _lweight_to_prob(logw)
+    p_shape = x_particles_prev.shape
+    n_particles = p_shape[0]
+    # calculate weighted mean and variance
+    x_particles = jnp.transpose(x_particles_prev.reshape((n_particles, -1)))
+    mvn_mean = jnp.average(x_particles, axis=1, weights=prob)
+    mvn_cov = jnp.atleast_2d(jnp.cov(x_particles, aweights=prob))
+    # for numeric stability
+    mvn_cov += jnp.diag(jnp.ones(mvn_cov.shape[0]) * 1e-10)
+    x_particles = random.multivariate_normal(key,
+                                             mean=mvn_mean,
+                                             cov=mvn_cov,
+                                             shape=(n_particles,))
+    return {
+        "x_particles": jnp.reshape(x_particles, newshape=p_shape),
+        "mvn_mean": mvn_mean,
+        "mvn_cov": mvn_cov
+    }
+
+
+def particle_resample_ot(key, x_particles_prev, logw,
+                         pointcloud_kwargs={},
+                         sinkhorn_kwargs={}):
+    """
+    Particle resampler using optimal transport.
+
+    Based on Algorithms 2 and 3 of Corenflos et al 2021 <https://arxiv.org/abs/2102.07850>.
+
+    **Notes:**
+
+    - Argument `jit` to `ott.sinkhorn.sinkhorn()` is ignored, i.e., always set to `False`.
+
+    Args:
+        key: PRNG key.
+        x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
+        logw: Vector of corresponding `n_particles` unnormalized log-weights.
+        pointcloud_kwargs: Dictionary of additional arguments to `ott.pointcloud.PointCloud()`.
+        sinkhorn_kwargs: Dictionary of additional arguments to `ott.sinkhorn.sinkhorn()`.
+
+    Returns:
+        A dictionary with elements:
+            - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.
+            - `geom`: An `ott.Geometry` object.
+            - `sink`: The output of the call to `ott.sinkhorn.sinkhorn()`.
+    """
+    sinkhorn_kwargs.update(jit=False)
+    prob = _lweight_to_prob(logw)
+    p_shape = x_particles_prev.shape
+    n_particles = p_shape[0]
+    x_particles = x_particles_prev.reshape((n_particles, -1))
+    geom = pointcloud.PointCloud(x=x_particles, y=x_particles,
+                                 **pointcloud_kwargs)
+    sink = sinkhorn.sinkhorn(geom,
+                             a=prob,
+                             b=jnp.ones(n_particles),
+                             **sinkhorn_kwargs)
+    x_particles = geom.apply_transport_from_potentials(
+        f=sink.f, g=sink.g, vec=x_particles.T
+    )
+    return {
+        "x_particles": jnp.reshape(x_particles.T, newshape=p_shape),
+        "geom": geom,
+        "sink": sink
+    }
+
+
 def particle_filter_for(model, key, y_meas, theta, n_particles):
     """
     Apply particle filter for given value of `theta`.
+
+    Closely follows Algorithm 2 of Murray 2013 <https://arxiv.org/abs/1306.3277>.
 
     This is the testing version which does the following:
 
     - Uses for-loops instead of `lax.scan` and `vmap/xmap`.
     - Only does basic particle sampling using `particle_resample_old()`.
+
+    Args:
+        model: Object specifying the state-space model.
+        key: PRNG key.
+        y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
+        theta: Parameter value.
+        n_particles: Number of particles.
+
+    Returns:
+        A dictionary with elements:
+            - `x_particles`: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
+            - `logw`: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
+            - `ancestors`: An integer `ndarray` of shape `(n_obs-1, n_particles)` where each element gives the index of the particle's ancestor at the previous time point.  Since the first time point does not have ancestors, the leading dimension is `n_obs-1` instead of `n_obs`.
     """
     # memory allocation
     n_obs = y_meas.shape[0]
@@ -150,7 +302,7 @@ def particle_filter(model, key, y_meas, theta, n_particles,
     """
     Apply particle filter for given value of `theta`.
 
-    Closely follows Algorithm 2 of https://arxiv.org/pdf/1306.3277.pdf.
+    Closely follows Algorithm 2 of Murray 2013 <https://arxiv.org/abs/1306.3277>.
 
     Args:
         model: Object specifying the state-space model.
@@ -181,7 +333,6 @@ def particle_filter(model, key, y_meas, theta, n_particles,
         x_particles, logw = jax.vmap(
             lambda xs, k: model.pf_step(k, xs, y_meas[t], theta)
         )(new_particles["x_particles"], jnp.array(subkeys))
-        # breakpoint()
         # output
         res_carry = {
             "x_particles": x_particles,
@@ -211,6 +362,8 @@ def particle_filter(model, key, y_meas, theta, n_particles,
         "logw": logw,
         "key": key
     }
+    particle_sampler(key=init["key"], x_particles_prev=init["x_particles"],
+                     logw=init["logw"])
     # lax.scan itself
     last, full = lax.scan(fun, init, jnp.arange(1, n_obs))
     # append initial values of x_particles and logw
@@ -240,7 +393,7 @@ def particle_loglik(logw):
     return jnp.sum(jsp.special.logsumexp(logw, axis=1) - jnp.log(n_particles))
 
 
-def particle_smooth_for(key, logw, x_particles, ancestors):
+def particle_smooth_for(key, logw, x_particles, ancestors, n_sample=1):
     """
     Draw a sample from `p(x_state | x_meas, theta)` using the basic particle smoothing algorithm.
 
