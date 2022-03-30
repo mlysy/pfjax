@@ -117,8 +117,9 @@ class TestFor(unittest.TestCase):
         x_curr1, logw1 = model.bridge_prop(
             key=key,
             x_prev=x_prev,
-            Y=jnp.log(y_meas),
+            y_curr=y_meas,
             theta=theta,
+            Y=jnp.log(y_meas),
             A=jnp.eye(2),
             Omega=jnp.eye(2)
         )
@@ -126,8 +127,9 @@ class TestFor(unittest.TestCase):
         x_curr2, logw2 = model.bridge_prop_for(
             key=key,
             x_prev=x_prev,
-            Y=jnp.log(y_meas),
+            y_curr=y_meas,
             theta=theta,
+            Y=jnp.log(y_meas),
             A=jnp.eye(2),
             Omega=jnp.eye(2)
         )
