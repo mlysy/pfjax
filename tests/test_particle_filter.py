@@ -30,34 +30,8 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
 import pfjax as pf
-import pfjax.mcmc
-from utils import *
-
-
-# # hack to copy-paste in contents without import
-# exec(open("bm_model.py").read())
-# exec(open("particle_filter.py").read())
-
-# # global variable (can't be defined inside class...)
-# dt = .1
-
-def test_setup():
-    """
-    Creates input arguments to tests.
-
-    Use this instead of TestCase.setUp because I don't want to prefix every variable by `self`.
-    """
-    key = random.PRNGKey(0)
-    # parameter values
-    mu = 5
-    sigma = 1
-    tau = .1
-    theta = jnp.array([mu, sigma, tau])
-    # data specification
-    dt = .1
-    n_obs = 5
-    x_init = jnp.array([0.])
-    return key, theta, dt, n_obs, x_init
+import pfjax.mcmc as mcmc
+import utils
 
 
 class TestFor(unittest.TestCase):
@@ -65,47 +39,54 @@ class TestFor(unittest.TestCase):
     Test whether for-loop version of functions is identical to xmap/scan version.
     """
 
-    def test_sim(self):
-        key, theta, dt, n_obs, x_init = test_setup()
-        model = pf.BMModel(dt=dt)
-        # simulate with for-loop
-        y_meas1, x_state1 = pf.simulate_for(
-            model, key, n_obs, x_init, theta)
-        # simulate without for-loop
-        y_meas2, x_state2 = pf.simulate(model, key, n_obs, x_init, theta)
-        self.assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
-        self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
+    setUp = utils.bm_setup
 
-    def test_pf(self):
-        key, theta, dt, n_obs, x_init = test_setup()
-        model = pf.BMModel(dt=dt)
-        # simulate without for-loop
-        y_meas, x_state = pf.simulate(model, key, n_obs, x_init, theta)
-        # particle filter specification
-        n_particles = 7
-        key, subkey = random.split(key)
-        # pf with for-loop
-        pf_out1 = pf.particle_filter_for(model, subkey,
-                                         y_meas, theta, n_particles)
-        # pf without for-loop
-        pf_out2 = pf.particle_filter(
-            model, subkey, y_meas, theta, n_particles)
-        for k in pf_out1.keys():
-            with self.subTest(k=k):
-                self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+    test_sim = utils.test_for_sim
+    test_loglik = utils.test_for_loglik
+    test_pf = utils.test_for_pf
+    test_mvn_sampler = utils.test_for_mvn_resampler
+    test_mvn_shape = utils.test_mvn_resample_shape
+    test_smooth = utils.test_for_smooth
 
-    def test_loglik(self):
-        key, theta, dt, n_obs, x_init = test_setup()
-        model = pf.BMModel(dt=dt)
-        # simulate without for-loop
-        y_meas, x_state = pf.simulate(model, key, n_obs, x_init, theta)
-        # joint loglikelihood with for-loop
-        loglik1 = pf.mcmc.full_loglik_for(model,
-                                          y_meas, x_state, theta)
-        # joint loglikelihood with vmap
-        loglik2 = pf.mcmc.full_loglik(model,
-                                      y_meas, x_state, theta)
-        self.assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
+
+class TestJit(unittest.TestCase):
+    """
+    Check whether jit with and without grad gives the same result.
+    """
+
+    setUp = utils.bm_setup
+
+    test_sim = utils.test_jit_sim
+    test_loglik = utils.test_jit_loglik
+    test_pf = utils.test_jit_pf
+    test_pf_mvn = utils.test_jit_pf_mvn
+    test_smooth = utils.test_jit_smooth
+
+
+if __name__ == '__main__':
+    unittest.main()
+
+# --- scratch ------------------------------------------------------------------
+
+# def test_setup(self):
+#     """
+#     Creates input arguments to tests.
+
+#     Use this instead of TestCase.setUp because I don't want to prefix every variable by `self`.
+#     """
+#     key = random.PRNGKey(0)
+#     # parameter values
+#     mu = 5
+#     sigma = 1
+#     tau = .1
+#     theta = jnp.array([mu, sigma, tau])
+#     # data specification
+#     dt = .1
+#     n_obs = 5
+#     x_init = jnp.array([0.])
+#     # particle filter specification
+#     n_particles = 7
+#     return key, theta, x_init, {"dt": dt}, n_obs, n_particles
 
 
 # class TestOOP(unittest.TestCase):
@@ -156,99 +137,6 @@ class TestFor(unittest.TestCase):
 #         for k in pf_out1.keys():
 #             with self.subTest(k=k):
 #                 self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
-
-
-class TestJit(unittest.TestCase):
-    """
-    Check whether jit with and without grad gives the same result.
-    """
-
-    def test_sim(self):
-        key, theta, dt, n_obs, x_init = test_setup()
-        model = pf.BMModel(dt=dt)
-        # simulate without jit
-        y_meas1, x_state1 = pf.simulate(model, key, n_obs, x_init, theta)
-        # simulate with jit
-        simulate_jit = jax.jit(pf.simulate, static_argnums=(0, 2))
-        y_meas2, x_state2 = simulate_jit(model, key, n_obs, x_init, theta)
-        # # use wrong dt
-        # model2 = pf.BMModel(dt=2.0 * dt)
-        # y_meas2, x_state2 = simulate_jit(model2, n_obs, x_init, theta, key)
-        # breakpoint()
-        # # use correct dt
-        # model2.dt = dt
-        # y_meas2, x_state2 = simulate_jit(model2, n_obs, x_init, theta, key)
-        self.assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
-        self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
-        # objective function for gradient
-        def obj_fun(model, key, n_obs, x_init, theta): return jnp.mean(
-            pf.simulate(model, key, n_obs, x_init, theta)[0])
-        # grad without jit
-        grad1 = jax.grad(obj_fun, argnums=4)(
-            model, key, n_obs, x_init, theta)
-        # grad with jit
-        grad2 = jax.jit(jax.grad(obj_fun, argnums=4), static_argnums=(0, 2))(
-            model, key, n_obs, x_init, theta)
-        self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
-
-    def test_pf(self):
-        key, theta, dt, n_obs, x_init = test_setup()
-        # simulate data
-        model = pf.BMModel(dt=dt)
-        y_meas, x_state = pf.simulate(model, key, n_obs, x_init, theta)
-        # particle filter specification
-        n_particles = 7
-        key, subkey = random.split(key)
-        # pf without jit
-        pf_out1 = pf.particle_filter(
-            model, subkey, y_meas, theta, n_particles)
-        # pf with jit
-        pf_out2 = jax.jit(pf.particle_filter, static_argnums=(0, 4))(
-            model, subkey, y_meas, theta, n_particles)
-        for k in pf_out1.keys():
-            with self.subTest(k=k):
-                self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
-
-        # objective function for gradient
-        def obj_fun(model, key, y_meas, theta, n_particles):
-            return pf.particle_loglik(pf.particle_filter(
-                model, key, y_meas, theta, n_particles)["logw"])
-        # grad without jit
-        grad1 = jax.grad(obj_fun, argnums=3)(
-            model, key, y_meas, theta, n_particles)
-        # grad with jit
-        grad2 = jax.jit(jax.grad(obj_fun, argnums=3), static_argnums=(0, 4))(
-            model, key, y_meas, theta, n_particles)
-        self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
-
-    def test_loglik(self):
-        key, theta, dt, n_obs, x_init = test_setup()
-        # simulate data
-        model = pf.BMModel(dt=dt)
-        y_meas, x_state = pf.simulate(model, key, n_obs, x_init, theta)
-        # joint loglikelihood without jit
-        loglik1 = pf.mcmc.full_loglik(model,
-                                      y_meas, x_state, theta)
-        # joint loglikelihood with jit
-        full_loglik_jit = jax.jit(pf.mcmc.full_loglik, static_argnums=0)
-        loglik2 = full_loglik_jit(model,
-                                  y_meas, x_state, theta)
-        self.assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
-        # grad without jit
-        grad1 = jax.grad(pf.mcmc.full_loglik, argnums=(2, 3))(
-            model, y_meas, x_state, theta)
-        # grad with jit
-        grad2 = jax.jit(jax.grad(pf.mcmc.full_loglik, argnums=(2, 3)),
-                        static_argnums=0)(model, y_meas, x_state, theta)
-        for i in range(2):
-            with self.subTest(i=i):
-                self.assertAlmostEqual(rel_err(grad1[i], grad2[i]), 0.0)
-
-
-if __name__ == '__main__':
-    unittest.main()
-
-# --- scratch ------------------------------------------------------------------
 
 
 # key = random.PRNGKey(0)
