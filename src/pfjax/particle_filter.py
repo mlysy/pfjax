@@ -40,6 +40,14 @@ def _lweight_to_prob(logw):
     return prob
 
 
+def _tree_add(tree1, tree2):
+    """
+    Add two pytrees leafwise.
+    """
+    return jtu.tree_map(lambda x, y: x+y, tree1, tree2)
+    # return jtu.tree_map(lambda x, y: x+y[0], tree1, (tree2,))
+
+
 def particle_resample_old(key, logw):
     """
     Particle resampler.
@@ -311,11 +319,6 @@ def particle_filter(model, key, y_meas, theta, n_particles,
         theta: Parameter value.
         n_particles: Number of particles.
         particle_sampler: Function used at step `t` to obtain sample of particles from `p(x_{t-1} | y_{0:t-1}, theta)`.  The inputs to the function are `particle_sampler(x_particles, logw, key)`, and the return value is a dictionary with mandatory element `x_particles` and optional elements that get stacked to the final output using `lax.scan()`.  Default value is `particle_resample()`.
-        collector: Function `phi(x_{t-1}, x_t, y_t)` with arguments `x_prev`, `x_curr`, and `y_curr` and outputs a JAX pytree such that the particle filter will approximate 
-
-            ```
-            E[sum(phi(y_t, x_{t-1}, x_t)) | y_{0:T}]
-            ```
 
     Returns:
         A dictionary with elements:
@@ -461,3 +464,100 @@ def particle_smooth(key, logw, x_particles, ancestors):
     # particle indices in forward order
     i_part = jnp.flip(jnp.append(init["i_part"], full["i_part"]))
     return x_particles[jnp.arange(n_obs), i_part, ...]  # , i_part
+
+
+def particle_filter2(model, key, y_meas, theta, n_particles,
+                     particle_sampler=particle_resample,
+                     accumulator=accumulate_null):
+    """
+    Apply particle filter for given value of `theta`.
+
+    Closely follows Algorithm 2 of Murray 2013 <https://arxiv.org/abs/1306.3277>.
+
+    FIXME: Currently outputs resampler values as additional elements of return dict, instead of single field, for backward compatibility during testing.
+
+    Args:
+        model: Object specifying the state-space model.
+        key: PRNG key.
+        y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
+        theta: Parameter value.
+        n_particles: Number of particles.
+        particle_sampler: Function used at step `t` to obtain sample of particles from `p(x_{t-1} | y_{0:t-1}, theta)`.  The inputs to the function are `particle_sampler(x_particles, logw, key)`, and the return value is a dictionary with mandatory element `x_particles` and optional elements that get stacked to the final output using `lax.scan()`.  Default value is `particle_resample()`.
+        accumulator: Function `phi(x_{t-1}, x_t, y_t, theta)` with arguments `x_prev`, `x_curr`, `y_curr`, `theta` and outputs a JAX pytree such that the particle filter will approximate 
+
+            ```
+            E[sum(phi(x_{t-1}, x_t, y_t, theta)) | y_{0:T}]
+            ```
+
+    Returns:
+        A dictionary with elements:
+            - `x_particles`: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
+            - `logw`: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
+            - `resample_out`: Dictionary of jax arrays with leading dimension `n_obs-1`, corresponding to additional outputs from `particle_sampler()` as accumulated by `lax.scan()`.  Since these additional outputs do not apply to the first time step (since it has no previous time step), the leading dimension of each additional output is `n_obs-1`.
+           - `accumulate_out`: Jax pytree corresponding to the estimate of the expectation defined by the `accumulator` function.
+    """
+    n_obs = y_meas.shape[0]
+
+    # lax.scan setup
+    # scan function
+    def filter_step(carry, t):
+        # sample particles from previous time point
+        key, subkey = random.split(carry["key"])
+        new_particles = particle_sampler(subkey,
+                                         carry["x_particles"],
+                                         carry["logw"])
+        # update particles to current time point (and get weights)
+        key, *subkeys = random.split(key, num=n_particles+1)
+        x_particles, logw = jax.vmap(
+            lambda xs, k: model.pf_step(k, xs, y_meas[t], theta)
+        )(new_particles["x_particles"], jnp.array(subkeys))
+        # accumulate expectation
+        acc_curr = jax.vmap(
+            lambda acc_prev, xp_prev, xp_curr: _tree_add(
+                tree1=carry["accumulate"],
+                tree2=accumulator(xp_prev, xp_curr, y_meas[t], theta)
+            )
+        )
+        # reduce expectation
+        acc_red = _tree_
+        # output
+        res_carry = {
+            "x_particles": x_particles,
+            "logw": logw,
+            "key": key
+        }
+        res_stack = new_particles
+        res_stack["x_particles"] = x_particles
+        res_stack["logw"] = logw
+        return res_carry, res_stack
+    # scan initial value
+    key, *subkeys = random.split(key, num=n_particles+1)
+    # vmap version
+    x_particles, logw = jax.vmap(
+        lambda k: model.pf_init(k, y_meas[0], theta))(jnp.array(subkeys))
+    # xmap version: experimental!
+    # x_particles = xmap(
+    #     lambda ym, th, k: model.init_sample(ym, th, k),
+    #     in_axes=([...], [...], ["particles", ...]),
+    #     out_axes=["particles", ...])(y_meas[0], theta, jnp.array(subkeys))
+    # logw = xmap(
+    #     lambda xs, ym, th: model.init_logw(xs, ym, th),
+    #     in_axes=(["particles", ...], [...], [...]),
+    #     out_axes=["particles", ...])(x_particles, y_meas[0], theta)
+    init = {
+        "x_particles": x_particles,
+        "logw": logw,
+        "key": key
+    }
+    particle_sampler(key=init["key"], x_particles_prev=init["x_particles"],
+                     logw=init["logw"])
+    # lax.scan itself
+    last, full = lax.scan(fun, init, jnp.arange(1, n_obs))
+    # append initial values of x_particles and logw
+    full["x_particles"] = jnp.append(
+        jnp.expand_dims(init["x_particles"], axis=0),
+        full["x_particles"], axis=0)
+    full["logw"] = jnp.append(
+        jnp.expand_dims(init["logw"], axis=0),
+        full["logw"], axis=0)
+    return full
