@@ -8,7 +8,7 @@ import pfjax as pf
 import pfjax.mcmc as mcmc
 import pfjax.models
 import lotvol_model as lv
-
+import pfjax.models.pgnet_model as pg
 
 def rel_err(X1, X2):
     """
@@ -20,6 +20,12 @@ def rel_err(X1, X2):
     x2 = X2.ravel() * 1.0
     return jnp.max(jnp.abs((x1 - x2)/(0.1 + x1)))
 
+def var_sim(key, size):
+    """
+    Generate a variance matrix of given size.
+    """
+    Z = random.normal(key, (size, size))
+    return jnp.matmul(Z.T, Z)
 
 # --- now some generic external methods for constructing the tests... ----------
 
@@ -70,6 +76,63 @@ def lv_setup(self):
     self.Model = pf.models.LotVolModel
     self.Model2 = lv.LotVolModel
 
+def pg_setup(self):
+    """
+    Creates input arguments to tests for LotVolModel.
+    """
+    self.key = random.PRNGKey(0)
+    # parameter values
+    theta = np.array([0.1, 0.7, 0.35, 0.2, 0.1, 0.9, 0.3, 0.1])
+    tau = np.array([0.15, 0.2, 0.25, 0.3])
+    self.theta = np.append(theta, tau)
+    # data specification
+    dt = .09
+    n_res = 4
+    self.model_args = {"dt": dt, "n_res": n_res}
+    self.n_obs = 9
+    self.x_init = jnp.block([[jnp.zeros((n_res-1, 4))],
+                             [jnp.log(jnp.array([8., 8., 8., 5.]))]])
+    self.n_particles = 2
+    self.Model = pg.PGNETModel
+    self.Model2 = pg.PGNETModel
+
+
+def fact_setup(self):
+    """
+    Creates the variables used in the tests for factorization.
+    """
+    key = random.PRNGKey(0)
+    self.n_lat = 3  # number of dimensions of W and X
+    self.n_obs = 2  # number of dimensions of Y
+
+    # generate random values of the matrices and vectors
+
+    key, *subkeys = random.split(key, num=4)
+    self.mu_W = random.normal(subkeys[0], (self.n_lat,))
+    self.Sigma_W = var_sim(subkeys[1], self.n_lat)
+    self.W = random.normal(subkeys[2], (self.n_lat,))
+
+    key, *subkeys = random.split(key, num=4)
+    self.mu_XW = random.normal(subkeys[0], (self.n_lat,))
+    self.Sigma_XW = var_sim(subkeys[1], self.n_lat)
+    self.X = random.normal(subkeys[2], (self.n_lat,))
+
+    key, *subkeys = random.split(key, num=4)
+    self.A = random.normal(subkeys[0], (self.n_obs, self.n_lat))
+    self.Omega = var_sim(subkeys[1], self.n_obs)
+    self.Y = random.normal(subkeys[2], (self.n_obs,))
+
+    # joint distribution using single mvn
+    self.mu_Y = jnp.matmul(self.A, self.mu_W + self.mu_XW)
+    self.Sigma_Y = jnp.linalg.multi_dot([self.A, self.Sigma_W + self.Sigma_XW, self.A.T]) + self.Omega
+    AS_W = jnp.matmul(self.A, self.Sigma_W)
+    AS_XW = jnp.matmul(self.A, self.Sigma_W + self.Sigma_XW)
+    self.mu = jnp.block([self.mu_W, self.mu_W + self.mu_XW, self.mu_Y])
+    self.Sigma = jnp.block([
+        [self.Sigma_W, self.Sigma_W, AS_W.T],
+        [self.Sigma_W, self.Sigma_W + self.Sigma_XW, AS_XW.T],
+        [AS_W, AS_XW, self.Sigma_Y]
+    ])
 
 def test_for_sim(self):
     # un-self setUp members

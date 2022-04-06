@@ -1,4 +1,4 @@
-# pjfax 0.0.0.9001
+# pjfax 0.0.1
 
 ## Breaking Changes
 
@@ -33,4 +33,5 @@
 
 	Currently this module contains `stoch_opt.py` and the `neg_loglik_*()` functions.
 
+- [x] Added `mvn_bridge` module which can e.g., be used for SDE bridge proposals.
 

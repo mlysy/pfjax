@@ -61,6 +61,13 @@ def lotvol_drift(x, dt, theta):
 
 class LotVolModel(sde.SDEModel):
     def __init__(self, dt, n_res):
+        r"""
+        Class constructor for the Lotka-Volterra model.
+
+        Args:
+            dt: SDE interobservation time.
+            n_res: SDE resolution number.  There are `n_res` latent variables per observation, equally spaced with interobservation time `dt/n_res`.
+        """
         # creates "private" variables self._dt and self._n_res
         super().__init__(dt, n_res, diff_diag=True)
         # self.dt = dt
@@ -90,7 +97,10 @@ class LotVolModel(sde.SDEModel):
         """
         return theta[4:6]
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 40ab3b655c893a272d25429ee0ab9ca3e5ea67f3
     def state_lpdf_for(self, x_curr, x_prev, theta):
         """
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
