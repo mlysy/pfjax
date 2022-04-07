@@ -48,6 +48,22 @@ def _tree_add(tree1, tree2):
     # return jtu.tree_map(lambda x, y: x+y[0], tree1, (tree2,))
 
 
+def _tree_mean(tree, logw):
+    """
+    Weighted mean of each leaf of a pytree along leading dimension.
+    """
+    tree_mult = jtu.Partial(jnp.multiply, x2=_lweight_to_prob(full["logw"]))
+    return jtu.tree_map(jtu.Partial(jnp.sum, axis=0),
+                        jtu.tree_map(tree_mult(tree)))
+
+
+def _rm_keys(x, keys):
+    """
+    Remove specified keys from given dict.
+    """
+    return {k: x[k] for k in x.keys() if k not in keys}
+
+
 def particle_resample_old(key, logw):
     """
     Particle resampler.
@@ -466,15 +482,21 @@ def particle_smooth(key, logw, x_particles, ancestors):
     return x_particles[jnp.arange(n_obs), i_part, ...]  # , i_part
 
 
+def _accumulate_none():
+    """
+    Placeholder required to import `particle_filter2`.
+    """
+    return None
+
+
 def particle_filter2(model, key, y_meas, theta, n_particles,
                      particle_sampler=particle_resample,
-                     accumulator=accumulate_null):
+                     history=False,
+                     accumulator=None):
     """
     Apply particle filter for given value of `theta`.
 
     Closely follows Algorithm 2 of Murray 2013 <https://arxiv.org/abs/1306.3277>.
-
-    FIXME: Currently outputs resampler values as additional elements of return dict, instead of single field, for backward compatibility during testing.
 
     Args:
         model: Object specifying the state-space model.
@@ -483,7 +505,8 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
         theta: Parameter value.
         n_particles: Number of particles.
         particle_sampler: Function used at step `t` to obtain sample of particles from `p(x_{t-1} | y_{0:t-1}, theta)`.  The inputs to the function are `particle_sampler(x_particles, logw, key)`, and the return value is a dictionary with mandatory element `x_particles` and optional elements that get stacked to the final output using `lax.scan()`.  Default value is `particle_resample()`.
-        accumulator: Function `phi(x_{t-1}, x_t, y_t, theta)` with arguments `x_prev`, `x_curr`, `y_curr`, `theta` and outputs a JAX pytree such that the particle filter will approximate 
+        history: Whether to output the entire history of the filter or only the last step.
+        accumulator: Function `phi(x_{t-1}, x_t, y_t, theta)` with arguments `x_prev`, `x_curr`, `y_curr`, `theta` and outputs a JAX pytree such that the particle filter will approximate
 
             ```
             E[sum(phi(x_{t-1}, x_t, y_t, theta)) | y_{0:T}]
@@ -491,12 +514,15 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
 
     Returns:
         A dictionary with elements:
-            - `x_particles`: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
-            - `logw`: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
-            - `resample_out`: Dictionary of jax arrays with leading dimension `n_obs-1`, corresponding to additional outputs from `particle_sampler()` as accumulated by `lax.scan()`.  Since these additional outputs do not apply to the first time step (since it has no previous time step), the leading dimension of each additional output is `n_obs-1`.
-           - `accumulate_out`: Jax pytree corresponding to the estimate of the expectation defined by the `accumulator` function.
+            - `loglik`: The particle filter loglikelihood evaluated at `theta`.
+            - `x_particles`: A jax array containing the state variable particles at the last time point (leading dimension `n_particles`) or at all time points (leading dimensions `(n_obs, n_particles)` if `history=True`.
+            - `logw`: A jax array containing unnormalized log weights at the last time point (dimensions `n_particles`) or at all time points (dimensions (n_obs, n_particles)`) if `history=True`.
+            - `resample_out`: Jax pytree corresponding to additional outputs from `particle_sampler()` as accumulated by `lax.scan()`.  Either for the last time point if `history=False`, or for all timepoints if `history=True`, in which case the leading dimension in each leaf of the pytree is `n_obs-1` since these additional outputs do not apply to the first time point.
+           - `accumulate_out`: Jax pytree corresponding to the estimate of the expectation defined by the `accumulator` function.  If `history=True` the leading dimension of each leaf of the pytree is `(n_obs-1, n_particles)`.
     """
     n_obs = y_meas.shape[0]
+
+    accumulator = _accumulate_none if accumulator is None else accumulator
 
     # lax.scan setup
     # scan function
@@ -514,50 +540,66 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
         # accumulate expectation
         acc_curr = jax.vmap(
             lambda acc_prev, xp_prev, xp_curr: _tree_add(
-                tree1=carry["accumulate"],
+                tree1=acc_prev,
                 tree2=accumulator(xp_prev, xp_curr, y_meas[t], theta)
             )
-        )
-        # reduce expectation
-        acc_red = _tree_
+        )(carry["accumulate_out"], new_particles["x_particles"], x_particles)
         # output
         res_carry = {
             "x_particles": x_particles,
             "logw": logw,
-            "key": key
+            "resample_out": _rm_keys(new_particles, ["x_particles", "logw"]),
+            "accumulate_out": acc_curr
         }
-        res_stack = new_particles
-        res_stack["x_particles"] = x_particles
-        res_stack["logw"] = logw
+        res_stack = res_carry if history else None
+        res_carry["key"] = key
+        res_carry["loglik"] = carry["loglik"] + jsp.special.logsumexp(logw)
         return res_carry, res_stack
     # scan initial value
     key, *subkeys = random.split(key, num=n_particles+1)
     # vmap version
     x_particles, logw = jax.vmap(
         lambda k: model.pf_init(k, y_meas[0], theta))(jnp.array(subkeys))
-    # xmap version: experimental!
-    # x_particles = xmap(
-    #     lambda ym, th, k: model.init_sample(ym, th, k),
-    #     in_axes=([...], [...], ["particles", ...]),
-    #     out_axes=["particles", ...])(y_meas[0], theta, jnp.array(subkeys))
-    # logw = xmap(
-    #     lambda xs, ym, th: model.init_logw(xs, ym, th),
-    #     in_axes=(["particles", ...], [...], [...]),
-    #     out_axes=["particles", ...])(x_particles, y_meas[0], theta)
+    # dummy initialization for resample
+    init_resample = particle_sampler(key, x_particles, logw)
+    init_resample = {k: init_resample[k] for k in init_resample.keys()
+                     if k not in ["x_particles", "logw"]}
+    init_resample = jtu.tree_map(lambda x: jax.zeros(x.shape), init_resample)
+    # dummy initialization for accumulate
+    init_acc = jax.vmap(lambda xp_prev, xp_curr: accumulator(
+        xp_prev, xp_curr, y_meas[0], theta
+    ))(x_particles, x_particles)
+    init_acc = jtu.tree_map(lambda x: jax.zeros(x.shape), init_acc)
     init = {
         "x_particles": x_particles,
         "logw": logw,
-        "key": key
+        "loglik": jsp.special.logsumexp(logw),
+        "key": key,
+        "resample_out": init_resample,
+        "accumulate_out": init_acc
     }
-    particle_sampler(key=init["key"], x_particles_prev=init["x_particles"],
-                     logw=init["logw"])
     # lax.scan itself
     last, full = lax.scan(fun, init, jnp.arange(1, n_obs))
-    # append initial values of x_particles and logw
-    full["x_particles"] = jnp.append(
-        jnp.expand_dims(init["x_particles"], axis=0),
-        full["x_particles"], axis=0)
-    full["logw"] = jnp.append(
-        jnp.expand_dims(init["logw"], axis=0),
-        full["logw"], axis=0)
+    # calculate loglikelihood
+    full["loglik"] = jnp.sum(last["loglik"] - jnp.log(n_particles))
+    if history:
+        # append initial values of x_particles and logw
+        full["x_particles"] = jnp.concatenate([
+            init["x_particles"][None], full["x_particles"]
+        ])
+        full["logw"] = jnp.concatenate([
+            init["lowg"][None], full["logw"]
+        ])
+    else:
+        # weighted average of accumulated values
+        full["accumulate_out"] = _tree_mean(
+            tree=full["accumulate_out"],
+            logw=full["logw"]
+        )
+        # full["x_particles"] = jnp.append(
+        #     jnp.expand_dims(init["x_particles"], axis=0),
+        #     full["x_particles"], axis=0)
+        # full["logw"] = jnp.append(
+        #     jnp.expand_dims(init["logw"], axis=0),
+        #     full["logw"], axis=0)
     return full
