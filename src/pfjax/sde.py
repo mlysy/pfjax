@@ -11,64 +11,8 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 from jax import random
 from jax import lax
+from pfjax import mvn_bridge as mb
 
-# def euler_sim_diag(key, n_steps, x, dt, drift, diff, theta):
-#     """
-#     Simulate SDE with diagonal diffusion using Euler-Maruyama discretization.
-
-#     Args:
-#         key: PRNG key.
-#         n_steps: Number of steps to simulate.
-#         x: Initial value of the SDE.  A vector of size `n_dims`.
-#         dt: Interobservation time.
-#         drift: Drift function having signature `drift(x, theta)` and returning a vector of size `n_dims`.
-#         diff: Diffusion function having signature `diff(x, theta)` and returning a vector of size `n_dims`.
-#         theta: Parameter value.
-
-#     Returns:
-#         Simulated SDE values in a matrix of size `n_steps x n_dims`.
-#     """
-
-#     # setup lax.scan:
-#     # scan function
-#     def fun(carry, t):
-#         key, subkey = random.split(carry["key"])
-#         x = carry["x"]
-#         dr = x + drift(x, theta) * dt
-#         df = diff(x, theta) * jnp.sqrt(dt)
-#         x = dr + df * random.normal(subkey, (x.shape[0],))
-#         res = {"x": x, "key": key}
-#         return res, res
-#     # scan initial value
-#     init = {"x": x, "key": key}
-#     # lax.scan itself
-#     last, full = lax.scan(fun, init, jnp.arange(n_steps))
-#     return full["x"]
-
-
-# def euler_lpdf_diag(x, dt, drift, diff, theta):
-#     """
-#     Calculate the log PDF of observations from an SDE with diagonal diffusion using the Euler-Maruyama discretization.
-
-#     Args:
-#         x: SDE observations.  An array of size `n_obs x n_dims`.
-#         dt: Interobservation time.
-#         drift: Drift function having signature `drift(x, theta)` and returning a vector of size `n_dims`.
-#         diff: Diffusion function having signature `diff(x, theta)` and returning a vector of size `n_dims`.
-#         theta: Parameter value.
-
-#     Returns:
-#         The log-density of the SDE observations.
-#     """
-#     x0 = x[:-1, :]
-#     x1 = x[1:, :]
-#     lp = jax.vmap(lambda t:
-#                   jsp.stats.norm.logpdf(
-#                       x=x1[t],
-#                       loc=x0[t] + drift(x0[t], theta) * dt,
-#                       scale=diff(x0[t], theta) * jnp.sqrt(dt)
-#                   ))(jnp.arange(x0.shape[0]))
-#     return jnp.sum(lp)
 
 def euler_sim_diag(key, x, dt, drift, diff, theta):
     """
@@ -112,62 +56,6 @@ def euler_lpdf_diag(x_curr, x_prev, dt, drift, diff, theta):
         scale=diff(x_prev, theta) * jnp.sqrt(dt)
     )
 
-# def euler_sim_var(key, n_steps, x, dt, drift, diff, theta):
-#     """
-#     Simulate SDE with dense diffusion using Euler-Maruyama discretization.
-#     Args:
-#         n_steps: Number of steps to simulate.
-#         x: Initial value of the SDE.  A vector of size `n_dims`.
-#         dt: Interobservation time.
-#         drift: Drift function having signature `drift(x, theta)` and returning a vector of size `n_dims`.
-#         diff: Diffusion function having signature `diff(x, theta)` and returning a vector of size `n_dims x n_dims`.
-#         theta: Parameter value.
-#         key: PRNG key.
-#     Returns:
-#         Simulated SDE values in a matrix of size `n_steps x n_dims`.
-#     """
-
-#     # setup lax.scan:
-#     # scan function
-#     def fun(carry, t):
-#         key, subkey = random.split(carry["key"])
-#         x = carry["x"]
-#         dr = x + drift(x, theta) * dt
-#         chol_Sigma = jnp.linalg.cholesky(diff(x, theta))
-#         df = chol_Sigma * jnp.sqrt(dt)
-#         #x = random.multivariate_normal(subkey, mean=dr, cov=diff(x, theta)*dt)
-#         x = dr + jnp.matmul(df, random.normal(subkey, (x.shape[0],)))
-#         res = {"x": x, "key": key}
-#         return res, res
-#     # scan initial value
-#     init = {"x": x, "key": key}
-#     # lax.scan itself
-#     last, full = lax.scan(fun, init, jnp.arange(n_steps))
-#     return full["x"]
-
-
-# def euler_lpdf_var(x, dt, drift, diff, theta):
-#     """
-#     Calculate the log PDF of observations from an SDE with dense diffusion using the Euler-Maruyama discretization.
-#     Args:
-#         x: SDE observations.  An array of size `n_obs x n_dims`.
-#         dt: Interobservation time.
-#         drift: Drift function having signature `drift(x, theta)` and returning a vector of size `n_dims`.
-#         diff: Diffusion function having signature `diff(x, theta)` and returning a matrix of size `n_dims x n_dims`.
-#         theta: Parameter value.
-#     Returns:
-#         The log-density of the SDE observations.
-#     """
-#     x0 = x[:-1, :]
-#     x1 = x[1:, :]
-#     lp = jax.vmap(lambda t:
-#                   jsp.stats.multivariate_normal.logpdf(
-#                       x=x1[t],
-#                       mean=x0[t] + drift(x0[t], theta) * dt,
-#                       cov=diff(x0[t], theta) * dt
-#                   ))(jnp.arange(x0.shape[0]))
-
-#     return jnp.sum(lp)
 
 def euler_sim_var(key, x, dt, drift, diff, theta):
     """
@@ -222,10 +110,12 @@ class SDEModel(object):
     """
     Base class for SDE models.
 
-    This class should set up a PF model class with methods `state_lpdf()`, `state_sim()`, and `pf_step()`,  with the user only needing to specify SDE drift and diffusion functions, and whether the diffusion is on the `diag` scale.
+    This class sets up a PF model with methods `state_lpdf()`, `state_sim()`, and `pf_step()` automatically determined from user-specified SDE drift and diffusion functions.
 
-    For the latter, methods `euler_sim()` and `euler_lpdf()` are supplied at instantiation time from either `euler_{sim/lpdf}_diag()` or `euler_{sim/lpdf}_var()`, with arguments identical to those of the free functions except `drift` and `diff`, which are supplied by `self.drift()` and `self.diff()`.  Hopefully this won't be a problem when we come to jitting, gradding, etc.
-    For `pf_step()`, a bootstrap filter is assumed, for which the user needs to specify `meas_lpdf()`.
+   For computational efficient, the user can also specify whether or not the diffusion is diagonal.  This will set up methods `euler_sim()` and `euler_lpdf()` supplied at instantiation time from either `euler_{sim/lpdf}_diag()` or `euler_{sim/lpdf}_var()`, with arguments identical to those of the free functions except `drift` and `diff`, which are supplied by `self.drift()` and `self.diff()`.
+
+
+    For `pf_step()`, a bootstrap filter is assumed by default, for which the user needs to specify `meas_lpdf()`.
 
     **Notes:**
 
@@ -407,10 +297,10 @@ class SDEModel(object):
         **FIXME:** This method is completely generic, i.e., is not specific to SDEs.  May wish to put it elsewhere...
 
         Args:
+            key: PRNG key.
             x_prev: State variable at previous time `t-1`.
             y_curr: Measurement variable at current time `t`.
             theta: Parameter value.
-            key: PRNG key.
 
         Returns:
             - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
@@ -422,7 +312,7 @@ class SDEModel(object):
 
     def bridge_prop(self, key, x_prev, y_curr, theta, Y, A, Omega):
         """
-        Bridge proposal.
+        Update particle and calculate log-weight for a particle filter with MVN bridge proposals.
 
         **Notes:**
 
@@ -435,6 +325,16 @@ class SDEModel(object):
         - Computes the Euler part of the log-weights using `vmap` after the bridge part which used `lax.scan()`.  On one core, it's definitely faster to do both inside `lax.scan()`.  On multiple cores that may or may not be the case, but probably would need quite a few cores see the speed increase.  However, it's unlikely that we'll explicitly parallelize across cores for this, since the parallellization would typically be over particles.
 
         - The drift and diffusion functions are each calculated twice, once for proposal and once for Euler.  This is somewhat inefficient, but to circumvent this would need to redesign `euler_lpdf()`...
+
+        Args:
+            key: PRNG key.
+            x_prev: State variable at previous time `t-1`.
+            y_curr: Measurement variable at current time `t`.
+            theta: Parameter value.
+
+        Returns:
+            - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
+            - logw: The log-weight of `x_curr`.
         """
         # lax.scan setup
         def scan_fun(carry, n):
@@ -445,16 +345,14 @@ class SDEModel(object):
             dt_res = self._dt / self._n_res
             dr = self.drift(x, theta) * dt_res
             df = self.diff_full(x, theta) * dt_res
-            mu_W = x + dr
-            Sigma_W = df
-            mu_Y = jnp.matmul(A, x + k*dr)
-            AS_W = jnp.matmul(A, Sigma_W)
-            Sigma_Y = k * jnp.linalg.multi_dot([A, df, A.T]) + Omega
-            # solve both linear systems simultaneously
-            sol = jnp.matmul(AS_W.T, jnp.linalg.solve(
-                Sigma_Y, jnp.hstack([jnp.array([Y-mu_Y]).T, AS_W])))
-            mu_bridge = mu_W + jnp.squeeze(sol[:, 0])
-            Sigma_bridge = Sigma_W - sol[:, 1:]
+            mu_bridge, Sigma_bridge = mb.mvn_bridge_mv(
+                mu_W=x + dr,
+                Sigma_W=df,
+                mu_Y=jnp.matmul(A, x + k*dr),
+                AS_W=jnp.matmul(A, df),
+                Sigma_Y=k * jnp.linalg.multi_dot([A, df, A.T]) + Omega,
+                Y=Y
+            )
             # bridge proposal
             key, subkey = random.split(key)
             x_prop = random.multivariate_normal(key,
