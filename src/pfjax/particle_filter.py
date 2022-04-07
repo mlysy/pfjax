@@ -17,6 +17,7 @@ The provided functions are:
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
+import jax.tree_util as jtu
 from jax import random
 from jax import lax
 from jax.experimental.maps import xmap
@@ -52,9 +53,16 @@ def _tree_mean(tree, logw):
     """
     Weighted mean of each leaf of a pytree along leading dimension.
     """
-    tree_mult = jtu.Partial(jnp.multiply, x2=_lweight_to_prob(full["logw"]))
+    tree_mult = jtu.Partial(jnp.multiply, x2=_lweight_to_prob(logw))
     return jtu.tree_map(jtu.Partial(jnp.sum, axis=0),
                         jtu.tree_map(tree_mult(tree)))
+
+
+def _tree_zeros(tree):
+    """
+    Fill pytree with zeros.
+    """
+    return jtu.tree_map(lambda x: jnp.zeros_like(x), tree)
 
 
 def _rm_keys(x, keys):
@@ -482,11 +490,11 @@ def particle_smooth(key, logw, x_particles, ancestors):
     return x_particles[jnp.arange(n_obs), i_part, ...]  # , i_part
 
 
-def _accumulate_none():
-    """
-    Placeholder required to import `particle_filter2`.
-    """
-    return None
+# def _accumulate_none(x_prev, x_curr, y_curr, theta):
+#     """
+#     Empty accumulator.
+#     """
+#     return None
 
 
 def particle_filter2(model, key, y_meas, theta, n_particles,
@@ -521,11 +529,11 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
            - `accumulate_out`: Jax pytree corresponding to the estimate of the expectation defined by the `accumulator` function.  If `history=True` the leading dimension of each leaf of the pytree is `(n_obs-1, n_particles)`.
     """
     n_obs = y_meas.shape[0]
-
-    accumulator = _accumulate_none if accumulator is None else accumulator
+    has_acc = accumulator is not None
 
     # lax.scan setup
     # scan function
+
     def filter_step(carry, t):
         # sample particles from previous time point
         key, subkey = random.split(carry["key"])
@@ -537,23 +545,25 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
         x_particles, logw = jax.vmap(
             lambda xs, k: model.pf_step(k, xs, y_meas[t], theta)
         )(new_particles["x_particles"], jnp.array(subkeys))
-        # accumulate expectation
-        acc_curr = jax.vmap(
-            lambda acc_prev, xp_prev, xp_curr: _tree_add(
-                tree1=acc_prev,
-                tree2=accumulator(xp_prev, xp_curr, y_meas[t], theta)
-            )
-        )(carry["accumulate_out"], new_particles["x_particles"], x_particles)
+        if has_acc:
+            # accumulate expectation
+            acc_curr = jax.vmap(
+                lambda acc_prev, xp_prev, xp_curr: _tree_add(
+                    tree1=acc_prev,
+                    tree2=accumulator(xp_prev, xp_curr, y_meas[t], theta)
+                )
+            )(carry["accumulate_out"], new_particles["x_particles"], x_particles)
         # output
         res_carry = {
             "x_particles": x_particles,
             "logw": logw,
-            "resample_out": _rm_keys(new_particles, ["x_particles", "logw"]),
-            "accumulate_out": acc_curr
+            "key": key,
+            "loglik": carry["loglik"] + jsp.special.logsumexp(logw),
+            "resample_out": _rm_keys(new_particles, ["x_particles", "logw"])
         }
-        res_stack = res_carry if history else None
-        res_carry["key"] = key
-        res_carry["loglik"] = carry["loglik"] + jsp.special.logsumexp(logw)
+        if has_acc:
+            res_carry["accumulate_out"] = acc_curr
+        res_stack = _rm_keys(res_carry, ["key", "loglik"]) if history else None
         return res_carry, res_stack
     # scan initial value
     key, *subkeys = random.split(key, num=n_particles+1)
@@ -562,44 +572,41 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
         lambda k: model.pf_init(k, y_meas[0], theta))(jnp.array(subkeys))
     # dummy initialization for resample
     init_resample = particle_sampler(key, x_particles, logw)
-    init_resample = {k: init_resample[k] for k in init_resample.keys()
-                     if k not in ["x_particles", "logw"]}
-    init_resample = jtu.tree_map(lambda x: jax.zeros(x.shape), init_resample)
-    # dummy initialization for accumulate
-    init_acc = jax.vmap(lambda xp_prev, xp_curr: accumulator(
-        xp_prev, xp_curr, y_meas[0], theta
-    ))(x_particles, x_particles)
-    init_acc = jtu.tree_map(lambda x: jax.zeros(x.shape), init_acc)
-    init = {
+    init_resample = _rm_keys(init_resample, ["x_particles", "logw"])
+    init_resample = _tree_zeros(init_resample)
+    if has_acc:
+        # dummy initialization for accumulate
+        init_acc = jax.vmap(lambda xp_prev, xp_curr: accumulator(
+            xp_prev, xp_curr, y_meas[0], theta
+        ))(x_particles, x_particles)
+        init_acc = _tree_zeros(init_acc)
+    filter_init = {
         "x_particles": x_particles,
         "logw": logw,
         "loglik": jsp.special.logsumexp(logw),
         "key": key,
-        "resample_out": init_resample,
-        "accumulate_out": init_acc
+        "resample_out": init_resample
     }
+    if has_acc:
+        filter_init["accumulate_out"] = init_acc
     # lax.scan itself
-    last, full = lax.scan(fun, init, jnp.arange(1, n_obs))
-    # calculate loglikelihood
-    full["loglik"] = jnp.sum(last["loglik"] - jnp.log(n_particles))
+    last, full = lax.scan(filter_step, filter_init, jnp.arange(1, n_obs))
     if history:
         # append initial values of x_particles and logw
         full["x_particles"] = jnp.concatenate([
-            init["x_particles"][None], full["x_particles"]
+            filter_init["x_particles"][None], full["x_particles"]
         ])
         full["logw"] = jnp.concatenate([
-            init["lowg"][None], full["logw"]
+            filter_init["logw"][None], full["logw"]
         ])
     else:
-        # weighted average of accumulated values
-        full["accumulate_out"] = _tree_mean(
-            tree=full["accumulate_out"],
-            logw=full["logw"]
-        )
-        # full["x_particles"] = jnp.append(
-        #     jnp.expand_dims(init["x_particles"], axis=0),
-        #     full["x_particles"], axis=0)
-        # full["logw"] = jnp.append(
-        #     jnp.expand_dims(init["logw"], axis=0),
-        #     full["logw"], axis=0)
+        full = last
+        if has_acc:
+            # weighted average of accumulated values
+            full["accumulate_out"] = _tree_mean(
+                tree=full["accumulate_out"],
+                logw=full["logw"]
+            )
+    # calculate loglikelihood
+    full["loglik"] = last["loglik"] - n_obs * jnp.log(n_particles)
     return full
