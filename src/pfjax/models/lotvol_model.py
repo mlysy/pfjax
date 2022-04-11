@@ -97,10 +97,6 @@ class LotVolModel(sde.SDEModel):
         """
         return theta[4:6]
 
-<<<<<<< HEAD
-
-=======
->>>>>>> 40ab3b655c893a272d25429ee0ab9ca3e5ea67f3
     def state_lpdf_for(self, x_curr, x_prev, theta):
         """
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
