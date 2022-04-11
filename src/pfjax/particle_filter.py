@@ -467,21 +467,9 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
     """
     Apply particle filter for given value of `theta`.
     Closely follows Algorithm 2 of Murray 2013 <https://arxiv.org/abs/1306.3277>.
-<<<<<<< HEAD
-
-    Notes:
-
-=======
     Notes: 
->>>>>>> 39b97e245d77032fec7a8a0700c3d1c64e98605d
     - May wish to remove `resample_out` when `particle_sampler()` has no additional outputs.
     - `particle_sampler()` could return additional outputs more conveniently, e.g., as a single additional key `resample_out` consisting of a pytree.  However, this isn't backwards compatible with `particle_filter()` so haven't implemented it yet.
-<<<<<<< HEAD
-
-    - Accumulator is initialized with a pytree of zeros.  This precludes accumulating something different for time `t=0`, e.g., full score estimation.  However, the contribution from time 0 is often negligible.  Also, with some extra work it's probably possible to account for it using more code...
-
-=======
->>>>>>> 39b97e245d77032fec7a8a0700c3d1c64e98605d
     Args:
         model: Object specifying the state-space model.
         key: PRNG key.
