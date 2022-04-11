@@ -23,7 +23,7 @@ from ott.core import sinkhorn
 
 
 def _lweight_to_prob(logw):
-    """
+    r"""
     Returns normalized propabilities from unnormalized log weights
     Args:
         logw: Vector of `n_particles` unnormalized log-weights.
@@ -36,7 +36,7 @@ def _lweight_to_prob(logw):
 
 
 def _tree_add(tree1, tree2):
-    """
+    r"""
     Add two pytrees leafwise.
     """
     return jtu.tree_map(lambda x, y: x+y, tree1, tree2)
@@ -44,30 +44,31 @@ def _tree_add(tree1, tree2):
 
 
 def _tree_mean(tree, logw):
-    """
+    r"""
     Weighted mean of each leaf of a pytree along leading dimension.
     """
-    tree_mult = jtu.Partial(jnp.multiply, x2=_lweight_to_prob(logw))
+    prob = _lweight_to_prob(logw)
+    tree_mult = jtu.Partial(jnp.multiply, x2=jnp.atleast_2d(prob).T)
     return jtu.tree_map(jtu.Partial(jnp.sum, axis=0),
-                        jtu.tree_map(tree_mult(tree)))
+                        jtu.tree_map(tree_mult, tree))
 
 
 def _tree_zeros(tree):
-    """
+    r"""
     Fill pytree with zeros.
     """
     return jtu.tree_map(lambda x: jnp.zeros_like(x), tree)
 
 
 def _rm_keys(x, keys):
-    """
+    r"""
     Remove specified keys from given dict.
     """
     return {k: x[k] for k in x.keys() if k not in keys}
 
 
 def particle_resample_old(key, logw):
-    """
+    r"""
     Particle resampler.
     This basic one just does a multinomial sampler, i.e., sample with replacement proportional to weights.
     Old API, to be depreciated after testing against `particle_filter_for()`.
@@ -87,7 +88,7 @@ def particle_resample_old(key, logw):
 
 
 def particle_resample(key, x_particles_prev, logw):
-    """
+    r"""
     Particle resampler.
     This basic one just does a multinomial sampler, i.e., sample with replacement proportional to weights.
     Args:
@@ -111,7 +112,7 @@ def particle_resample(key, x_particles_prev, logw):
 
 
 def particle_resample_mvn_for(key, x_particles_prev, logw):
-    """
+    r"""
     Particle resampler with Multivariate Normal approximation using for-loop for testing.
     Args:
         key: PRNG key.
@@ -148,7 +149,7 @@ def particle_resample_mvn_for(key, x_particles_prev, logw):
 
 
 def particle_resample_mvn(key, x_particles_prev, logw):
-    """
+    r"""
     Particle resampler with Multivariate Normal approximation.
     Args:
         key: PRNG key.
@@ -183,7 +184,7 @@ def particle_resample_mvn(key, x_particles_prev, logw):
 def particle_resample_ot(key, x_particles_prev, logw,
                          pointcloud_kwargs={},
                          sinkhorn_kwargs={}):
-    """
+    r"""
     Particle resampler using optimal transport.
     Based on Algorithms 2 and 3 of Corenflos et al 2021 <https://arxiv.org/abs/2102.07850>.
     **Notes:**
@@ -222,7 +223,7 @@ def particle_resample_ot(key, x_particles_prev, logw,
 
 
 def particle_filter_for(model, key, y_meas, theta, n_particles):
-    """
+    r"""
     Apply particle filter for given value of `theta`.
     Closely follows Algorithm 2 of Murray 2013 <https://arxiv.org/abs/1306.3277>.
     This is the testing version which does the following:
@@ -304,7 +305,7 @@ def particle_filter_for(model, key, y_meas, theta, n_particles):
 
 def particle_filter(model, key, y_meas, theta, n_particles,
                     particle_sampler=particle_resample):
-    """
+    r"""
     Apply particle filter for given value of `theta`.
     Closely follows Algorithm 2 of Murray 2013 <https://arxiv.org/abs/1306.3277>.
     Args:
@@ -379,7 +380,7 @@ def particle_filter(model, key, y_meas, theta, n_particles,
 
 
 def particle_loglik(logw):
-    """
+    r"""
     Calculate particle filter marginal loglikelihood.
     Args:
         logw: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
@@ -394,7 +395,7 @@ def particle_loglik(logw):
 
 
 def particle_smooth_for(key, logw, x_particles, ancestors, n_sample=1):
-    """
+    r"""
     Draw a sample from `p(x_state | x_meas, theta)` using the basic particle smoothing algorithm.
     For-loop version for testing.
     """
@@ -415,7 +416,7 @@ def particle_smooth_for(key, logw, x_particles, ancestors, n_sample=1):
 
 
 def particle_smooth(key, logw, x_particles, ancestors):
-    """
+    r"""
     Draw a sample from `p(x_state | x_meas, theta)` using the basic particle smoothing algorithm.
     **FIXME:**
     - Will probably need to change inputs to "generalize" to other resampling methods.
@@ -464,7 +465,7 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
                      particle_sampler=particle_resample,
                      history=False,
                      accumulator=None):
-    """
+    r"""
     Apply particle filter for given value of `theta`.
     Closely follows Algorithm 2 of Murray 2013 <https://arxiv.org/abs/1306.3277>.
     Notes: 
