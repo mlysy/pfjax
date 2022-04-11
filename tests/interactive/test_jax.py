@@ -37,3 +37,18 @@ y = jnp.array([[0.], [1.]])
 x.append(y)
 x.append(y)
 jnp.array(x)
+
+# --- reshape ------------------------------------------------------------------
+
+n_devices = 4
+n_particles_per_device = 3
+
+x = jnp.array(jax.random.normal(
+    key, (n_devices, n_particles_per_device, 5, 2)))
+
+y = x.reshape((-1,) + x.shape[2:])
+
+x.shape
+y.shape
+
+z = y.reshape((n_devices, n_particles_per_device) + y.shape[1:])

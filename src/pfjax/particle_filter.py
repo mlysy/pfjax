@@ -506,11 +506,13 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
 
     Closely follows Algorithm 2 of Murray 2013 <https://arxiv.org/abs/1306.3277>.
 
-    Notes: 
+    Notes:
 
     - May wish to remove `resample_out` when `particle_sampler()` has no additional outputs.
 
     - `particle_sampler()` could return additional outputs more conveniently, e.g., as a single additional key `resample_out` consisting of a pytree.  However, this isn't backwards compatible with `particle_filter()` so haven't implemented it yet.
+
+    - Accumulator is initialized with a pytree of zeros.  This precludes accumulating something different for time `t=0`, e.g., full score estimation.  However, the contribution from time 0 is often negligible.  Also, with some extra work it's probably possible to account for it using more code...
 
     Args:
         model: Object specifying the state-space model.
@@ -537,6 +539,21 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
     n_obs = y_meas.shape[0]
     has_acc = accumulator is not None
 
+    # internal functions for vectorizing
+    def pf_step(key, x_prev, y_curr):
+        return model.pf_step(key=key, x_prev=x_prev, y_curr=y_curr, theta=theta)
+
+    def pf_init(key):
+        return model.pf_init(key=key, y_init=y_meas[0], theta=theta)
+
+    def pf_acc(acc_prev, x_prev, x_curr, y_curr):
+        return _tree_add(
+            tree1=acc_prev,
+            tree2=accumulator(
+                x_prev=x_prev, x_curr=x_curr, y_curr=y_curr, theta=theta
+            )
+        )
+
     # lax.scan setup
     # scan function
     def filter_step(carry, t):
@@ -548,16 +565,16 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
         # update particles to current time point (and get weights)
         key, *subkeys = random.split(key, num=n_particles+1)
         x_particles, logw = jax.vmap(
-            lambda xs, k: model.pf_step(k, xs, y_meas[t], theta)
-        )(new_particles["x_particles"], jnp.array(subkeys))
+            pf_step,
+            in_axes=(0, 0, None)
+        )(jnp.array(subkeys), new_particles["x_particles"], y_meas[t])
         if has_acc:
             # accumulate expectation
             acc_curr = jax.vmap(
-                lambda acc_prev, xp_prev, xp_curr: _tree_add(
-                    tree1=acc_prev,
-                    tree2=accumulator(xp_prev, xp_curr, y_meas[t], theta)
-                )
-            )(carry["accumulate_out"], new_particles["x_particles"], x_particles)
+                pf_acc,
+                in_axes=(0, 0, 0, None)
+            )(carry["accumulate_out"], new_particles["x_particles"],
+              x_particles, y_meas[t])
         # output
         res_carry = {
             "x_particles": x_particles,
@@ -574,16 +591,19 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
     key, *subkeys = random.split(key, num=n_particles+1)
     # vmap version
     x_particles, logw = jax.vmap(
-        lambda k: model.pf_init(k, y_meas[0], theta))(jnp.array(subkeys))
+        # lambda k: model.pf_init(k, y_meas[0], theta)
+        pf_init
+    )(jnp.array(subkeys))
     # dummy initialization for resample
     init_resample = particle_sampler(key, x_particles, logw)
     init_resample = _rm_keys(init_resample, ["x_particles", "logw"])
     init_resample = _tree_zeros(init_resample)
     if has_acc:
         # dummy initialization for accumulate
-        init_acc = jax.vmap(lambda xp_prev, xp_curr: accumulator(
-            xp_prev, xp_curr, y_meas[0], theta
-        ))(x_particles, x_particles)
+        init_acc = jax.vmap(
+            accumulator,
+            in_axes=(0, 0, None, None)
+        )(x_particles, x_particles, y_meas[0], theta)
         init_acc = _tree_zeros(init_acc)
     filter_init = {
         "x_particles": x_particles,

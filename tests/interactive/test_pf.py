@@ -1,4 +1,3 @@
-import numpy as np
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
@@ -35,32 +34,42 @@ max_diff = {
     k: jnp.max(jnp.abs(pf_out1[k] - pf_out2[k]))
     for k in pf_out1.keys()
 }
+print(max_diff)
 
 # new pf
 pf_out3 = pf.particle_filter2(
     bm_model, subkey, y_meas, theta, n_particles, history=True)
 
 # check x_particles and logw
-{k: jnp.max(jnp.abs(pf_out2[k] - pf_out3[k])) for k in ["x_particles", "logw"]}
+max_diff = {k: jnp.max(jnp.abs(pf_out2[k] - pf_out3[k]))
+            for k in ["x_particles", "logw"]}
+print(max_diff)
 
 # check ancestors
-{k: jnp.max(jnp.abs(pf_out2[k] - pf_out3["resample_out"][k]))
- for k in ["ancestors"]}
+max_diff = {k: jnp.max(jnp.abs(pf_out2[k] - pf_out3["resample_out"][k]))
+            for k in ["ancestors"]}
+print(max_diff)
 
 # check loglik
-pf.particle_loglik(pf_out2["logw"]) - pf_out3["loglik"]
+max_diff = jnp.max(jnp.abs(pf.particle_loglik(
+    pf_out2["logw"]) - pf_out3["loglik"]))
+print(max_diff)
 
 # new pf without history
 pf_out4 = pf.particle_filter2(
     bm_model, subkey, y_meas, theta, n_particles, history=False)
 
 # check x_particles and logw
-{k: jnp.max(jnp.abs(pf_out2[k][n_obs-1] - pf_out4[k]))
- for k in ["x_particles", "logw"]}
+max_diff = {k: jnp.max(jnp.abs(pf_out2[k][n_obs-1] - pf_out4[k]))
+            for k in ["x_particles", "logw"]}
+print(max_diff)
 
 # check ancestors
-{k: jnp.max(jnp.abs(pf_out2[k][n_obs-1] - pf_out4["resample_out"][k]))
- for k in ["ancestors"]}
+max_diff = {k: jnp.max(jnp.abs(pf_out2[k][n_obs-1] - pf_out4["resample_out"][k]))
+            for k in ["ancestors"]}
+print(max_diff)
 
 # check loglik
-pf.particle_loglik(pf_out2["logw"]) - pf_out4["loglik"]
+max_diff = jnp.max(jnp.abs(pf.particle_loglik(
+    pf_out2["logw"]) - pf_out4["loglik"]))
+print(max_diff)
