@@ -29,89 +29,113 @@ y_meas, x_state = pf.simulate(bm_model, key, n_obs, x_init, theta)
 # particle filter specification
 n_particles = 7
 key, subkey = random.split(key)
-# # pf with for-loop
-pf_out1 = pf.particle_filter_for(
-    bm_model, subkey, y_meas, theta, n_particles)
-# pf without for-loop
-pf_out2 = pf.particle_filter(
-    bm_model, subkey, y_meas, theta, n_particles)
 
-max_diff = {
-    k: jnp.max(jnp.abs(pf_out1[k] - pf_out2[k]))
-    for k in pf_out1.keys()
-}
-print(max_diff)
+# --- check for-loop -----------------------------------------------------------
 
+if False:
+    # pf with for-loop
+    pf_out1 = pf.particle_filter_for(
+        bm_model, subkey, y_meas, theta, n_particles)
+    # pf without for-loop
+    pf_out2 = pf.particle_filter(
+        bm_model, subkey, y_meas, theta, n_particles)
 
-acc_dict = True
+    max_diff = {
+        k: jnp.max(jnp.abs(pf_out1[k] - pf_out2[k]))
+        for k in pf_out1.keys()
+    }
+    print(max_diff)
 
+# --- check pf v2 with history -------------------------------------------------
 
-def accumulate_score(x_prev, x_curr, y_curr, theta):
-    r"""
-    Accumulator for score function.
-    """
-    measgrad_lpdf = jax.grad(bm_model.meas_lpdf, argnums=2)
-    stategrad_lpdf = jax.grad(bm_model.state_lpdf, argnums=2)
-    if not acc_dict:
-        return measgrad_lpdf(y_curr, x_curr, theta) + \
-            stategrad_lpdf(x_curr, x_prev, theta)
-    else:
-        return {"meas": measgrad_lpdf(y_curr, x_curr, theta),
-                "state": stategrad_lpdf(x_curr, x_prev, theta)}
+if False:
+    # old pf without for-loop
+    pf_out1 = pf.particle_filter(
+        bm_model, subkey, y_meas, theta, n_particles)
+    # new pf with history
+    pf_out2 = pf.particle_filter2(
+        bm_model, subkey, y_meas, theta, n_particles,
+        history=True)
 
+    # check x_particles and logw
+    max_diff = {k: abs_err(pf_out1[k], pf_out2[k])
+                for k in ["x_particles", "logw"]}
+    print(max_diff)
 
-# new pf
-pf_out3 = pf.particle_filter2(
-    bm_model, subkey, y_meas, theta, n_particles,
-    history=True, accumulator=accumulate_score)
+    # check ancestors
+    max_diff = {k: abs_err(pf_out1[k], pf_out2["resample_out"][k])
+                for k in ["ancestors"]}
+    print(max_diff)
 
-# check x_particles and logw
-max_diff = {k: abs_err(pf_out2[k], pf_out3[k])
-            for k in ["x_particles", "logw"]}
-print(max_diff)
+    # check loglik
+    max_diff = abs_err(pf.particle_loglik(pf_out1["logw"]), pf_out2["loglik"])
+    print(max_diff)
 
-# check ancestors
-max_diff = {k: abs_err(pf_out2[k], pf_out3["resample_out"][k])
-            for k in ["ancestors"]}
-print(max_diff)
+# --- check pf v2 without history ----------------------------------------------
 
-# check loglik
-max_diff = abs_err(pf.particle_loglik(pf_out2["logw"]), pf_out3["loglik"])
-print(max_diff)
+if False:
+    # old pf without for-loop
+    pf_out1 = pf.particle_filter(
+        bm_model, subkey, y_meas, theta, n_particles)
+    # new pf without history
+    pf_out2 = pf.particle_filter2(
+        bm_model, subkey, y_meas, theta, n_particles,
+        history=False)
 
-# new pf without history
-pf_out4 = pf.particle_filter2(
-    bm_model, subkey, y_meas, theta, n_particles,
-    history=False, accumulator=accumulate_score)
+    # check x_particles and logw
+    max_diff = {k: abs_err(pf_out1[k][n_obs-1],  pf_out2[k])
+                for k in ["x_particles", "logw"]}
+    print(max_diff)
 
-# check x_particles and logw
-max_diff = {k: abs_err(pf_out2[k][n_obs-1],  pf_out4[k])
-            for k in ["x_particles", "logw"]}
-print(max_diff)
+    # check ancestors
+    max_diff = {k: abs_err(pf_out1[k][n_obs-1], pf_out2["resample_out"][k])
+                for k in ["ancestors"]}
+    print(max_diff)
 
-# check ancestors
-max_diff = {k: abs_err(pf_out2[k][n_obs-1], pf_out4["resample_out"][k])
-            for k in ["ancestors"]}
-print(max_diff)
+    # check loglik
+    max_diff = abs_err(pf.particle_loglik(pf_out1["logw"]), pf_out2["loglik"])
+    print(max_diff)
 
-# check loglik
-max_diff = abs_err(pf.particle_loglik(pf_out2["logw"]), pf_out4["loglik"])
-print(max_diff)
-
-# check accumulator
-if acc_dict:
-    max_diff = {k: abs_err(jnp.sum(pf_out3["accumulate_out"][k][n_obs-2] *
-                                   jnp.atleast_2d(_lweight_to_prob(
-                                       pf_out3["logw"][n_obs-1])).T,
-                                   axis=0),
-                           pf_out4["accumulate_out"][k])
-                for k in ["state", "meas"]}
-else:
-    max_diff = abs_err(jnp.sum(pf_out3["accumulate_out"][n_obs-2] *
-                               jnp.atleast_2d(_lweight_to_prob(
-                                   pf_out3["logw"][n_obs-1])).T,
-                               axis=0),
-                       pf_out4["accumulate_out"])
-print(max_diff)
 
 # --- test accumulator ---------------------------------------------------------
+
+if False:
+    def accumulate_ancestors(x_prev, x_curr, y_curr, theta):
+        r"""
+        Returns just x_prev and x_curr to check that ancestors are being computed as expected.
+        """
+        return x_prev, x_curr
+
+    # new pf with history
+    pf_out1 = pf.particle_filter2(
+        bm_model, subkey, y_meas, theta, n_particles,
+        history=True, accumulator=accumulate_ancestors)
+
+    # check ancestors
+    max_diff = []
+    for i in range(n_obs-1):
+        max_diff += [abs_err(
+            pf_out1["x_particles"][i, pf_out1["resample_out"]["ancestors"][i]],
+            pf_out1["accumulate_out"][0][i])]
+    max_diff = jnp.array(max_diff)
+    print(max_diff)
+
+
+if True:
+    def accumulate_score(x_prev, x_curr, y_curr, theta):
+        r"""
+        Accumulator for score function.
+        """
+        measgrad_lpdf = jax.grad(bm_model.meas_lpdf, argnums=2)
+        stategrad_lpdf = jax.grad(bm_model.state_lpdf, argnums=2)
+        return measgrad_lpdf(y_curr, x_curr, theta) + \
+            stategrad_lpdf(x_curr, x_prev, theta)
+        # return {"meas": measgrad_lpdf(y_curr, x_curr, theta),
+        #         "state": stategrad_lpdf(x_curr, x_prev, theta)}
+
+    # new pf with history
+    pf_out1 = pf.particle_filter2(
+        bm_model, subkey, y_meas, theta, n_particles,
+        history=True, accumulator=accumulate_score)
+
+    # check brute force calculation

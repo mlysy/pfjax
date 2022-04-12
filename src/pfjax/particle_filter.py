@@ -467,8 +467,9 @@ def particle_smooth(key, logw, x_particles, ancestors):
     """
     n_particles = logw.size
     n_obs = x_particles.shape[0]
-    wgt = jnp.exp(logw - jnp.max(logw))
-    prob = wgt / jnp.sum(wgt)
+    prob = _lweight_to_prob(logw)
+    # wgt = jnp.exp(logw - jnp.max(logw))
+    # prob = wgt / jnp.sum(wgt)
 
     # lax.scan setup
     # scan function
