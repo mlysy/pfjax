@@ -8,7 +8,7 @@ The API requires the user to define a model class with the following methods:
 
 The provided function is:
 
-- `full_loglik()`
+- `loglik_full()`
 """
 
 import jax
@@ -18,7 +18,7 @@ from jax import random
 from jax import lax
 
 
-def full_loglik_for(model, y_meas, x_state, theta):
+def loglik_full_for(model, y_meas, x_state, theta):
     """
     Calculate the joint loglikelihood `p(y_{0:T} | x_{0:T}, theta) * p(x_{0:T} | theta)`.
 
@@ -46,7 +46,7 @@ def full_loglik_for(model, y_meas, x_state, theta):
     return loglik
 
 
-def full_loglik(model, y_meas, x_state, theta):
+def loglik_full(model, y_meas, x_state, theta):
     """
     Calculate the joint loglikelihood `p(y_{0:T} | x_{0:T}, theta) * p(x_{0:T} | theta)`.
 

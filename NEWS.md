@@ -12,6 +12,8 @@
 
 - [x] In `particle_resample_mvn{_for}()`, outputs `x_particles_mu`, `x_particles_cov` -> `mean`, `cov`.
 
+- [x] `full_loglik{_for}()` -> `loglik_full{_for}()`. 
+
 ### Other
 
 - [x] Models won't be loaded by default, instead will be in the `models` module, i.e.,

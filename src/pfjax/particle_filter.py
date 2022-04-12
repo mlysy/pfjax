@@ -535,7 +535,7 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
             - `x_particles`: A jax array containing the state variable particles at the last time point (leading dimension `n_particles`) or at all time points (leading dimensions `(n_obs, n_particles)` if `history=True`.
             - `logw`: A jax array containing unnormalized log weights at the last time point (dimensions `n_particles`) or at all time points (dimensions (n_obs, n_particles)`) if `history=True`.
             - `resample_out`: Jax pytree corresponding to additional outputs from `particle_sampler()` as accumulated by `lax.scan()`.  Either for the last time point if `history=False`, or for all timepoints if `history=True`, in which case the leading dimension in each leaf of the pytree is `n_obs-1` since these additional outputs do not apply to the first time point.
-           - `accumulate_out`: Optional Jax pytree corresponding to the estimate of the expectation defined by the `accumulator` function.  If `history=True` the leading dimension of each leaf of the pytree is `(n_obs-1, n_particles)`.
+           - `accumulate_out`: Optional Jax pytree corresponding to the estimate of the expectation defined by the `accumulator` function.  If `history=True` the leading dimension of each leaf of the pytree is `(n_obs-1, n_particles)` and summation is not performed.  In other words, in `leaf[i,j,...]` of the returned pytree we have `accumulator(x_particles[i-1,j], x_particles[i,j], y_meas[i], theta)`.
     """
     n_obs = y_meas.shape[0]
     has_acc = accumulator is not None
@@ -548,12 +548,13 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
         return model.pf_init(key=key, y_init=y_meas[0], theta=theta)
 
     def pf_acc(acc_prev, x_prev, x_curr, y_curr):
-        return _tree_add(
-            tree1=acc_prev,
-            tree2=accumulator(
-                x_prev=x_prev, x_curr=x_curr, y_curr=y_curr, theta=theta
-            )
+        acc_curr = accumulator(
+            x_prev=x_prev, x_curr=x_curr, y_curr=y_curr, theta=theta
         )
+        if history:
+            return acc_curr
+        else:
+            return _tree_add(tree1=acc_prev, tree2=acc_curr)
 
     # lax.scan setup
     # scan function
