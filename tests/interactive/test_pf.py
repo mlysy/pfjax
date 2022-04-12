@@ -122,6 +122,7 @@ if False:
 
 
 if True:
+    # check brute force calculation
     def accumulate_score(x_prev, x_curr, y_curr, theta):
         r"""
         Accumulator for score function.
@@ -133,9 +134,45 @@ if True:
         # return {"meas": measgrad_lpdf(y_curr, x_curr, theta),
         #         "state": stategrad_lpdf(x_curr, x_prev, theta)}
 
+    def get_particles(i_part, x_particles, ancestors):
+        """
+        Return a full particle by backtracking through ancestors of particle `i_part` at last time point.
+        """
+        n_obs = x_particles.shape[0]
+
+        # scan function
+        def get_ancestor(i_part_next, t):
+            # ancestor particle index
+            i_part_curr = ancestors[t, i_part_next]
+            res = i_part_curr
+            return res, res
+
+        # scan initial value
+        i_part_init = i_part
+        # lax.scan itself
+        last, full = jax.lax.scan(get_ancestor, i_part_init,
+                                  jnp.arange(n_obs-1), reverse=True)
+        i_part_full = jnp.concatenate([full, jnp.array(i_part_init)[None]])
+        return x_particles[jnp.arange(n_obs), i_part_full, ...]  # , i_part
+
     # new pf with history
     pf_out1 = pf.particle_filter2(
         bm_model, subkey, y_meas, theta, n_particles,
         history=True, accumulator=accumulate_score)
 
-    # check brute force calculation
+    x_particles = pf_out1["x_particles"]
+    ancestors = pf_out1["resample_out"]["ancestors"]
+    x_particles_full = jax.vmap(
+        lambda i: get_particles(i, x_particles, ancestors)
+    )(jnp.arange(n_particles))
+    x_particles_prev = x_particles_full[:, :-1]
+    x_particles_curr = x_particles_full[:, 1:]
+    y_curr = y_meas[1:]
+    acc_out = jax.vmap(
+        jax.vmap(
+            accumulate_score,
+            in_axes=(0, 0, 0, None)
+        ),
+        in_axes=(0, 0, None, None)
+    )(x_particles_prev, x_particles_curr, y_curr, theta)
+    acc_out = acc_out.transpose((1, 0, 2))
