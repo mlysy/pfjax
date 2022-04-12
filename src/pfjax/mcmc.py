@@ -8,7 +8,7 @@ import jax.scipy as jsp
 from jax import random
 from jax import lax
 from jax.experimental.maps import xmap
-from .full_loglik import *
+from .loglik_full import *
 
 # --- a few priors -------------------------------------------------------------
 
@@ -68,7 +68,7 @@ def param_mwg_update_for(model, prior, key, theta, x_state, y_meas, rw_sd, theta
     **Notes:**
 
     - Assumes the parameters are real valued.  Next step might be to provide a parameter validator to the model.
-    - Potentially wastes an initial evaluation of `full_loglik(theta)`.  Could be passed in from a previous calculation but a bit cumbersome.
+    - Potentially wastes an initial evaluation of `loglik_full(theta)`.  Could be passed in from a previous calculation but a bit cumbersome.
 
     Args:
         model: Object specifying the state-space model.
@@ -87,7 +87,7 @@ def param_mwg_update_for(model, prior, key, theta, x_state, y_meas, rw_sd, theta
     n_updates = theta_order.size
     theta_curr = theta + 0.  # how else to copy...
     accept = jnp.empty(0, dtype=bool)
-    lp_curr = full_loglik(model, y_meas, x_state,
+    lp_curr = loglik_full(model, y_meas, x_state,
                           theta_curr) + prior.lpdf(theta_curr)
     for i in theta_order:
         # 2 subkeys for each param: rw_jump and mh_accept
@@ -97,7 +97,7 @@ def param_mwg_update_for(model, prior, key, theta, x_state, y_meas, rw_sd, theta
             theta_curr[i] + rw_sd[i] * random.normal(key=subkeys[0])
         )
         # acceptance rate
-        lp_prop = full_loglik(model, y_meas, x_state,
+        lp_prop = loglik_full(model, y_meas, x_state,
                               theta_prop) + prior.lpdf(theta_prop)
         lrate = lp_prop - lp_curr
         # breakpoint()
@@ -122,7 +122,7 @@ def param_mwg_update(model, prior, key, theta, x_state, y_meas, rw_sd, theta_ord
     **Notes:**
 
     - Assumes the parameters are real valued.  Next step might be to provide a parameter validator to the model.
-    - Potentially wastes an initial evaluation of `full_loglik(theta)`.  Could be passed in from a previous calculation but a bit cumbersome.
+    - Potentially wastes an initial evaluation of `loglik_full(theta)`.  Could be passed in from a previous calculation but a bit cumbersome.
 
     Args:
         model: Object specifying the state-space model.
@@ -150,7 +150,7 @@ def param_mwg_update(model, prior, key, theta, x_state, y_meas, rw_sd, theta_ord
             theta_curr[i] + rw_sd[i] * random.normal(key=subkeys[0])
         )
         # acceptance rate
-        lp_prop = full_loglik(model, y_meas, x_state,
+        lp_prop = loglik_full(model, y_meas, x_state,
                               theta_prop) + prior.lpdf(theta_prop)
         lrate = lp_prop - lp_curr
         # update parameter draw
@@ -168,7 +168,7 @@ def param_mwg_update(model, prior, key, theta, x_state, y_meas, rw_sd, theta_ord
     # scan initial value
     init = {
         "theta_curr": theta,
-        "lp_curr": full_loglik(model, y_meas, x_state,
+        "lp_curr": loglik_full(model, y_meas, x_state,
                                theta) + prior.lpdf(theta),
         "accept": jnp.array(True),
         "key": key

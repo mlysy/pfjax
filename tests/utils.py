@@ -10,6 +10,7 @@ import pfjax.models
 import lotvol_model as lv
 import pfjax.models.pgnet_model as pg
 
+
 def rel_err(X1, X2):
     """
     Relative error between two JAX arrays.
@@ -20,6 +21,7 @@ def rel_err(X1, X2):
     x2 = X2.ravel() * 1.0
     return jnp.max(jnp.abs((x1 - x2)/(0.1 + x1)))
 
+
 def var_sim(key, size):
     """
     Generate a variance matrix of given size.
@@ -28,6 +30,7 @@ def var_sim(key, size):
     return jnp.matmul(Z.T, Z)
 
 # --- now some generic external methods for constructing the tests... ----------
+
 
 def bm_setup(self):
     """
@@ -75,6 +78,7 @@ def lv_setup(self):
     self.n_particles = 25
     self.Model = pf.models.LotVolModel
     self.Model2 = lv.LotVolModel
+
 
 def pg_setup(self):
     """
@@ -124,7 +128,8 @@ def fact_setup(self):
 
     # joint distribution using single mvn
     self.mu_Y = jnp.matmul(self.A, self.mu_W + self.mu_XW)
-    self.Sigma_Y = jnp.linalg.multi_dot([self.A, self.Sigma_W + self.Sigma_XW, self.A.T]) + self.Omega
+    self.Sigma_Y = jnp.linalg.multi_dot(
+        [self.A, self.Sigma_W + self.Sigma_XW, self.A.T]) + self.Omega
     AS_W = jnp.matmul(self.A, self.Sigma_W)
     AS_XW = jnp.matmul(self.A, self.Sigma_W + self.Sigma_XW)
     self.mu = jnp.block([self.mu_W, self.mu_W + self.mu_XW, self.mu_Y])
@@ -133,6 +138,7 @@ def fact_setup(self):
         [self.Sigma_W, self.Sigma_W + self.Sigma_XW, AS_XW.T],
         [AS_W, AS_XW, self.Sigma_Y]
     ])
+
 
 def test_for_sim(self):
     # un-self setUp members
@@ -277,10 +283,10 @@ def test_for_loglik(self):
     # simulate without for-loop
     y_meas, x_state = pf.simulate(model, key, n_obs, x_init, theta)
     # joint loglikelihood with for-loop
-    loglik1 = pf.full_loglik_for(model,
+    loglik1 = pf.loglik_full_for(model,
                                  y_meas, x_state, theta)
     # joint loglikelihood with vmap
-    loglik2 = pf.full_loglik(model,
+    loglik2 = pf.loglik_full(model,
                              y_meas, x_state, theta)
     self.assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
 
@@ -496,18 +502,18 @@ def test_jit_loglik(self):
     key, subkey = random.split(key)
     y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
     # joint loglikelihood without jit
-    loglik1 = pf.full_loglik(model,
+    loglik1 = pf.loglik_full(model,
                              y_meas, x_state, theta)
     # joint loglikelihood with jit
-    full_loglik_jit = jax.jit(pf.full_loglik, static_argnums=0)
-    loglik2 = full_loglik_jit(model,
+    loglik_full_jit = jax.jit(pf.loglik_full, static_argnums=0)
+    loglik2 = loglik_full_jit(model,
                               y_meas, x_state, theta)
     self.assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
     # grad without jit
-    grad1 = jax.grad(pf.full_loglik, argnums=(2, 3))(
+    grad1 = jax.grad(pf.loglik_full, argnums=(2, 3))(
         model, y_meas, x_state, theta)
     # grad with jit
-    grad2 = jax.jit(jax.grad(pf.full_loglik, argnums=(2, 3)),
+    grad2 = jax.jit(jax.grad(pf.loglik_full, argnums=(2, 3)),
                     static_argnums=0)(model, y_meas, x_state, theta)
     for i in range(2):
         with self.subTest(i=i):
@@ -595,10 +601,10 @@ def test_models_loglik(self):
     # simulate with inherited class
     y_meas, x_state = pf.simulate(model2, key, n_obs, x_init, theta)
     # joint loglikelihood with non-inherited class
-    loglik1 = pf.full_loglik(model1,
+    loglik1 = pf.loglik_full(model1,
                              y_meas, x_state, theta)
     # joint loglikelihood with inherited class
-    loglik2 = pf.full_loglik(model2,
+    loglik2 = pf.loglik_full(model2,
                              y_meas, x_state, theta)
     self.assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
 
