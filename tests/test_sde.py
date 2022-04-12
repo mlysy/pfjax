@@ -97,7 +97,7 @@ class TestFor(unittest.TestCase):
         lp2 = model.state_lpdf(x_curr, x_prev, theta)
         self.assertAlmostEqual(utils.rel_err(lp1, lp2), 0.0)
 
-    def test_bridge_for(self):
+    def test_bridge_prop(self):
         key = self.key
         theta = self.theta
         x_init = self.x_init
@@ -110,15 +110,16 @@ class TestFor(unittest.TestCase):
         key, subkey = random.split(key)
         x_prev = jnp.block([[jnp.zeros((n_res-1, 2))],
                             [jnp.log(jnp.array([5., 3.]))]])
-        y_meas = jnp.exp(x_prev[-1]) + \
+        y_curr = jnp.exp(x_prev[-1]) + \
             theta[6:8] * random.normal(subkey, (x_prev.shape[1],))
-        
+
         # bridge proposal using lax.scan
         x_curr1, logw1 = model.bridge_prop(
             key=key,
             x_prev=x_prev,
-            Y=jnp.log(y_meas),
+            y_curr=y_curr,
             theta=theta,
+            Y=jnp.log(y_curr),
             A=jnp.eye(2),
             Omega=jnp.eye(2)
         )
@@ -126,14 +127,15 @@ class TestFor(unittest.TestCase):
         x_curr2, logw2 = model.bridge_prop_for(
             key=key,
             x_prev=x_prev,
-            Y=jnp.log(y_meas),
+            y_curr=y_curr,
             theta=theta,
+            Y=jnp.log(y_curr),
             A=jnp.eye(2),
             Omega=jnp.eye(2)
         )
         self.assertAlmostEqual(utils.rel_err(x_curr1, x_curr2), 0.0)
         self.assertAlmostEqual(utils.rel_err(logw1, logw2), 0.0)
-        
-        
+
+
 if __name__ == '__main__':
     unittest.main()
