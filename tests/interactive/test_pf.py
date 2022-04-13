@@ -122,16 +122,30 @@ if False:
 
 
 if True:
+
+    def accumulate_ancestors(x_prev, x_curr, y_curr, theta):
+        r"""
+        Returns just x_prev and x_curr to check that ancestors are being computed as expected.
+        """
+        return x_prev, x_curr
+
     def accumulate_score(x_prev, x_curr, y_curr, theta):
         r"""
         Accumulator for score function.
         """
         measgrad_lpdf = jax.grad(bm_model.meas_lpdf, argnums=2)
         stategrad_lpdf = jax.grad(bm_model.state_lpdf, argnums=2)
-        return measgrad_lpdf(y_curr, x_curr, theta) + \
-            stategrad_lpdf(x_curr, x_prev, theta)
+        return measgrad_lpdf(y_curr, x_curr, theta) + stategrad_lpdf(x_curr, x_prev, theta)
+            
         # return {"meas": measgrad_lpdf(y_curr, x_curr, theta),
         #         "state": stategrad_lpdf(x_curr, x_prev, theta)}
+
+    # def brute_force_acc(x_prev, x_curr, y_curr, theta):
+    #     measgrad_lpdf = jax.grad(bm_model.meas_lpdf, argnums=2)
+    #     stategrad_lpdf = jax.grad(bm_model.state_lpdf, argnums=2)
+    #     t1 = measgrad_lpdf(y_curr, x_curr, theta)
+    #     t2 = stategrad_lpdf(x_curr, x_prev, theta)
+    #     return t1 + t2
 
     # new pf with history
     pf_out1 = pf.particle_filter2(
@@ -139,3 +153,12 @@ if True:
         history=True, accumulator=accumulate_score)
 
     # check brute force calculation
+
+    Xt_1n = pf_out1["x_particles"]
+    # Now, we compute G_n = G(Xt_1n)
+    tot = 0
+    for i in range(1, Xt_1n.shape[0] - 1):
+        tot += brute_force_acc(Xt_1n[i - 1,:], Xt_1n[i,:], y_meas[i], theta)
+        breakpoint()
+
+
