@@ -54,9 +54,11 @@ def _tree_mean(tree, logw):
     Weighted mean of each leaf of a pytree along leading dimension.
     """
     prob = _lweight_to_prob(logw)
-    tree_mult = jtu.Partial(jnp.multiply, x2=jnp.atleast_2d(prob).T)
-    return jtu.tree_map(jtu.Partial(jnp.sum, axis=0),
-                        jtu.tree_map(tree_mult, tree))
+    broad_mult = jtu.Partial(jax.vmap(jnp.multiply), prob)
+    return jtu.tree_map(
+        jtu.Partial(jnp.sum, axis=0),
+        jtu.tree_map(broad_mult, tree)
+    )
 
 
 def _tree_shuffle(tree, index):
