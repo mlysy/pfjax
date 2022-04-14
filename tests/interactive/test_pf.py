@@ -12,6 +12,28 @@ def abs_err(x1, x2):
     return jnp.max(jnp.abs(x1-x2))
 
 
+def get_particles(i_part, x_particles, ancestors):
+    """
+    Return a full particle by backtracking through ancestors of particle `i_part` at last time point.
+    """
+    n_obs = x_particles.shape[0]
+
+    # scan function
+    def get_ancestor(i_part_next, t):
+        # ancestor particle index
+        i_part_curr = ancestors[t, i_part_next]
+        res = i_part_curr
+        return res, res
+
+    # scan initial value
+    i_part_init = i_part
+    # lax.scan itself
+    last, full = jax.lax.scan(get_ancestor, i_part_init,
+                              jnp.arange(n_obs-1), reverse=True)
+    i_part_full = jnp.concatenate([full, jnp.array(i_part_init)[None]])
+    return x_particles[jnp.arange(n_obs), i_part_full, ...]  # , i_part
+
+
 key = random.PRNGKey(0)
 # parameter values
 mu = 5
@@ -32,7 +54,7 @@ key, subkey = random.split(key)
 
 # --- check for-loop -----------------------------------------------------------
 
-if True:
+if False:
     # pf with for-loop
     pf_out1 = pf.particle_filter_for(
         bm_model, subkey, y_meas, theta, n_particles)
@@ -48,7 +70,7 @@ if True:
 
 # --- check pf v2 with history -------------------------------------------------
 
-if True:
+if False:
     # old pf without for-loop
     pf_out1 = pf.particle_filter(
         bm_model, subkey, y_meas, theta, n_particles)
@@ -76,7 +98,7 @@ if True:
 
 # --- check pf v2 without history ----------------------------------------------
 
-if True:
+if False:
     # old pf without for-loop
     pf_out1 = pf.particle_filter(
         bm_model, subkey, y_meas, theta, n_particles)
@@ -105,7 +127,7 @@ if True:
 
 # --- test accumulator ---------------------------------------------------------
 
-if True:
+if False:
     def accumulate_ancestors(x_prev, x_curr, y_curr, theta):
         r"""
         Returns just x_prev and x_curr to check that ancestors are being computed as expected.
@@ -132,39 +154,15 @@ if True:
     print(max_diff)
 
 
-if True:
-    # check brute force calculation
+if False:
     def accumulate_score(x_prev, x_curr, y_curr, theta):
         r"""
         Accumulator for score function.
         """
-        measgrad_lpdf = jax.grad(bm_model.meas_lpdf, argnums=2)
-        stategrad_lpdf = jax.grad(bm_model.state_lpdf, argnums=2)
-        return measgrad_lpdf(y_curr, x_curr, theta) + \
-            stategrad_lpdf(x_curr, x_prev, theta)
-        # return {"meas": measgrad_lpdf(y_curr, x_curr, theta),
-        #         "state": stategrad_lpdf(x_curr, x_prev, theta)}
-
-    def get_particles(i_part, x_particles, ancestors):
-        """
-        Return a full particle by backtracking through ancestors of particle `i_part` at last time point.
-        """
-        n_obs = x_particles.shape[0]
-
-        # scan function
-        def get_ancestor(i_part_next, t):
-            # ancestor particle index
-            i_part_curr = ancestors[t, i_part_next]
-            res = i_part_curr
-            return res, res
-
-        # scan initial value
-        i_part_init = i_part
-        # lax.scan itself
-        last, full = jax.lax.scan(get_ancestor, i_part_init,
-                                  jnp.arange(n_obs-1), reverse=True)
-        i_part_full = jnp.concatenate([full, jnp.array(i_part_init)[None]])
-        return x_particles[jnp.arange(n_obs), i_part_full, ...]  # , i_part
+        grad_meas = jax.grad(bm_model.meas_lpdf, argnums=2)
+        grad_state = jax.grad(bm_model.state_lpdf, argnums=2)
+        return grad_meas(y_curr, x_curr, theta) + \
+            grad_state(x_curr, x_prev, theta)
 
     # new pf with history
     pf_out1 = pf.particle_filter2(
@@ -179,7 +177,7 @@ if True:
     # brute force calculation
     x_particles = pf_out1["x_particles"]
     ancestors = pf_out1["resample_out"]["ancestors"]
-    prob = _lweight_to_prob(jnp.atleast_2d(pf_out1["logw"][n_obs-1]).T)
+    prob = _lweight_to_prob(pf_out1["logw"][n_obs-1])
     x_particles_full = jax.vmap(
         lambda i: get_particles(i, x_particles, ancestors)
     )(jnp.arange(n_particles))
@@ -194,8 +192,64 @@ if True:
         in_axes=(0, 0, None, None)
     )(x_particles_prev, x_particles_curr, y_curr, theta)
     acc_out = acc_out.transpose((1, 0, 2))
-    acc_out = jnp.sum(jnp.sum(acc_out, axis=0) * prob, axis=0)
+    acc_out = jnp.sum(
+        jax.vmap(jnp.multiply)(jnp.sum(acc_out, axis=0), prob),
+        axis=0
+    )
     max_diff = {
         "score_acc": abs_err(acc_out, pf_out2["accumulate_out"])
     }
+<<<<<<< HEAD
     print(max_diff)
+=======
+    print(max_diff)
+
+if True:
+    def accumulate_hessian(x_prev, x_curr, y_curr, theta):
+        r"""
+        Accumulator for hessian function.
+        """
+        hess_meas = jax.jacfwd(jax.jacrev(bm_model.meas_lpdf, argnums=2),
+                               argnums=2)
+        hess_state = jax.jacfwd(jax.jacrev(bm_model.state_lpdf, argnums=2),
+                                argnums=2)
+        return hess_meas(y_curr, x_curr, theta) + \
+            hess_state(x_curr, x_prev, theta)
+
+    # new pf with history
+    pf_out1 = pf.particle_filter2(
+        bm_model, subkey, y_meas, theta, n_particles,
+        history=True, accumulator=accumulate_hessian)
+
+    # new pf without history
+    pf_out2 = pf.particle_filter2(
+        bm_model, subkey, y_meas, theta, n_particles,
+        history=False, accumulator=accumulate_hessian)
+
+    # brute force calculation
+    x_particles = pf_out1["x_particles"]
+    ancestors = pf_out1["resample_out"]["ancestors"]
+    prob = _lweight_to_prob(pf_out1["logw"][n_obs-1])
+    x_particles_full = jax.vmap(
+        lambda i: get_particles(i, x_particles, ancestors)
+    )(jnp.arange(n_particles))
+    x_particles_prev = x_particles_full[:, :-1]
+    x_particles_curr = x_particles_full[:, 1:]
+    y_curr = y_meas[1:]
+    acc_out = jax.vmap(
+        jax.vmap(
+            accumulate_hessian,
+            in_axes=(0, 0, 0, None)
+        ),
+        in_axes=(0, 0, None, None)
+    )(x_particles_prev, x_particles_curr, y_curr, theta)
+    acc_out = acc_out.transpose((1, 0, 2, 3))
+    acc_out = jnp.sum(
+        jax.vmap(jnp.multiply)(jnp.sum(acc_out, axis=0), prob),
+        axis=0
+    )
+    max_diff = {
+        "hessian_acc": abs_err(acc_out, pf_out2["accumulate_out"])
+    }
+    print(max_diff)
+>>>>>>> 63684612e0e5aff49c48d34fafa0e88e79af22e9
