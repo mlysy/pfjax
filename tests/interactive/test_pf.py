@@ -32,7 +32,7 @@ key, subkey = random.split(key)
 
 # --- check for-loop -----------------------------------------------------------
 
-if False:
+if True:
     # pf with for-loop
     pf_out1 = pf.particle_filter_for(
         bm_model, subkey, y_meas, theta, n_particles)
@@ -48,7 +48,7 @@ if False:
 
 # --- check pf v2 with history -------------------------------------------------
 
-if False:
+if True:
     # old pf without for-loop
     pf_out1 = pf.particle_filter(
         bm_model, subkey, y_meas, theta, n_particles)
@@ -68,12 +68,15 @@ if False:
     print(max_diff)
 
     # check loglik
-    max_diff = abs_err(pf.particle_loglik(pf_out1["logw"]), pf_out2["loglik"])
+    max_diff = {
+        "loglik": abs_err(pf.particle_loglik(pf_out1["logw"]),
+                          pf_out2["loglik"])
+    }
     print(max_diff)
 
 # --- check pf v2 without history ----------------------------------------------
 
-if False:
+if True:
     # old pf without for-loop
     pf_out1 = pf.particle_filter(
         bm_model, subkey, y_meas, theta, n_particles)
@@ -93,13 +96,16 @@ if False:
     print(max_diff)
 
     # check loglik
-    max_diff = abs_err(pf.particle_loglik(pf_out1["logw"]), pf_out2["loglik"])
+    max_diff = {
+        "loglik": abs_err(pf.particle_loglik(pf_out1["logw"]),
+                          pf_out2["loglik"])
+    }
     print(max_diff)
 
 
 # --- test accumulator ---------------------------------------------------------
 
-if False:
+if True:
     def accumulate_ancestors(x_prev, x_curr, y_curr, theta):
         r"""
         Returns just x_prev and x_curr to check that ancestors are being computed as expected.
@@ -112,12 +118,17 @@ if False:
         history=True, accumulator=accumulate_ancestors)
 
     # check ancestors
-    max_diff = []
+    ancestors1 = []
+    ancestors2 = []
     for i in range(n_obs-1):
-        max_diff += [abs_err(
-            pf_out1["x_particles"][i, pf_out1["resample_out"]["ancestors"][i]],
-            pf_out1["accumulate_out"][0][i])]
-    max_diff = jnp.array(max_diff)
+        ancestors1 += [pf_out1["x_particles"]
+                       [i, pf_out1["resample_out"]["ancestors"][i]]]
+        ancestors2 += [pf_out1["accumulate_out"][0][i]]
+    ancestors1 = jnp.array(ancestors1)
+    ancestors2 = jnp.array(ancestors2)
+    max_diff = {
+        "ancestors_acc": abs_err(ancestors1, ancestors2)
+    }
     print(max_diff)
 
 
@@ -160,8 +171,15 @@ if True:
         bm_model, subkey, y_meas, theta, n_particles,
         history=True, accumulator=accumulate_score)
 
+    # new pf without history
+    pf_out2 = pf.particle_filter2(
+        bm_model, subkey, y_meas, theta, n_particles,
+        history=False, accumulator=accumulate_score)
+
+    # brute force calculation
     x_particles = pf_out1["x_particles"]
     ancestors = pf_out1["resample_out"]["ancestors"]
+    prob = _lweight_to_prob(jnp.atleast_2d(pf_out1["logw"][n_obs-1]).T)
     x_particles_full = jax.vmap(
         lambda i: get_particles(i, x_particles, ancestors)
     )(jnp.arange(n_particles))
@@ -176,3 +194,8 @@ if True:
         in_axes=(0, 0, None, None)
     )(x_particles_prev, x_particles_curr, y_curr, theta)
     acc_out = acc_out.transpose((1, 0, 2))
+    acc_out = jnp.sum(jnp.sum(acc_out, axis=0) * prob, axis=0)
+    max_diff = {
+        "score_acc": abs_err(acc_out, pf_out2["accumulate_out"])
+    }
+    print(max_diff)

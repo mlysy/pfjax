@@ -20,7 +20,7 @@ import jax.scipy as jsp
 import jax.tree_util as jtu
 from jax import random
 from jax import lax
-from jax.experimental.maps import xmap
+# from jax.experimental.maps import xmap
 import ott
 from ott.geometry import pointcloud
 from ott.core import sinkhorn
@@ -57,6 +57,13 @@ def _tree_mean(tree, logw):
     tree_mult = jtu.Partial(jnp.multiply, x2=jnp.atleast_2d(prob).T)
     return jtu.tree_map(jtu.Partial(jnp.sum, axis=0),
                         jtu.tree_map(tree_mult, tree))
+
+
+def _tree_shuffle(tree, index):
+    """
+    Shuffle the leading dimension of each leaf of a pytree by values in index.
+    """
+    return jtu.tree_map(lambda x: x[index, ...], tree)
 
 
 def _tree_zeros(tree):
@@ -510,6 +517,8 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
 
     Notes:
 
+    - **Warning:** The accumulator only works with `resampler = resample_multinomial()`.
+
     - May wish to remove `resample_out` when `particle_sampler()` has no additional outputs.
 
     - `particle_sampler()` could return additional outputs more conveniently, e.g., as a single additional key `resample_out` consisting of a pytree.  However, this isn't backwards compatible with `particle_filter()` so haven't implemented it yet.
@@ -562,9 +571,11 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
     def filter_step(carry, t):
         # sample particles from previous time point
         key, subkey = random.split(carry["key"])
-        new_particles = particle_sampler(subkey,
-                                         carry["x_particles"],
-                                         carry["logw"])
+        new_particles = particle_sampler(
+            key=subkey,
+            x_particles_prev=carry["x_particles"],
+            logw=carry["logw"]
+        )
         # update particles to current time point (and get weights)
         key, *subkeys = random.split(key, num=n_particles+1)
         x_particles, logw = jax.vmap(
@@ -573,11 +584,17 @@ def particle_filter2(model, key, y_meas, theta, n_particles,
         )(jnp.array(subkeys), new_particles["x_particles"], y_meas[t])
         if has_acc:
             # accumulate expectation
+            acc_prev = carry["accumulate_out"]
+            if not history:
+                # resample acc_prev
+                acc_prev = _tree_shuffle(
+                    tree=acc_prev,
+                    index=new_particles["ancestors"]
+                )
             acc_curr = jax.vmap(
                 pf_acc,
                 in_axes=(0, 0, 0, None)
-            )(carry["accumulate_out"], new_particles["x_particles"],
-              x_particles, y_meas[t])
+            )(acc_prev, new_particles["x_particles"], x_particles, y_meas[t])
         # output
         res_carry = {
             "x_particles": x_particles,
