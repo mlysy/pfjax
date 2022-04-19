@@ -1,5 +1,5 @@
 """
-Lotka-Volterra predator-prey model on the log-scale, using Ito's lemma.
+Lotka-Volterra predator-prey model on the log-scale
 
 The model on the regular scale is:
 
@@ -16,11 +16,6 @@ y_t ~ N( exp(x_{m,mt}), diag(tau_H^2, tau_L^2) )
 - Global constants: `dt` and `n_res`, i.e., `m`.
 - State dimensions: `n_state = (n_res, 2)`.
 - Measurement dimensions: `n_meas = 2`.
-
-After applying Ito's lemma, the model on the log-scale has drift and diffusion matrices:
-Uses It's lemma formulation from examples/sde.ipynb
-drift: 
-
 """
 
 import jax
@@ -41,16 +36,25 @@ def lotvol_drift(x, dt, theta):
     beta = theta[1]
     gamma = theta[2]
     delta = theta[3]
-    return x + jnp.array([alpha - beta * jnp.exp(x[1]),
-                          -gamma + delta * jnp.exp(x[0])]) * dt
+    return x + jnp.array([alpha - beta * x[1],
+                          -gamma + delta * x[0]]) * dt
 
 
 # --- main functions -----------------------------------------------------------
 
 class LotVolModelLog(sde.SDEModel):
-    def __init__(self, dt, n_res):
+    def __init__(self, dt, n_res, bootstrap = True):
+        r"""
+        Class constructor for the LotVol model with parameters on the log-scale.
+
+        Args:
+            dt: SDE interobservation time.
+            n_res: SDE resolution number.  There are `n_res` latent variables per observation, equally spaced with interobservation time `dt/n_res`.
+            bootstrap (bool): Flag indicating whether to use a Bootstrap particle filter or a bridge filter. Default is True
+        """
         super().__init__(dt, n_res, diff_diag=True)
         self._n_state = (self._n_res, 2)
+        self._bootstrap = bootstrap
 
     def drift(self, x, theta):
         """
@@ -63,8 +67,8 @@ class LotVolModelLog(sde.SDEModel):
         beta = jnp.exp(theta[1])
         gamma = jnp.exp(theta[2])
         delta = jnp.exp(theta[3])
-        return jnp.array([alpha - beta * jnp.exp(x[1]),
-                          -gamma + delta * jnp.exp(x[0])])
+        return jnp.array([alpha - beta * x[1],
+                          -gamma + delta * x[0]])
 
     def diff(self, x, theta):
         """
@@ -154,7 +158,7 @@ class LotVolModelLog(sde.SDEModel):
         tau = jnp.exp(theta[6:8])
         return jnp.sum(
             jsp.stats.norm.logpdf(y_curr,
-                                  loc=jnp.exp(x_curr[-1]), scale=tau)
+                                  loc=x_curr[-1], scale=tau)
         )
 
     def meas_sample(self, key, x_curr, theta):
@@ -168,7 +172,7 @@ class LotVolModelLog(sde.SDEModel):
             Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
         """
         tau = jnp.exp(theta[6:8])
-        return jnp.exp(x_curr[-1]) + \
+        return x_curr[-1] + \
             tau * random.normal(key, (self._n_state[1],))
 
     def pf_init(self, key, y_init, theta):
@@ -185,14 +189,45 @@ class LotVolModelLog(sde.SDEModel):
         """
         tau = jnp.exp(theta[6:8])
         key, subkey = random.split(key)
-        x_init = jnp.log(y_init + tau * random.truncated_normal(
+        # x_init = jnp.log(y_init + tau * random.truncated_normal(
+        #     subkey,
+        #     lower=-y_init/tau,
+        #     upper=jnp.inf,
+        #     shape=(self._n_state[1],)
+        # ))
+        x_init = y_init + tau * random.truncated_normal(
             subkey,
             lower=-y_init/tau,
             upper=jnp.inf,
             shape=(self._n_state[1],)
-        ))
+        )
         logw = jnp.sum(jsp.stats.norm.logcdf(y_init/tau))
         return \
             jnp.append(jnp.zeros((self._n_res-1,) + x_init.shape),
                        jnp.expand_dims(x_init, axis=0), axis=0), \
             logw
+
+    def pf_step (self, key, x_prev, y_curr, theta):
+        """ 
+        Choose between bootstrap filter and bridge proposal.
+
+        Args:
+            x_prev: State variable at previous time `t-1`.
+            y_curr: Measurement variable at current time `t`.
+            theta: Parameter value.
+            key: PRNG key.
+
+        Returns:
+            - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
+            - logw: The log-weight of `x_curr`.
+        """
+        if self._bootstrap:
+            x_curr, logw = super().pf_step(key, x_prev, y_curr, theta)
+        else:
+            # bridge_prop(key, x_prev, y_curr, theta, Y, A, Omega)
+            # omega = (jnp.exp(theta[6:8]) / y_curr)**2
+            omega = jnp.exp(theta[6:8])
+            x_curr, logw = self.bridge_prop(
+                key, x_prev, y_curr, theta, y_curr, 
+                jnp.eye(2), jnp.diag(omega))
+        return x_curr, logw
