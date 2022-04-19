@@ -18,54 +18,6 @@ from jax import random
 from jax import lax
 
 
-def simulate_for(model, key, n_obs, x_init, theta):
-    """
-    Simulate data from the state-space model.
-
-    **FIXME:** This is the testing version which uses a for-loop.  This should be put in a separate class in a `test` subfolder.
-
-    Args:
-        model: Object specifying the state-space model.
-        key: PRNG key.
-        n_obs: Number of observations to generate.
-        x_init: Initial state value at time `t = 0`.
-        theta: Parameter value.
-
-    Returns:
-        y_meas: The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
-        x_state: The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
-    """
-    x_state = []
-    y_meas = []
-    # initial observation
-    key, subkey = random.split(key)
-    x_state.append(x_init)
-    y_meas.append(model.meas_sample(subkey, x_init, theta))
-    # subsequent observations
-    for t in range(1, n_obs):
-        key, *subkeys = random.split(key, num=3)
-        x_state.append(model.state_sample(subkeys[0], x_state[t-1], theta))
-        y_meas.append(model.meas_sample(subkeys[1], x_state[t], theta))
-    return jnp.array(y_meas), jnp.array(x_state)
-    # y_meas = jnp.zeros((n_obs, ) + model.n_meas)
-    # x_state = jnp.zeros((n_obs, ) + model.n_state)
-    # x_state = x_state.at[0].set(x_init)
-    # # initial observation
-    # key, subkey = random.split(key)
-    # y_meas = y_meas.at[0].set(model.meas_sample(subkey, x_init, theta))
-    # for t in range(1, n_obs):
-    #     key, *subkeys = random.split(key, num=3)
-    #     x_state = x_state.at[t].set(
-    #         model.state_sample(subkeys[0], x_state[t-1], theta)
-    #     )
-    #     y_meas = y_meas.at[t].set(
-    #         model.meas_sample(subkeys[1], x_state[t], theta)
-    #     )
-    # return y_meas, x_state
-
-# @partial(jax.jit, static_argnums=0)
-
-
 def simulate(model, key, n_obs, x_init, theta):
     """
     Simulate data from the state-space model.
