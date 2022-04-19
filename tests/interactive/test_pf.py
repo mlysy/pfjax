@@ -4,8 +4,9 @@ import jax.scipy as jsp
 import jax.random as random
 from functools import partial
 import pfjax as pf
+import pfjax.experimental.particle_filter as pfex
 from pfjax.models import BMModel
-from pfjax.particle_filter import _lweight_to_prob
+# from pfjax.particle_filter import _lweight_to_prob
 
 
 def abs_err(x1, x2):
@@ -56,6 +57,7 @@ key, subkey = random.split(key)
 
 if False:
     # pf with for-loop
+    # Update: particle_filter_for no longer available here!
     pf_out1 = pf.particle_filter_for(
         bm_model, subkey, y_meas, theta, n_particles)
     # pf without for-loop
@@ -75,7 +77,7 @@ if False:
     pf_out1 = pf.particle_filter(
         bm_model, subkey, y_meas, theta, n_particles)
     # new pf with history
-    pf_out2 = pf.particle_filter2(
+    pf_out2 = pfex.particle_accumulator(
         bm_model, subkey, y_meas, theta, n_particles,
         history=True)
 
@@ -103,7 +105,7 @@ if False:
     pf_out1 = pf.particle_filter(
         bm_model, subkey, y_meas, theta, n_particles)
     # new pf without history
-    pf_out2 = pf.particle_filter2(
+    pf_out2 = pfex.particle_accumulator(
         bm_model, subkey, y_meas, theta, n_particles,
         history=False)
 
@@ -135,7 +137,7 @@ if False:
         return x_prev, x_curr
 
     # new pf with history
-    pf_out1 = pf.particle_filter2(
+    pf_out1 = pfex.particle_accumulator(
         bm_model, subkey, y_meas, theta, n_particles,
         history=True, accumulator=accumulate_ancestors)
 
@@ -165,19 +167,19 @@ if False:
             grad_state(x_curr, x_prev, theta)
 
     # new pf with history
-    pf_out1 = pf.particle_filter2(
+    pf_out1 = pfex.particle_accumulator(
         bm_model, subkey, y_meas, theta, n_particles,
         history=True, accumulator=accumulate_score)
 
     # new pf without history
-    pf_out2 = pf.particle_filter2(
+    pf_out2 = pfex.particle_accumulator(
         bm_model, subkey, y_meas, theta, n_particles,
         history=False, accumulator=accumulate_score)
 
     # brute force calculation
     x_particles = pf_out1["x_particles"]
     ancestors = pf_out1["resample_out"]["ancestors"]
-    prob = _lweight_to_prob(pf_out1["logw"][n_obs-1])
+    prob = pf.lwgt_to_prob(pf_out1["logw"][n_obs-1])
     x_particles_full = jax.vmap(
         lambda i: get_particles(i, x_particles, ancestors)
     )(jnp.arange(n_particles))
@@ -201,7 +203,7 @@ if False:
     }
     print(max_diff)
 
-if True:
+if False:
     def accumulate_hessian(x_prev, x_curr, y_curr, theta):
         r"""
         Accumulator for hessian function.
@@ -214,19 +216,19 @@ if True:
             hess_state(x_curr, x_prev, theta)
 
     # new pf with history
-    pf_out1 = pf.particle_filter2(
+    pf_out1 = pfex.particle_accumulator(
         bm_model, subkey, y_meas, theta, n_particles,
         history=True, accumulator=accumulate_hessian)
 
     # new pf without history
-    pf_out2 = pf.particle_filter2(
+    pf_out2 = pfex.particle_accumulator(
         bm_model, subkey, y_meas, theta, n_particles,
         history=False, accumulator=accumulate_hessian)
 
     # brute force calculation
     x_particles = pf_out1["x_particles"]
     ancestors = pf_out1["resample_out"]["ancestors"]
-    prob = _lweight_to_prob(pf_out1["logw"][n_obs-1])
+    prob = pf.lwgt_to_prob(pf_out1["logw"][n_obs-1])
     x_particles_full = jax.vmap(
         lambda i: get_particles(i, x_particles, ancestors)
     )(jnp.arange(n_particles))
@@ -247,5 +249,60 @@ if True:
     )
     max_diff = {
         "hessian_acc": abs_err(acc_out, pf_out2["accumulate_out"])
+    }
+    print(max_diff)
+
+
+# --- test auxillary_filter_fast -----------------------------------------------
+
+if True:
+    def accumulate_diff(x_prev, x_curr, y_curr, theta):
+        r"""
+        Accumulator for both score and hessian.
+        """
+        grad_meas = jax.grad(bm_model.meas_lpdf, argnums=2)
+        grad_state = jax.grad(bm_model.state_lpdf, argnums=2)
+        hess_meas = jax.jacfwd(jax.jacrev(bm_model.meas_lpdf, argnums=2),
+                               argnums=2)
+        hess_state = jax.jacfwd(jax.jacrev(bm_model.state_lpdf, argnums=2),
+                                argnums=2)
+        alpha = grad_meas(y_curr, x_curr, theta) + \
+            grad_state(x_curr, x_prev, theta)
+        beta = hess_meas(y_curr, x_curr, theta) + \
+            hess_state(x_curr, x_prev, theta)
+        return (alpha, jnp.outer(alpha, alpha) + beta)
+
+    # accumulator without history
+    pf_out1 = pfex.particle_accumulator(
+        bm_model, subkey, y_meas, theta, n_particles,
+        history=False,
+        accumulator=accumulate_diff)
+    # auxillary filter without history
+    pf_out2 = pfex.auxillary_filter_fast(
+        bm_model, subkey, y_meas, theta, n_particles,
+        score=True, fisher=True,
+        history=False)
+
+    # check x_particles and logw
+    max_diff = {k: abs_err(pf_out1[k],  pf_out2[k])
+                for k in ["x_particles", "logw"]}
+    print(max_diff)
+
+    # # check ancestors
+    # max_diff = {k: abs_err(pf_out1[k][n_obs-1], pf_out2["resample_out"][k])
+    #             for k in ["ancestors"]}
+    # print(max_diff)
+
+    # check loglik
+    max_diff = {
+        "loglik": abs_err(pf_out1["loglik"], pf_out2["loglik"])
+    }
+    print(max_diff)
+
+    # check score and fisher information
+    (alpha1, gamma1) = pf_out1["accumulate_out"]
+    max_diff = {
+        "score": abs_err(alpha1, pf_out2["score"]),
+        "fisher": abs_err(gamma1 - jnp.outer(alpha1, alpha1), pf_out2["fisher"])
     }
     print(max_diff)

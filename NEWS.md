@@ -8,7 +8,7 @@
 
 - [ ] `logw` -> `lwgt`.
 
-- [ ] `_lweight_to_prob()` -> `lwgt_to_prob()`.
+- [x] `_lweight_to_prob()` -> `lwgt_to_prob()`.
 
 - [x] `particle_sampler` argument to `particle_filter()` -> `resampler`.
 
@@ -18,7 +18,7 @@
 
 ### Other
 
-- [ ] Moved testing functions e.g., `*_for()` to `tests/utils.py`.
+- [x] Moved testing functions e.g., `*_for()` to `tests/utils.py`.
 
 - [x] Models won't be loaded by default, instead will be in the `models` module, i.e.,
 
