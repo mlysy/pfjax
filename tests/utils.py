@@ -1,5 +1,5 @@
 import unittest
-import numpy as np
+# import numpy as np
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
@@ -28,6 +28,117 @@ def var_sim(key, size):
     """
     Z = random.normal(key, (size, size))
     return jnp.matmul(Z.T, Z)
+
+# --- model-based setup methods ------------------------------------------------
+
+
+def bm_setup(self):
+    """
+    Creates input arguments to tests for BMModel.
+    """
+    self.key = random.PRNGKey(0)
+    # parameter values
+    mu = 5
+    sigma = 1
+    tau = .1
+    self.theta = jnp.array([mu, sigma, tau])
+    # data specification
+    self.model_args = {"dt": .1}
+    self.n_obs = 5
+    self.x_init = jnp.array(0.)
+    # particle filter specification
+    self.n_particles = 3
+    # model specification
+    self.Model = pf.models.BMModel
+
+
+def lv_setup(self):
+    """
+    Creates input arguments to tests for LotVolModel.
+    """
+    self.key = random.PRNGKey(0)
+    # parameter values
+    alpha = 1.02
+    beta = 1.02
+    gamma = 4.
+    delta = 1.04
+    sigma_H = .1
+    sigma_L = .2
+    tau_H = .25
+    tau_L = .35
+    self.theta = jnp.array([alpha, beta, gamma, delta,
+                            sigma_H, sigma_L, tau_H, tau_L])
+    # data specification
+    dt = .09
+    n_res = 3
+    self.model_args = {"dt": dt, "n_res": n_res}
+    self.n_obs = 7
+    self.x_init = jnp.block([[jnp.zeros((n_res-1, 2))],
+                             [jnp.log(jnp.array([5., 3.]))]])
+    self.n_particles = 25
+    self.Model = pf.models.LotVolModel
+    self.Model2 = lv.LotVolModel
+
+
+def pg_setup(self):
+    """
+    Creates input arguments to tests for LotVolModel.
+    """
+    self.key = random.PRNGKey(0)
+    # parameter values
+    theta = jnp.array([0.1, 0.7, 0.35, 0.2, 0.1, 0.9, 0.3, 0.1])
+    tau = jnp.array([0.15, 0.2, 0.25, 0.3])
+    self.theta = jnp.append(theta, tau)
+    # data specification
+    dt = .09
+    n_res = 4
+    self.model_args = {"dt": dt, "n_res": n_res}
+    self.n_obs = 9
+    self.x_init = jnp.block([[jnp.zeros((n_res-1, 4))],
+                             [jnp.log(jnp.array([8., 8., 8., 5.]))]])
+    self.n_particles = 2
+    self.Model = pg.PGNETModel
+    self.Model2 = pg.PGNETModel
+
+
+def fact_setup(self):
+    """
+    Creates the variables used in the tests for factorization.
+    """
+    key = random.PRNGKey(0)
+    self.n_lat = 3  # number of dimensions of W and X
+    self.n_obs = 2  # number of dimensions of Y
+
+    # generate random values of the matrices and vectors
+
+    key, *subkeys = random.split(key, num=4)
+    self.mu_W = random.normal(subkeys[0], (self.n_lat,))
+    self.Sigma_W = var_sim(subkeys[1], self.n_lat)
+    self.W = random.normal(subkeys[2], (self.n_lat,))
+
+    key, *subkeys = random.split(key, num=4)
+    self.mu_XW = random.normal(subkeys[0], (self.n_lat,))
+    self.Sigma_XW = var_sim(subkeys[1], self.n_lat)
+    self.X = random.normal(subkeys[2], (self.n_lat,))
+
+    key, *subkeys = random.split(key, num=4)
+    self.A = random.normal(subkeys[0], (self.n_obs, self.n_lat))
+    self.Omega = var_sim(subkeys[1], self.n_obs)
+    self.Y = random.normal(subkeys[2], (self.n_obs,))
+
+    # joint distribution using single mvn
+    self.mu_Y = jnp.matmul(self.A, self.mu_W + self.mu_XW)
+    self.Sigma_Y = jnp.linalg.multi_dot(
+        [self.A, self.Sigma_W + self.Sigma_XW, self.A.T]) + self.Omega
+    AS_W = jnp.matmul(self.A, self.Sigma_W)
+    AS_XW = jnp.matmul(self.A, self.Sigma_W + self.Sigma_XW)
+    self.mu = jnp.block([self.mu_W, self.mu_W + self.mu_XW, self.mu_Y])
+    self.Sigma = jnp.block([
+        [self.Sigma_W, self.Sigma_W, AS_W.T],
+        [self.Sigma_W, self.Sigma_W + self.Sigma_XW, AS_XW.T],
+        [AS_W, AS_XW, self.Sigma_Y]
+    ])
+
 
 # --- non-exported functions for testing ---------------------------------------
 
@@ -332,118 +443,9 @@ def particle_smooth_for(key, logw, x_particles, ancestors, n_sample=1):
     return x_state
 
 
-# --- now some generic external methods for constructing the tests... ----------
+# --- for vs vmap/scan tests ---------------------------------------------------
 
-
-def bm_setup(self):
-    """
-    Creates input arguments to tests for BMModel.
-    """
-    self.key = random.PRNGKey(0)
-    # parameter values
-    mu = 5
-    sigma = 1
-    tau = .1
-    self.theta = jnp.array([mu, sigma, tau])
-    # data specification
-    self.model_args = {"dt": .1}
-    self.n_obs = 5
-    self.x_init = jnp.array(0.)
-    # particle filter specification
-    self.n_particles = 3
-    # model specification
-    self.Model = pf.models.BMModel
-
-
-def lv_setup(self):
-    """
-    Creates input arguments to tests for LotVolModel.
-    """
-    self.key = random.PRNGKey(0)
-    # parameter values
-    alpha = 1.02
-    beta = 1.02
-    gamma = 4.
-    delta = 1.04
-    sigma_H = .1
-    sigma_L = .2
-    tau_H = .25
-    tau_L = .35
-    self.theta = jnp.array([alpha, beta, gamma, delta,
-                            sigma_H, sigma_L, tau_H, tau_L])
-    # data specification
-    dt = .09
-    n_res = 3
-    self.model_args = {"dt": dt, "n_res": n_res}
-    self.n_obs = 7
-    self.x_init = jnp.block([[jnp.zeros((n_res-1, 2))],
-                             [jnp.log(jnp.array([5., 3.]))]])
-    self.n_particles = 25
-    self.Model = pf.models.LotVolModel
-    self.Model2 = lv.LotVolModel
-
-
-def pg_setup(self):
-    """
-    Creates input arguments to tests for LotVolModel.
-    """
-    self.key = random.PRNGKey(0)
-    # parameter values
-    theta = np.array([0.1, 0.7, 0.35, 0.2, 0.1, 0.9, 0.3, 0.1])
-    tau = np.array([0.15, 0.2, 0.25, 0.3])
-    self.theta = np.append(theta, tau)
-    # data specification
-    dt = .09
-    n_res = 4
-    self.model_args = {"dt": dt, "n_res": n_res}
-    self.n_obs = 9
-    self.x_init = jnp.block([[jnp.zeros((n_res-1, 4))],
-                             [jnp.log(jnp.array([8., 8., 8., 5.]))]])
-    self.n_particles = 2
-    self.Model = pg.PGNETModel
-    self.Model2 = pg.PGNETModel
-
-
-def fact_setup(self):
-    """
-    Creates the variables used in the tests for factorization.
-    """
-    key = random.PRNGKey(0)
-    self.n_lat = 3  # number of dimensions of W and X
-    self.n_obs = 2  # number of dimensions of Y
-
-    # generate random values of the matrices and vectors
-
-    key, *subkeys = random.split(key, num=4)
-    self.mu_W = random.normal(subkeys[0], (self.n_lat,))
-    self.Sigma_W = var_sim(subkeys[1], self.n_lat)
-    self.W = random.normal(subkeys[2], (self.n_lat,))
-
-    key, *subkeys = random.split(key, num=4)
-    self.mu_XW = random.normal(subkeys[0], (self.n_lat,))
-    self.Sigma_XW = var_sim(subkeys[1], self.n_lat)
-    self.X = random.normal(subkeys[2], (self.n_lat,))
-
-    key, *subkeys = random.split(key, num=4)
-    self.A = random.normal(subkeys[0], (self.n_obs, self.n_lat))
-    self.Omega = var_sim(subkeys[1], self.n_obs)
-    self.Y = random.normal(subkeys[2], (self.n_obs,))
-
-    # joint distribution using single mvn
-    self.mu_Y = jnp.matmul(self.A, self.mu_W + self.mu_XW)
-    self.Sigma_Y = jnp.linalg.multi_dot(
-        [self.A, self.Sigma_W + self.Sigma_XW, self.A.T]) + self.Omega
-    AS_W = jnp.matmul(self.A, self.Sigma_W)
-    AS_XW = jnp.matmul(self.A, self.Sigma_W + self.Sigma_XW)
-    self.mu = jnp.block([self.mu_W, self.mu_W + self.mu_XW, self.mu_Y])
-    self.Sigma = jnp.block([
-        [self.Sigma_W, self.Sigma_W, AS_W.T],
-        [self.Sigma_W, self.Sigma_W + self.Sigma_XW, AS_XW.T],
-        [AS_W, AS_XW, self.Sigma_Y]
-    ])
-
-
-def test_for_sim(self):
+def test_for_simulate(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -461,7 +463,7 @@ def test_for_sim(self):
     self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
 
 
-def test_for_pf(self):
+def test_for_particle_filter(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -486,7 +488,7 @@ def test_for_pf(self):
             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
 
 
-def test_for_mvn_resampler(self):
+def test_for_resample_mvn(self):
     """ particle filter with mvn resampling function test """
     # un-self setUp members
     key = self.key
@@ -518,7 +520,7 @@ def test_for_mvn_resampler(self):
                 rel_err(new_particles[k], new_particles_for[k]), 0.0)
 
 
-def test_mvn_resample_shape(self):
+def test_shape_resample_mvn(self):
     """ particle filter with mvn resampling function test """
     # un-self setUp members
     key = self.key
@@ -540,7 +542,7 @@ def test_mvn_resample_shape(self):
                 new_particles[k].shape, new_particles_for[k].shape)
 
 
-def test_for_smooth(self):
+def test_for_particle_smooth(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -574,7 +576,7 @@ def test_for_smooth(self):
     self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
 
 
-def test_for_loglik(self):
+def test_for_loglik_full(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -594,7 +596,7 @@ def test_for_loglik(self):
     self.assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
 
 
-def test_for_mwg(self):
+def test_for_param_mwg_update(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -633,8 +635,10 @@ def test_for_mwg(self):
         with self.subTest(i=i):
             self.assertAlmostEqual(rel_err(mwg_out1[i], mwg_out2[i]), 0.0)
 
+# --- jit vs unjit tests -------------------------------------------------------
 
-def test_jit_sim(self):
+
+def test_jit_simulate(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -662,7 +666,7 @@ def test_jit_sim(self):
     self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
 
 
-def test_jit_pf(self):
+def test_jit_particle_filter(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -699,7 +703,7 @@ def test_jit_pf(self):
     self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
 
 
-def test_jit_pf_mvn(self):
+def test_jit_resample_mvn(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -740,7 +744,7 @@ def test_jit_pf_mvn(self):
     self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
 
 
-def test_jit_smooth(self):
+def test_jit_particle_smooth(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -792,7 +796,7 @@ def test_jit_smooth(self):
     self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
 
 
-def test_jit_loglik(self):
+def test_jit_loglik_full(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -823,7 +827,7 @@ def test_jit_loglik(self):
             self.assertAlmostEqual(rel_err(grad1[i], grad2[i]), 0.0)
 
 
-def test_jit_mwg(self):
+def test_jit_param_mwg_update(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -873,7 +877,7 @@ def test_jit_mwg(self):
             self.assertAlmostEqual(rel_err(grad1[i], grad2[i]), 0.0)
 
 
-def test_models_sim(self):
+def test_models_simulate(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -891,7 +895,7 @@ def test_models_sim(self):
     self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
 
 
-def test_models_loglik(self):
+def test_models_loglik_full(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -912,7 +916,7 @@ def test_models_loglik(self):
     self.assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
 
 
-def test_models_pf(self):
+def test_models_particle_filter(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -935,3 +939,46 @@ def test_models_pf(self):
     for k in pf_out1.keys():
         with self.subTest(k=k):
             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+
+
+def test_for_sde_state_sample(self):
+    # un-self setUp members
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_res = model_args["n_res"]
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model = self.Model(**model_args)
+    # generate previous timepoint
+    key, subkey = random.split(key)
+    x_prev = self.x_init
+    x_prev = x_prev + random.normal(subkey, x_prev.shape)
+    # simulate state using for-loop
+    x_state1 = model.state_sample_for(key, x_prev, theta)
+    # simulate state using lax.scan
+    x_state2 = model.state_sample(key, x_prev, theta)
+    self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
+
+
+def test_for_sde_state_lpdf(self):
+    # un-self setUp members
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_res = model_args["n_res"]
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model = self.Model(**model_args)
+    # generate previous timepoint
+    key, subkey = random.split(key)
+    x_prev = self.x_init
+    x_prev = x_prev + random.normal(subkey, x_prev.shape)
+    # simulate state using lax.scan
+    x_curr = model.state_sample(key, x_prev, theta)
+    # lpdf using for
+    lp1 = model.state_lpdf_for(x_curr, x_prev, theta)
+    lp2 = model.state_lpdf(x_curr, x_prev, theta)
+    self.assertAlmostEqual(rel_err(lp1, lp2), 0.0)

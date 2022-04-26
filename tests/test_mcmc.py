@@ -9,7 +9,6 @@ Things to test:
 """
 
 import unittest
-import numpy as np
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
@@ -26,7 +25,7 @@ class TestFor(unittest.TestCase):
 
     setUp = utils.bm_setup
 
-    test_mwg = utils.test_for_mwg
+    test_mwg = utils.test_for_param_mwg_update
 
 
 class TestJit(unittest.TestCase):
@@ -36,4 +35,4 @@ class TestJit(unittest.TestCase):
 
     setUp = utils.bm_setup
 
-    test_mwg = utils.test_jit_mwg
+    test_mwg = utils.test_jit_param_mwg_update
