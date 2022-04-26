@@ -217,14 +217,14 @@ if False:
     x_particles = pf_out1["x_particles"]
     ancestors = pf_out1["resample_out"]["ancestors"]
     logw = pf_out1["logw"][n_obs-1]
-    acc_out = accumulate_brute(
+    acc_out = pfex.accumulate_smooth(
+        logw=logw,
         x_particles=x_particles,
         ancestors=ancestors,
         y_meas=y_meas,
         theta=theta,
         accumulator=accumulate_score
     )
-    acc_out = pfex._tree_mean(acc_out, logw)
     max_diff = {
         "score_acc": abs_err(acc_out, pf_out2["accumulate_out"])
     }
@@ -261,14 +261,14 @@ if False:
     x_particles = pf_out1["x_particles"]
     ancestors = pf_out1["resample_out"]["ancestors"]
     logw = pf_out1["logw"][n_obs-1]
-    acc_out = accumulate_brute(
+    acc_out = pfex.accumulate_smooth(
+        logw=logw,
         x_particles=x_particles,
         ancestors=ancestors,
         y_meas=y_meas,
         theta=theta,
         accumulator=accumulate_diff
     )
-    acc_out = pfex._tree_mean(acc_out, logw)
     max_diff = {
         "score_acc": abs_err(acc_out[0], pf_out2["accumulate_out"][0]),
         "hessian_acc": abs_err(acc_out[1], pf_out2["accumulate_out"][1])
@@ -295,62 +295,92 @@ if False:
             hess_state(x_curr, x_prev, theta)
         return (alpha, beta)
 
-    # accumulator with history
-    pf_out1 = pfex.particle_accumulator(
-        bm_model, subkey, y_meas, theta, n_particles,
-        history=True,
-        accumulator=accumulate_diff)
-    # auxillary filter with history
-    pf_out2 = pfex.auxillary_filter_linear(
-        bm_model, subkey, y_meas, theta, n_particles,
-        score=True, fisher=True,
-        history=True)
+    job_descr = expand_grid(
+        history=jnp.array([True]),  # False doesn't calculate the right thing
 
-    # check x_particles and logw
-    max_diff = {k: abs_err(pf_out1[k],  pf_out2[k])
-                for k in ["x_particles", "logw"]}
-    print(max_diff)
-
-    # # check ancestors
-    # max_diff = {k: abs_err(pf_out1[k][n_obs-1], pf_out2["resample_out"][k])
-    #             for k in ["ancestors"]}
-    # print(max_diff)
-
-    # check loglik
-    max_diff = {
-        "loglik": abs_err(pf_out1["loglik"], pf_out2["loglik"])
-    }
-    print(max_diff)
-
-    # check score and fisher information
-    x_particles = pf_out1["x_particles"]
-    ancestors = pf_out1["resample_out"]["ancestors"]
-    logw = pf_out1["logw"][n_obs-1]
-    alpha, beta = accumulate_brute(
-        x_particles=x_particles,
-        ancestors=ancestors,
-        y_meas=y_meas,
-        theta=theta,
-        accumulator=accumulate_diff
+        score=jnp.array([False, True]),
+        fisher=jnp.array([False, True])
     )
-    prob = pf.lwgt_to_prob(logw)
-    score = jax.vmap(jnp.multiply)(prob, alpha)
-    hess = jax.vmap(
-        lambda p, a, b: p * (jnp.outer(a, a) + b)
-    )(prob, alpha, beta)
-    score, hess = jtu.tree_map(lambda x: jnp.sum(x, axis=0), (score, hess))
-    max_diff = {
-        "score": abs_err(score, pf_out2["score"]),
-        "fisher": abs_err(hess - jnp.outer(score, score), pf_out2["fisher"])
-    }
-    print(max_diff)
+    for i in jnp.arange(job_descr["history"].size):
+        history = job_descr["history"][i]
+        score = job_descr["score"][i]
+        fisher = job_descr["fisher"][i]
+        print("history = {}, score = {}, fisher = {}".format(
+            history, score, fisher)
+        )
+        # accumulator with history
+        pf_out1 = pfex.particle_accumulator(
+            bm_model, subkey, y_meas, theta, n_particles,
+            history=history,
+            accumulator=accumulate_diff)
+        # auxillary filter with history
+        pf_out2 = pfex.auxillary_filter_linear(
+            bm_model, subkey, y_meas, theta, n_particles,
+            score=score, fisher=fisher,
+            history=history)
+
+        # check x_particles and logw
+        max_diff = {k: abs_err(pf_out1[k],  pf_out2[k])
+                    for k in ["x_particles", "logw"]}
+        print(max_diff)
+
+        # check ancestors
+        max_diff = {k: abs_err(pf_out1["resample_out"][k], pf_out2[k])
+                    for k in ["ancestors"]}
+        print(max_diff)
+
+        # check loglik
+        max_diff = {
+            "loglik": abs_err(pf_out1["loglik"], pf_out2["loglik"])
+        }
+
+        if score or fisher:
+            # score and hess using smoothing accumulator
+            if history:
+                x_particles = pf_out1["x_particles"]
+                ancestors = pf_out1["resample_out"]["ancestors"]
+                logw = pf_out1["logw"][n_obs-1]
+                # alpha, beta = accumulate_brute(
+                #     x_particles=x_particles,
+                #     ancestors=ancestors,
+                #     y_meas=y_meas,
+                #     theta=theta,
+                #     accumulator=accumulate_diff
+                # )
+                alpha, beta = pfex.accumulate_smooth(
+                    logw=logw,
+                    x_particles=x_particles,
+                    ancestors=ancestors,
+                    y_meas=y_meas,
+                    theta=theta,
+                    accumulator=accumulate_diff,
+                    mean=False
+                )
+                prob = pf.lwgt_to_prob(logw)
+                _score = jax.vmap(jnp.multiply)(prob, alpha)
+                _hess = jax.vmap(
+                    lambda p, a, b: p * (jnp.outer(a, a) + b)
+                )(prob, alpha, beta)
+                _score, _hess = jtu.tree_map(
+                    lambda x: jnp.sum(x, axis=0), (_score, _hess))
+            else:
+                # score and hess using filtering accumulator
+                _score, _hess = pf_out1["accumulate_out"]
+            max_diff["score"] = abs_err(_score, pf_out2["score"])
+            if fisher:
+                max_diff["fisher"] = abs_err(
+                    _hess - jnp.outer(_score, _score),
+                    pf_out2["fisher"]
+                )
+
+        print(max_diff)
 
 # --- test auxillary_filter_quad -----------------------------------------------
 
 if False:
     # test for vs vmap
     job_descr = expand_grid(
-        history=jnp.array([False, True]),
+        history=jnp.array([False]),
         score=jnp.array([False, True]),
         fisher=jnp.array([False, True])
     )
@@ -376,7 +406,7 @@ if False:
         print(max_diff)
 
 
-if True:
+if False:
     # test history vs no history
     job_descr = expand_grid(
         score=jnp.array([False, True]),
@@ -404,3 +434,5 @@ if True:
         keys = keys + ["fisher"] if fisher else keys
         max_diff = {k: abs_err(pf_out1[k], pf_out2[k]) for k in keys}
         print(max_diff)
+
+breakpoint()

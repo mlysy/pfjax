@@ -221,6 +221,79 @@ def particle_accumulator(model, key, y_meas, theta, n_particles,
     return full
 
 
+def particle_smooth(x_particles, ancestors, id_particle_last):
+    """
+    Return a full particle by backtracking through ancestors of particle `i_part` at last time point.
+
+    Differs from the version in the `pfjax.particle.filter` module in that the latter does random sampling whereas here the index of the final particle is fixed.
+
+    Args:
+        x_particles: JAX array with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
+        ancestors: JAX integer array of shape `(n_obs-1, n_particles)` where each element gives the index of the particle's ancestor at the previous time point.
+        id_particle_last: Index of the particle at the last time point `t = n_obs-1`.  An integer between `0` and `n_particles-1`.  Wrap in a JAX (scalar) array to prevent `jax.jit()` treating this as a static argument.
+
+    Returns:
+        A JAX array with leading dimension `n_obs` corresponding to the full particle having index `id_particle_last` at time `t = n_obs-1`.
+    """
+    n_obs = x_particles.shape[0]
+
+    # scan function
+    def get_ancestor(id_particle_next, t):
+        # ancestor particle index
+        id_particle_curr = ancestors[t, id_particle_next]
+        return id_particle_curr, id_particle_curr
+
+    # lax.scan
+    id_particle_first, id_particle_full = \
+        jax.lax.scan(get_ancestor, id_particle_last,
+                     jnp.arange(n_obs-1), reverse=True)
+    # append last particle index
+    id_particle_full = jnp.concatenate(
+        [id_particle_full, jnp.array(id_particle_last)[None]]
+    )
+    return x_particles[jnp.arange(n_obs), id_particle_full, ...]
+
+
+def accumulate_smooth(logw, x_particles, ancestors, y_meas, theta, accumulator, mean=True):
+    """
+    Accumulate expectation using the basic particle smoother.
+
+    Performs exactly the same calculation as the accumulator in `particle_accumulator()`, except by smoothing the particle history instead of directly in the filter step (no history required).
+
+    Args:
+        logw: JAX array of shape `(n_particles,)` of unnormalized log-weights at the last time point `t=n_obs-1`.
+        x_particles: JAX array with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
+        ancestors: JAX integer array of shape `(n_obs-1, n_particles)` where each element gives the index of the particle's ancestor at the previous time point.
+        y_meas: JAX array with leading dimension `n_obs` containing the measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
+        theta: Parameter value.
+        accumulator: Function with argument signature `(x_prev, x_curr, y_curr, theta)` returning a Pytree.  See `particle_accumulator()`.
+        mean: Whether or not to compute the weighted average of the accumulated values, or to return a Pytree with each leaf having leading dimension `n_particles`.
+
+    Returns:
+        A Pytree of accumulated values.
+    """
+    # Get full set of particles
+    n_particles = x_particles.shape[1]
+    x_particles_full = jax.vmap(
+        lambda i: particle_smooth(x_particles, ancestors, i)
+    )(jnp.arange(n_particles))
+    x_particles_prev = x_particles_full[:, :-1]
+    x_particles_curr = x_particles_full[:, 1:]
+    y_curr = y_meas[1:]
+    acc_out = jax.vmap(
+        jax.vmap(
+            accumulator,
+            in_axes=(0, 0, 0, None)
+        ),
+        in_axes=(0, 0, None, None)
+    )(x_particles_prev, x_particles_curr, y_curr, theta)
+    acc_out = jtu.tree_map(lambda x: jnp.sum(x, axis=1), acc_out)
+    if mean:
+        return _tree_mean(acc_out, logw)
+    else:
+        return acc_out
+
+
 def auxillary_filter_linear(model, key, y_meas, theta, n_particles,
                             resampler=resample_multinomial,
                             score=True, fisher=False, history=False):
@@ -374,8 +447,9 @@ def auxillary_filter_linear(model, key, y_meas, theta, n_particles,
         full["logw"] = jnp.concatenate([
             filter_init["logw"][None], full["logw"]
         ])
-        # append derivative calculations
-        full["score"] = last["score"]
+        if has_acc:
+            # append derivative calculations
+            full["score"] = last["score"]
     else:
         full = last
 
@@ -386,7 +460,7 @@ def auxillary_filter_linear(model, key, y_meas, theta, n_particles,
         if not fisher:
             # calculate score
             alpha = jax.vmap(
-                jnp.add
+                jnp.multiply
             )(prob, full["score"])
             full["score"] = jnp.sum(alpha, axis=0)
         else:
@@ -680,6 +754,7 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
         # output
         res_carry = {
             "x_particles": x_particles,
+            "loglik": carry["loglik"] + jsp.special.logsumexp(logw_tilde),
             # "logw_prop": logw_prop,
             # "logw_aux": logw_aux,
             "logw_bar": logw_bar,
@@ -693,7 +768,7 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
         #     res_carry, ["key", "loglik", "score"]
         # ) if history else None
         if history:
-            res_stack = _rm_keys(res_carry, ["key", "score"])
+            res_stack = _rm_keys(res_carry, ["key", "loglik", "score"])
             # res_stack["logw_prop"] = logw_prop
             # res_stack["logw_aux"] = logw_aux
             # res_stack["logw_tilde"] = logw_tilde
@@ -711,6 +786,7 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
     init_ancestors = jnp.array([0] * n_particles)
     filter_init = {
         "x_particles": x_particles,
+        "loglik": jsp.special.logsumexp(logw),
         "logw_bar": logw,
         "logw_tilde": logw,
         # "loglik": jsp.special.logsumexp(logw),
@@ -739,8 +815,10 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
         full["logw_bar"] = jnp.concatenate([
             filter_init["logw_bar"][None], full["logw_bar"]
         ])
-        logw_tilde = full["logw_tilde"][-1]
+        # logw_tilde = full["logw_tilde"][-1]
         logw_bar = full["logw_bar"][-1]
+        # calculate loglikelihood
+        full["loglik"] = last["loglik"]
         # if has_acc:
         #     if fisher:
         #         alpha = last["score"][0][-1]
@@ -749,7 +827,7 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
         #         alpha = full["score"][-1]
     else:
         full = last
-        logw_tilde = full["logw_tilde"]
+        # logw_tilde = full["logw_tilde"]
         logw_bar = full["logw_bar"]
         # if has_acc:
         #     if fisher:
@@ -758,7 +836,7 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
         #     else:
         #         alpha = full["score"]
     # calculate loglikelihood
-    full["loglik"] = jsp.special.logsumexp(logw_tilde)
+    # full["loglik"] = jsp.special.logsumexp(logw_tilde)
     if has_acc:
         prob = lwgt_to_prob(logw_bar)
         if not fisher:
