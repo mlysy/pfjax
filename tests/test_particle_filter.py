@@ -41,12 +41,12 @@ class TestFor(unittest.TestCase):
 
     setUp = utils.bm_setup
 
-    test_sim = utils.test_for_sim
-    test_loglik = utils.test_for_loglik
-    test_pf = utils.test_for_pf
-    test_mvn_sampler = utils.test_for_mvn_resampler
-    test_mvn_shape = utils.test_mvn_resample_shape
-    test_smooth = utils.test_for_smooth
+    test_sim = utils.test_for_simulate
+    test_loglik = utils.test_for_loglik_full
+    test_pf_multinomial = utils.test_for_particle_filter
+    test_pf_mvn = utils.test_for_resample_mvn
+    test_pf_mvn_shape = utils.test_shape_resample_mvn
+    test_smooth = utils.test_for_particle_smooth
 
 
 class TestJit(unittest.TestCase):
@@ -56,11 +56,11 @@ class TestJit(unittest.TestCase):
 
     setUp = utils.bm_setup
 
-    test_sim = utils.test_jit_sim
-    test_loglik = utils.test_jit_loglik
-    test_pf = utils.test_jit_pf
-    test_pf_mvn = utils.test_jit_pf_mvn
-    test_smooth = utils.test_jit_smooth
+    test_sim = utils.test_jit_simulate
+    test_loglik = utils.test_jit_loglik_full
+    test_pf = utils.test_jit_particle_filter
+    test_pf_mvn = utils.test_jit_resample_mvn
+    test_smooth = utils.test_jit_particle_smooth
 
 
 if __name__ == '__main__':

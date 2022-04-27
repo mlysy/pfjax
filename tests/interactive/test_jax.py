@@ -3,8 +3,18 @@ import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
+import jax.tree_util as jtu
 from functools import partial
 import pfjax as pf
+
+# --- broadcasting with vmap ---------------------------------------------------
+
+prob = jnp.arange(5)
+alpha = jnp.array([jnp.arange(3)] * 5)
+beta = jnp.array([jnp.outer(jnp.arange(3), jnp.arange(3))] * 5)
+
+jax.vmap(jnp.multiply)(prob, alpha)
+jtu.tree_map(jax.vmap(jnp.multiply), (prob, prob), (alpha, beta))
 
 # --- empty dictionaries -------------------------------------------------------
 

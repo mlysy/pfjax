@@ -234,8 +234,14 @@ def particle_smooth(key, logw, x_particles, ancestors):
     Args:
         key: PRNG key.
         logw: Vector of `n_particles` unnormalized log-weights at the last time point `t = n_obs-1`.
+<<<<<<< HEAD
         x_particles: An `ndarray` with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
         ancestors: An integer `ndarray` of shape `(n_obs, n_particles)` where each element gives the index of the particle's ancestor at the previous time point.
+=======
+        x_particles: JAX array with leading dimensions `(n_obs, n_particles)` containing the state variable particles.
+        ancestors: JAX integer array of shape `(n_obs-1, n_particles)` where each element gives the index of the particle's ancestor at the previous time point.
+
+>>>>>>> 143624d694c0216bf486ca4dba98588d822f38fc
     Returns:
         An `ndarray` with leading dimension `n_obs` sampled from `p(x_{0:T} | y_{0:T}, theta)`.
     """
