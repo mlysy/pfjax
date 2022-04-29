@@ -2,6 +2,9 @@
 
 ---
 
+## Introduction
+- An [introduction](examples/pfjax.ipynb) to **pjfax**.
+
 ## Installation
 
 This will clone the repo into a subfolder `pfjax` of where you issue the `git clone` command, then install the package from source.
@@ -12,11 +15,14 @@ cd pfjax
 pip install .
 ```
 
-## Documentation
-
-- An [introduction](examples/pfjax.ipynb) to **pjfax**.
-
+## Examples
 - An [example](examples/lotvol.ipynb) of inference with **pfjax** for a stochastic differential equation model.
+
+### Brownian Motion
+
+
+
+More examples and further documentation can be found here: 
 
 ## Testing
 
