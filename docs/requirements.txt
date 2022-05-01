@@ -1,0 +1,4 @@
+jax
+ott-jax
+optax
+sphinx_rtd_theme
