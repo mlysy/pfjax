@@ -1,4 +1,4 @@
 from .simulate import *
-from .full_loglik import *
+from .loglik_full import *
 from .particle_filter import *
 from .proj_data import *

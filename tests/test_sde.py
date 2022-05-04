@@ -14,7 +14,7 @@ Things to test:
 """
 
 import unittest
-import numpy as np
+# import numpy as np
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
@@ -30,9 +30,9 @@ class TestInherit(unittest.TestCase):
 
     setUp = utils.lv_setup
 
-    test_sim = utils.test_models_sim
-    test_loglik = utils.test_models_loglik
-    test_pf = utils.test_models_pf
+    test_sim = utils.test_models_simulate
+    test_loglik = utils.test_models_loglik_full
+    test_pf = utils.test_models_particle_filter
 
 
 class TestJit(unittest.TestCase):
@@ -42,9 +42,9 @@ class TestJit(unittest.TestCase):
 
     setUp = utils.lv_setup
 
-    test_sim = utils.test_jit_sim
-    test_pf = utils.test_jit_pf
-    test_loglik = utils.test_jit_loglik
+    test_sim = utils.test_jit_simulate
+    test_pf = utils.test_jit_particle_filter
+    test_loglik = utils.test_jit_loglik_full
 
 
 class TestFor(unittest.TestCase):
@@ -54,48 +54,51 @@ class TestFor(unittest.TestCase):
 
     setUp = utils.lv_setup
 
-    def test_state_sample(self):
-        # un-self setUp members
-        key = self.key
-        theta = self.theta
-        x_init = self.x_init
-        model_args = self.model_args
-        n_res = model_args["n_res"]
-        n_obs = self.n_obs
-        n_particles = self.n_particles
-        model = self.Model(**model_args)
-        # generate previous timepoint
-        key, subkey = random.split(key)
-        x_prev = jnp.block([[jnp.zeros((n_res-1, 2))],
-                            [jnp.log(jnp.array([5., 3.]))]])
-        x_prev = x_prev + random.normal(subkey, x_prev.shape)
-        # simulate state using for-loop
-        x_state1 = model.state_sample_for(key, x_prev, theta)
-        # simulate state using lax.scan
-        x_state2 = model.state_sample(key, x_prev, theta)
-        self.assertAlmostEqual(utils.rel_err(x_state1, x_state2), 0.0)
+    test_state_sample = utils.test_for_sde_state_sample
+    test_state_lpdf = utils.test_for_sde_state_lpdf
 
-    def test_state_lpdf(self):
-        # un-self setUp members
-        key = self.key
-        theta = self.theta
-        x_init = self.x_init
-        model_args = self.model_args
-        n_res = model_args["n_res"]
-        n_obs = self.n_obs
-        n_particles = self.n_particles
-        model = self.Model(**model_args)
-        # generate previous timepoint
-        key, subkey = random.split(key)
-        x_prev = jnp.block([[jnp.zeros((n_res-1, 2))],
-                            [jnp.log(jnp.array([5., 3.]))]])
-        x_prev = x_prev + random.normal(subkey, x_prev.shape)
-        # simulate state using lax.scan
-        x_curr = model.state_sample(key, x_prev, theta)
-        # lpdf using for
-        lp1 = model.state_lpdf_for(x_curr, x_prev, theta)
-        lp2 = model.state_lpdf(x_curr, x_prev, theta)
-        self.assertAlmostEqual(utils.rel_err(lp1, lp2), 0.0)
+    # def test_state_sample(self):
+    #     # un-self setUp members
+    #     key = self.key
+    #     theta = self.theta
+    #     x_init = self.x_init
+    #     model_args = self.model_args
+    #     n_res = model_args["n_res"]
+    #     n_obs = self.n_obs
+    #     n_particles = self.n_particles
+    #     model = self.Model(**model_args)
+    #     # generate previous timepoint
+    #     key, subkey = random.split(key)
+    #     x_prev = jnp.block([[jnp.zeros((n_res-1, 2))],
+    #                         [jnp.log(jnp.array([5., 3.]))]])
+    #     x_prev = x_prev + random.normal(subkey, x_prev.shape)
+    #     # simulate state using for-loop
+    #     x_state1 = model.state_sample_for(key, x_prev, theta)
+    #     # simulate state using lax.scan
+    #     x_state2 = model.state_sample(key, x_prev, theta)
+    #     self.assertAlmostEqual(utils.rel_err(x_state1, x_state2), 0.0)
+
+    # def test_state_lpdf(self):
+    #     # un-self setUp members
+    #     key = self.key
+    #     theta = self.theta
+    #     x_init = self.x_init
+    #     model_args = self.model_args
+    #     n_res = model_args["n_res"]
+    #     n_obs = self.n_obs
+    #     n_particles = self.n_particles
+    #     model = self.Model(**model_args)
+    #     # generate previous timepoint
+    #     key, subkey = random.split(key)
+    #     x_prev = jnp.block([[jnp.zeros((n_res-1, 2))],
+    #                         [jnp.log(jnp.array([5., 3.]))]])
+    #     x_prev = x_prev + random.normal(subkey, x_prev.shape)
+    #     # simulate state using lax.scan
+    #     x_curr = model.state_sample(key, x_prev, theta)
+    #     # lpdf using for
+    #     lp1 = model.state_lpdf_for(x_curr, x_prev, theta)
+    #     lp2 = model.state_lpdf(x_curr, x_prev, theta)
+    #     self.assertAlmostEqual(utils.rel_err(lp1, lp2), 0.0)
 
     def test_bridge_prop(self):
         key = self.key

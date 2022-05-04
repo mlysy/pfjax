@@ -14,7 +14,7 @@ Things to test:
 """
 
 import unittest
-import numpy as np
+# import numpy as np
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
@@ -24,6 +24,7 @@ import utils
 # from jax.config import config
 # config.update("jax_enable_x64", True)
 
+
 class TestFor(unittest.TestCase):
     """
     Test whether for-loop version of functions is identical to xmap/scan version.
@@ -31,46 +32,9 @@ class TestFor(unittest.TestCase):
 
     setUp = utils.pg_setup
 
-    def test_state_sample(self):
-        # un-self setUp members
-        key = self.key
-        theta = self.theta
-        x_init = self.x_init
-        model_args = self.model_args
-        n_res = model_args["n_res"]
-        n_obs = self.n_obs
-        n_particles = self.n_particles
-        model = self.Model(**model_args)
-        # generate previous timepoint
-        key, subkey = random.split(key)
-        x_prev = self.x_init
-        x_prev = x_prev + random.normal(subkey, x_prev.shape)
-        # simulate state using for-loop
-        x_state1 = model.state_sample_for(key, x_prev, theta)
-        # simulate state using lax.scan
-        x_state2 = model.state_sample(key, x_prev, theta)
-        self.assertAlmostEqual(utils.rel_err(x_state1, x_state2), 0.0)
+    test_state_sample = utils.test_for_sde_state_sample
+    test_state_lpdf = utils.test_for_sde_state_lpdf
 
-    def test_state_lpdf(self):
-        # un-self setUp members
-        key = self.key
-        theta = self.theta
-        x_init = self.x_init
-        model_args = self.model_args
-        n_res = model_args["n_res"]
-        n_obs = self.n_obs
-        n_particles = self.n_particles
-        model = self.Model(**model_args)
-        # generate previous timepoint
-        key, subkey = random.split(key)
-        x_prev = self.x_init
-        x_prev = x_prev + random.normal(subkey, x_prev.shape)
-        # simulate state using lax.scan
-        x_curr = model.state_sample(key, x_prev, theta)
-        # lpdf using for
-        lp1 = model.state_lpdf_for(x_curr, x_prev, theta)
-        lp2 = model.state_lpdf(x_curr, x_prev, theta)
-        self.assertAlmostEqual(utils.rel_err(lp1, lp2), 0.0)
 
 if __name__ == '__main__':
     unittest.main()

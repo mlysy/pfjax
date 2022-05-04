@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 from jax import random
 from jax import lax
-# import mvn_bridge as mb
+from pfjax import mvn_bridge as mb
 
 
 def euler_sim_diag(key, x, dt, drift, diff, theta):
@@ -345,16 +345,14 @@ class SDEModel(object):
             dt_res = self._dt / self._n_res
             dr = self.drift(x, theta) * dt_res
             df = self.diff_full(x, theta) * dt_res
-            mu_W = x + dr
-            Sigma_W = df
-            mu_Y = jnp.matmul(A, x + k*dr)
-            AS_W = jnp.matmul(A, Sigma_W)
-            Sigma_Y = k * jnp.linalg.multi_dot([A, df, A.T]) + Omega
-            # solve both linear systems simultaneously
-            sol = jnp.matmul(AS_W.T, jnp.linalg.solve(
-                Sigma_Y, jnp.hstack([jnp.array([Y-mu_Y]).T, AS_W])))
-            mu_bridge = mu_W + jnp.squeeze(sol[:, 0])
-            Sigma_bridge = Sigma_W - sol[:, 1:]
+            mu_bridge, Sigma_bridge = mb.mvn_bridge_mv(
+                mu_W=x + dr,
+                Sigma_W=df,
+                mu_Y=jnp.matmul(A, x + k*dr),
+                AS_W=jnp.matmul(A, df),
+                Sigma_Y=k * jnp.linalg.multi_dot([A, df, A.T]) + Omega,
+                Y=Y
+            )
             # bridge proposal
             key, subkey = random.split(key)
             x_prop = random.multivariate_normal(key,

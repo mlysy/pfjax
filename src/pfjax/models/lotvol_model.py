@@ -46,7 +46,7 @@ from pfjax import sde as sde
 
 
 def lotvol_drift(x, dt, theta):
-    """
+    r"""
     Calculates the SDE drift function.
     """
     alpha = theta[0]
@@ -81,7 +81,7 @@ class LotVolModel(sde.SDEModel):
         self._n_state = (self._n_res, 2)
 
     def drift(self, x, theta):
-        """
+        r"""
         Calculates the SDE drift function.
         """
         alpha = theta[0]
@@ -92,15 +92,17 @@ class LotVolModel(sde.SDEModel):
                           -gamma + delta * jnp.exp(x[0])])
 
     def diff(self, x, theta):
-        """
+        r"""
         Calculates the SDE diffusion function.
         """
         return theta[4:6]
 
     def state_lpdf_for(self, x_curr, x_prev, theta):
-        """
+        r"""
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
+
         For-loop version for testing.
+
         Args:
             x_curr: State variable at current time `t`.
             x_prev: State variable at previous time `t-1`.
@@ -123,13 +125,16 @@ class LotVolModel(sde.SDEModel):
         return lp
 
     def state_sample_for(self, key, x_prev, theta):
-        """
+        r"""
         Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
+
         For-loop version for testing.
+
         Args:
             key: PRNG key.
             x_prev: State variable at previous time `t-1`.
             theta: Parameter value.
+
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
@@ -145,12 +150,14 @@ class LotVolModel(sde.SDEModel):
         return x_curr
 
     def meas_lpdf(self, y_curr, x_curr, theta):
-        """
+        r"""
         Log-density of `p(y_curr | x_curr, theta)`.
+
         Args:
             y_curr: Measurement variable at current time `t`.
             x_curr: State variable at current time `t`.
             theta: Parameter value.
+
         Returns
             The log-density of `p(y_curr | x_curr, theta)`.
         """
@@ -161,12 +168,14 @@ class LotVolModel(sde.SDEModel):
         )
 
     def meas_sample(self, key, x_curr, theta):
-        """
+        r"""
         Sample from `p(y_curr | x_curr, theta)`.
+
         Args:
             key: PRNG key.
             x_curr: State variable at current time `t`.
             theta: Parameter value.
+
         Returns:
             Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
         """
@@ -175,13 +184,16 @@ class LotVolModel(sde.SDEModel):
             tau * random.normal(key, (self._n_state[1],))
 
     def pf_init(self, key, y_init, theta):
-        """
+        r"""
         Importance sampler for `x_init`.  
+
         See file comments for exact sampling distribution of `p(x_init | y_init, theta)`, i.e., we have a "perfect" importance sampler with `logw = CONST(theta)`.
+
         Args:
             key: PRNG key.
             y_init: Measurement variable at initial time `t = 0`.
             theta: Parameter value.
+
         Returns:
             - x_init: A sample from the proposal distribution for `x_init`.
             - logw: The log-weight of `x_init`.

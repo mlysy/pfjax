@@ -4,15 +4,21 @@
 
 ### Changes to Function Names, Arguments, Outputs
 
-- [ ] `particle_resample()`, `particle_resample_mvn()`, etc. -> `resample_multinomial()`, `resample_mvn()`, etc.
+- [x] `particle_resample()`, `particle_resample_mvn()`, etc. -> `resample_multinomial()`, `resample_mvn()`, etc.
 
 - [ ] `logw` -> `lwgt`.
 
-- [ ] `particle_resampler` argument to `particle_filter()` -> `resampler`.
+- [x] `_lweight_to_prob()` -> `lwgt_to_prob()`.
+
+- [x] `particle_sampler` argument to `particle_filter()` -> `resampler`.
 
 - [x] In `particle_resample_mvn{_for}()`, outputs `x_particles_mu`, `x_particles_cov` -> `mean`, `cov`.
 
+- [x] `full_loglik{_for}()` -> `loglik_full{_for}()`. 
+
 ### Other
+
+- [x] Moved testing functions e.g., `*_for()` to `tests/utils.py`.
 
 - [x] Models won't be loaded by default, instead will be in the `models` module, i.e.,
 
