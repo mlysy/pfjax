@@ -5,6 +5,10 @@ pfjax: Particle Filtering in JAX
 What is pfjax?
 ==============================
 
+The goal is to provide a fast implementation of a particle filter to estimate the marginal likelihood of a state-space model along with its gradient.
+
+The JAX library is used to efficiently compose jit and autodiff operations in order to achieve this. 
+
 **Insert overview of the purpose of the package and definitions here**
 
 ==============================
@@ -55,12 +59,15 @@ More Use Cases
 ==============================
 .. nbgallery::
 
-   notebooks/mcmc
-   notebooks/pgnet
-   notebooks/sde_module
+   ..
+      Input the notebook file names here:
+      notebooks/mcmc
+      notebooks/pgnet
+      notebooks/sde_module
 
 ==============================
 Links
 ==============================
 * :ref:`search`
 * Source code: https://github.com/mlysy/pfjax
+* pages/faq
