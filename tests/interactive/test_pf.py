@@ -6,6 +6,7 @@ import jax.tree_util as jtu
 from functools import partial
 import pfjax as pf
 import pfjax.experimental.particle_filter as pfex
+import pfjax.tests as pftest
 from pfjax.models import BMModel
 # from pfjax.particle_filter import _lweight_to_prob
 
@@ -47,12 +48,327 @@ y_meas, x_state = pf.simulate(bm_model, key, n_obs, x_init, theta)
 n_particles = 7
 key, subkey = random.split(key)
 
-# --- check for-loop -----------------------------------------------------------
+# --- basic particle filter ----------------------------------------------------
+
+if False:
+    # test against for-loop version
+    # old pf with for-loop
+    pf_out1 = pftest.particle_filter_for(
+        bm_model, subkey, y_meas, theta, n_particles)
+
+    job_descr = expand_grid(
+        history=jnp.array([False, True]),
+    )
+    for i in jnp.arange(job_descr["history"].size):
+        history = job_descr["history"][i]
+        print("history = {}".format(history))
+        # new pf
+        pf_out2 = pfex.particle_filter(
+            bm_model, subkey, y_meas, theta, n_particles,
+            score=False, fisher=False, history=history)
+        # check outputs
+        if history:
+            max_diff = {k: rel_err(pf_out1[k], pf_out2[k])
+                        for k in ["x_particles", "logw", "ancestors"]}
+        else:
+            max_diff = {k: rel_err(pf_out1[k][n_obs-1],  pf_out2[k])
+                        for k in ["x_particles", "logw", "ancestors"]}
+        max_diff["loglik"] = rel_err(pf.particle_loglik(pf_out1["logw"]),
+                                     pf_out2["loglik"])
+        print_dict(max_diff)
+
+
+if False:
+    # test online vs brute force derivatives
+    # also test with and without history gives same results
+    def accumulate_deriv(x_prev, x_curr, y_curr, theta):
+        r"""
+        Accumulator for both score and hessian.
+        """
+        grad_meas = jax.grad(bm_model.meas_lpdf, argnums=2)
+        grad_state = jax.grad(bm_model.state_lpdf, argnums=2)
+        hess_meas = jax.jacfwd(jax.jacrev(bm_model.meas_lpdf, argnums=2),
+                               argnums=2)
+        hess_state = jax.jacfwd(jax.jacrev(bm_model.state_lpdf, argnums=2),
+                                argnums=2)
+        alpha = grad_meas(y_curr, x_curr, theta) + \
+            grad_state(x_curr, x_prev, theta)
+        beta = hess_meas(y_curr, x_curr, theta) + \
+            hess_state(x_curr, x_prev, theta)
+        return (alpha, beta)
+
+    # pf with history, no derivatives
+    pf_out1 = pfex.particle_filter(
+        bm_model, subkey, y_meas, theta, n_particles,
+        score=False, fisher=False, history=True)
+
+    job_descr = expand_grid(
+        history=jnp.array([True]),
+        score=jnp.array([False, True]),
+        fisher=jnp.array([False, True])
+    )
+
+    for i in jnp.arange(job_descr["history"].size):
+        history = job_descr["history"][i]
+        score = job_descr["score"][i]
+        fisher = job_descr["fisher"][i]
+        print("history = {}, score = {}, fisher = {}".format(
+            history, score, fisher)
+        )
+        # pf various history/derivatives
+        pf_out2 = pfex.particle_filter(
+            bm_model, subkey, y_meas, theta, n_particles,
+            score=score, fisher=fisher, history=history
+        )
+        # check outputs
+        if history:
+            max_diff = {k: rel_err(pf_out1[k],  pf_out2[k])
+                        for k in ["x_particles", "logw", "ancestors"]}
+        else:
+            max_diff = {k: rel_err(pf_out1[k][n_obs-1],  pf_out2[k])
+                        for k in ["x_particles", "logw", "ancestors"]}
+
+        max_diff["loglik"] = rel_err(pf_out1["loglik"], pf_out2["loglik"])
+        if score or fisher:
+            # score and hess using smoothing accumulator
+            x_particles = pf_out1["x_particles"]
+            ancestors = pf_out1["ancestors"]
+            logw = pf_out1["logw"][n_obs-1]
+            alpha, beta = pftest.accumulate_smooth(
+                logw=logw,
+                x_particles=x_particles,
+                ancestors=ancestors,
+                y_meas=y_meas,
+                theta=theta,
+                accumulator=accumulate_deriv,
+                mean=False
+            )
+            prob = pf.lwgt_to_prob(logw)
+            _score = jax.vmap(jnp.multiply)(prob, alpha)
+            _hess = jax.vmap(
+                lambda p, a, b: p * (jnp.outer(a, a) + b)
+            )(prob, alpha, beta)
+            _score, _hess = jtu.tree_map(
+                lambda x: jnp.sum(x, axis=0), (_score, _hess))
+            max_diff["score"] = rel_err(_score, pf_out2["score"])
+            if fisher:
+                max_diff["fisher"] = rel_err(
+                    _hess - jnp.outer(_score, _score),
+                    pf_out2["fisher"]
+                )
+        print_dict(max_diff)
+
+
+# --- test rao-blackwellized particle filter -----------------------------------
+
+
+if False:
+    # test for-loop vs vmap
+    # for-loop is very slow, so skip history=True
+    job_descr = expand_grid(
+        history=jnp.array([False]),
+        score=jnp.array([False, True]),
+        fisher=jnp.array([False, True])
+    )
+    for i in jnp.arange(job_descr["history"].size):
+        history = job_descr["history"][i]
+        score = job_descr["score"][i]
+        fisher = job_descr["fisher"][i]
+        print("history = {}, score = {}, fisher = {}".format(
+            history, score, fisher)
+        )
+        # rb filter for-loop
+        pf_out1 = pfex.particle_filter_rb(
+            bm_model, subkey, y_meas, theta, n_particles,
+            score=score, fisher=fisher,
+            history=history, tilde_for=True)
+        # rb filter vmap
+        pf_out2 = pfex.particle_filter_rb(
+            bm_model, subkey, y_meas, theta, n_particles,
+            score=score, fisher=fisher,
+            history=history, tilde_for=False)
+        # max_diff = {k: rel_err(pf_out1[k], pf_out2[k])
+        #             for k in pf_out1.keys()}
+        max_diff = jtu.tree_map(rel_err, pf_out1, pf_out2)
+        print_dict(max_diff)
+
+
+if False:
+    # test history vs no history
+    job_descr = expand_grid(
+        score=jnp.array([False, True]),
+        fisher=jnp.array([False, True])
+    )
+    for i in jnp.arange(job_descr["score"].size):
+        score = job_descr["score"][i]
+        fisher = job_descr["fisher"][i]
+        print("score = {}, fisher = {}".format(
+            score, fisher)
+        )
+        # auxillary filter no history
+        pf_out1 = pfex.particle_filter_rb(
+            bm_model, subkey, y_meas, theta, n_particles,
+            score=score, fisher=fisher,
+            history=False, tilde_for=False)
+        # auxillary filter with history
+        pf_out2 = pfex.particle_filter_rb(
+            bm_model, subkey, y_meas, theta, n_particles,
+            score=score, fisher=fisher,
+            history=True, tilde_for=False)
+        # check loglik, score, fisher
+        keys = ["loglik"]
+        keys = keys + ["score"] if score or fisher else keys
+        keys = keys + ["fisher"] if fisher else keys
+        max_diff = {k: rel_err(pf_out1[k], pf_out2[k]) for k in keys}
+        print_dict(max_diff)
+
+
+if True:
+    # test online vs brute force derivative calculations
+    # gradient and hessian functions
+    grad_meas = jax.grad(bm_model.meas_lpdf, argnums=2)
+    grad_state = jax.grad(bm_model.state_lpdf, argnums=2)
+    hess_meas = jax.jacfwd(jax.jacrev(bm_model.meas_lpdf, argnums=2),
+                           argnums=2)
+    hess_state = jax.jacfwd(jax.jacrev(bm_model.state_lpdf, argnums=2),
+                            argnums=2)
+
+    def grad_step(x_curr, x_prev, y_curr,
+                  logw_prev, logw_aux, alpha_prev, beta_prev):
+        """
+        Update logw_targ, alpha, and beta.
+        """
+        logw_targ = bm_model.meas_lpdf(
+            y_curr=y_curr,
+            x_curr=x_curr,
+            theta=theta
+        ) + bm_model.state_lpdf(
+            x_curr=x_curr,
+            x_prev=x_prev,
+            theta=theta
+        ) + logw_prev
+        logw_prop = bm_model.prop_lpdf(
+            x_curr=x_curr,
+            x_prev=x_prev,
+            y_curr=y_curr,
+            theta=theta
+        ) + logw_aux
+        alpha = grad_state(x_curr, x_prev, theta) + \
+            grad_meas(y_curr, x_curr, theta) + \
+            alpha_prev
+        beta = jnp.outer(alpha, alpha) + \
+            hess_meas(y_curr, x_curr, theta) + \
+            hess_state(x_curr, x_prev, theta) + \
+            beta_prev
+        return {
+            "logw_targ": logw_targ,
+            "logw_prop": logw_prop,
+            "alpha": alpha,
+            "beta": beta
+        }
+
+    job_descr = expand_grid(
+        history=jnp.array([False, True]),
+        score=jnp.array([False, True]),
+        fisher=jnp.array([False, True])
+    )
+
+    # auxillary filter vmap
+    pf_out1 = pfex.particle_filter_rb(
+        model=bm_model,
+        key=subkey,
+        y_meas=y_meas,
+        theta=theta,
+        n_particles=n_particles,
+        score=False,
+        fisher=False,
+        history=True, tilde_for=False
+    )
+    # initialize
+    n_theta = theta.size
+    logw_prev = pf_out1["logw_bar"][0]
+    alpha_prev = jnp.zeros((n_particles, n_theta))
+    beta_prev = jnp.zeros((n_particles, n_theta, n_theta))
+    loglik2 = jsp.special.logsumexp(logw_prev)
+    # update for every observation
+    for i_curr in range(1, n_obs):
+        x_prev = pf_out1["x_particles"][i_curr-1]
+        x_curr = pf_out1["x_particles"][i_curr]
+        y_curr = y_meas[i_curr]
+        logw_aux = logw_prev
+        # manual update calculation
+        grad_full = jax.vmap(
+            jax.vmap(
+                grad_step,
+                in_axes=(None, 0, None, 0, 0, 0, 0)
+            ),
+            in_axes=(0, None, None, None, None, None, None)
+        )(x_curr, x_prev, y_curr, logw_prev, logw_aux,
+          alpha_prev, beta_prev)
+        logw_curr = jax.vmap(
+            lambda ltarg, lprop:
+            jsp.special.logsumexp(ltarg) - jsp.special.logsumexp(lprop)
+        )(grad_full["logw_targ"], grad_full["logw_prop"])
+        loglik2 = loglik2 + jsp.special.logsumexp(logw_curr)
+        alpha_curr = jax.vmap(
+            pf.utils.tree_mean
+        )(grad_full["alpha"], grad_full["logw_targ"])
+        beta_curr = jax.vmap(
+            pf.utils.tree_mean
+        )(grad_full["beta"], grad_full["logw_targ"]) - \
+            jax.vmap(
+            jnp.outer
+        )(alpha_curr, alpha_curr)
+        # set prev to curr
+        logw_prev = logw_curr
+        alpha_prev = alpha_curr
+        beta_prev = beta_curr
+    # finalize calculations
+    loglik2 = loglik2 - n_obs * jnp.log(n_particles)
+    gamma_curr = jax.vmap(
+        lambda a, b: jnp.outer(a, a) + b
+    )(alpha_curr, beta_curr)
+    score2 = pf.utils.tree_mean(alpha_curr, logw_curr)
+    fisher2 = pf.utils.tree_mean(gamma_curr, logw_curr) - \
+        jnp.outer(score2, score2)
+    # check against different versions
+    for i in jnp.arange(job_descr["history"].size):
+        history = job_descr["history"][i]
+        score = job_descr["score"][i]
+        fisher = job_descr["fisher"][i]
+        print("history = {}, score = {}, fisher = {}".format(
+            history, score, fisher)
+        )
+        # correspoinding particle filter
+        pf_out2 = pfex.particle_filter_rb(
+            model=bm_model,
+            key=subkey,
+            y_meas=y_meas,
+            theta=theta,
+            n_particles=n_particles,
+            score=score,
+            fisher=fisher,
+            history=history,
+            tilde_for=False
+        )
+        # calculate difference
+        max_diff = {"loglik": rel_err(pf_out2["loglik"], loglik2)}
+        if score or fisher:
+            max_diff["score"] = rel_err(pf_out2["score"], score2)
+        if fisher:
+            max_diff["fisher"] = rel_err(pf_out2["fisher"], fisher2)
+        print_dict(max_diff)
+
+
+# --- scratch ------------------------------------------------------------------
+
+# don't bother with anything below here
+
+# --- test for-loop ------------------------------------------------------------
 
 if False:
     # pf with for-loop
-    # Update: particle_filter_for no longer available here!
-    pf_out1 = pf.particle_filter_for(
+    pf_out1 = pftest.particle_filter_for(
         bm_model, subkey, y_meas, theta, n_particles)
     # pf without for-loop
     pf_out2 = pf.particle_filter(
@@ -61,62 +377,6 @@ if False:
     max_diff = {
         k: jnp.max(jnp.abs(pf_out1[k] - pf_out2[k]))
         for k in pf_out1.keys()
-    }
-    print_dict(max_diff)
-
-# --- check pf v2 with history -------------------------------------------------
-
-if False:
-    # old pf without for-loop
-    pf_out1 = pf.particle_filter(
-        bm_model, subkey, y_meas, theta, n_particles)
-    # new pf with history
-    pf_out2 = pfex.particle_accumulator(
-        bm_model, subkey, y_meas, theta, n_particles,
-        history=True)
-
-    # check x_particles and logw
-    max_diff = {k: rel_err(pf_out1[k], pf_out2[k])
-                for k in ["x_particles", "logw"]}
-    print_dict(max_diff)
-
-    # check ancestors
-    max_diff = {k: rel_err(pf_out1[k], pf_out2["resample_out"][k])
-                for k in ["ancestors"]}
-    print_dict(max_diff)
-
-    # check loglik
-    max_diff = {
-        "loglik": rel_err(pf.particle_loglik(pf_out1["logw"]),
-                          pf_out2["loglik"])
-    }
-    print_dict(max_diff)
-
-# --- check pf v2 without history ----------------------------------------------
-
-if False:
-    # old pf without for-loop
-    pf_out1 = pf.particle_filter(
-        bm_model, subkey, y_meas, theta, n_particles)
-    # new pf without history
-    pf_out2 = pfex.particle_accumulator(
-        bm_model, subkey, y_meas, theta, n_particles,
-        history=False)
-
-    # check x_particles and logw
-    max_diff = {k: rel_err(pf_out1[k][n_obs-1],  pf_out2[k])
-                for k in ["x_particles", "logw"]}
-    print_dict(max_diff)
-
-    # check ancestors
-    max_diff = {k: rel_err(pf_out1[k][n_obs-1], pf_out2["resample_out"][k])
-                for k in ["ancestors"]}
-    print_dict(max_diff)
-
-    # check loglik
-    max_diff = {
-        "loglik": rel_err(pf.particle_loglik(pf_out1["logw"]),
-                          pf_out2["loglik"])
     }
     print_dict(max_diff)
 
@@ -233,10 +493,8 @@ if False:
     print_dict(max_diff)
 
 
-# --- test auxillary_filter_linear ---------------------------------------------
-
 if False:
-    def accumulate_diff(x_prev, x_curr, y_curr, theta):
+    def accumulate_deriv(x_prev, x_curr, y_curr, theta):
         r"""
         Accumulator for both score and hessian.
         """
@@ -266,10 +524,9 @@ if False:
             history, score, fisher)
         )
         # accumulator with history
-        pf_out1 = pfex.particle_accumulator(
+        pf_out1 = pfex.particle_filter(
             bm_model, subkey, y_meas, theta, n_particles,
-            history=history,
-            accumulator=accumulate_diff)
+            score=False, fisher=False, history=True)
         # auxillary filter with history
         pf_out2 = pfex.auxillary_filter_linear(
             bm_model, subkey, y_meas, theta, n_particles,
@@ -325,8 +582,6 @@ if False:
 
         print_dict(max_diff)
 
-# --- test auxillary_filter_quad -----------------------------------------------
-
 if False:
     # test linear vs quad
     # update: no longer relevant since underlying PF is now different
@@ -349,186 +604,3 @@ if False:
         max_diff = {k: rel_err(pf_out1[k], pf_out2[k])
                     for k in ["loglik", "x_particles"]}
         print_dict(max_diff)
-
-if False:
-    # test for vs vmap
-    job_descr = expand_grid(
-        history=jnp.array([False]),
-        score=jnp.array([False, True]),
-        fisher=jnp.array([False, True])
-    )
-    for i in jnp.arange(job_descr["history"].size):
-        history = job_descr["history"][i]
-        score = job_descr["score"][i]
-        fisher = job_descr["fisher"][i]
-        print("history = {}, score = {}, fisher = {}".format(
-            history, score, fisher)
-        )
-        # auxillary filter for-loop
-        pf_out1 = pfex.auxillary_filter_quad(
-            bm_model, subkey, y_meas, theta, n_particles,
-            score=score, fisher=fisher,
-            history=history, tilde_for=True)
-        # auxillary filter vmap
-        pf_out2 = pfex.auxillary_filter_quad(
-            bm_model, subkey, y_meas, theta, n_particles,
-            score=score, fisher=fisher,
-            history=history, tilde_for=False)
-        # max_diff = {k: rel_err(pf_out1[k], pf_out2[k])
-        #             for k in pf_out1.keys()}
-        max_diff = jtu.tree_map(rel_err, pf_out1, pf_out2)
-        print_dict(max_diff)
-
-
-if False:
-    # test history vs no history
-    job_descr = expand_grid(
-        score=jnp.array([False, True]),
-        fisher=jnp.array([False, True])
-    )
-    for i in jnp.arange(job_descr["score"].size):
-        score = job_descr["score"][i]
-        fisher = job_descr["fisher"][i]
-        print("score = {}, fisher = {}".format(
-            score, fisher)
-        )
-        # auxillary filter no history
-        pf_out1 = pfex.auxillary_filter_quad(
-            bm_model, subkey, y_meas, theta, n_particles,
-            score=score, fisher=fisher,
-            history=False, tilde_for=False)
-        # auxillary filter with history
-        pf_out2 = pfex.auxillary_filter_quad(
-            bm_model, subkey, y_meas, theta, n_particles,
-            score=score, fisher=fisher,
-            history=True, tilde_for=False)
-        # check loglik, score, fisher
-        keys = ["loglik"]
-        keys = keys + ["score"] if score or fisher else keys
-        keys = keys + ["fisher"] if fisher else keys
-        max_diff = {k: rel_err(pf_out1[k], pf_out2[k]) for k in keys}
-        print_dict(max_diff)
-
-
-if True:
-    # test brute force calculation of score accumulator
-    # gradient and hessian functions
-    grad_meas = jax.grad(bm_model.meas_lpdf, argnums=2)
-    grad_state = jax.grad(bm_model.state_lpdf, argnums=2)
-    hess_meas = jax.jacfwd(jax.jacrev(bm_model.meas_lpdf, argnums=2),
-                           argnums=2)
-    hess_state = jax.jacfwd(jax.jacrev(bm_model.state_lpdf, argnums=2),
-                            argnums=2)
-
-    def grad_step(x_curr, x_prev, y_curr,
-                  logw_prev, logw_aux, alpha_prev, beta_prev):
-        """
-        Update logw_targ, alpha, and beta.
-        """
-        logw_targ = bm_model.meas_lpdf(
-            y_curr=y_curr,
-            x_curr=x_curr,
-            theta=theta
-        ) + bm_model.state_lpdf(
-            x_curr=x_curr,
-            x_prev=x_prev,
-            theta=theta
-        ) + logw_prev
-        logw_prop = bm_model.prop_lpdf(
-            x_curr=x_curr,
-            x_prev=x_prev,
-            y_curr=y_curr,
-            theta=theta
-        ) + logw_aux
-        alpha = grad_state(x_curr, x_prev, theta) + \
-            grad_meas(y_curr, x_curr, theta) + \
-            alpha_prev
-        beta = jnp.outer(alpha, alpha) + \
-            hess_meas(y_curr, x_curr, theta) + \
-            hess_state(x_curr, x_prev, theta) + \
-            beta_prev
-        return {
-            "logw_targ": logw_targ,
-            "logw_prop": logw_prop,
-            "alpha": alpha,
-            "beta": beta
-        }
-
-    # auxillary filter vmap
-    score = True
-    fisher = True
-    pf_out1 = pfex.auxillary_filter_quad(
-        model=bm_model,
-        key=subkey,
-        y_meas=y_meas,
-        theta=theta,
-        n_particles=n_particles,
-        score=score,
-        fisher=fisher,
-        history=True, tilde_for=False
-    )
-    # initialize
-    n_theta = theta.size
-    logw_prev = pf_out1["logw_bar"][0]
-    alpha_prev = jnp.zeros((n_particles, n_theta))
-    beta_prev = jnp.zeros((n_particles, n_theta, n_theta))
-    loglik2 = jsp.special.logsumexp(logw_prev)
-    # update for every observation
-    for i_curr in range(1, n_obs):
-        x_prev = pf_out1["x_particles"][i_curr-1]
-        x_curr = pf_out1["x_particles"][i_curr]
-        y_curr = y_meas[i_curr]
-        logw_aux = logw_prev
-        # manual update calculation
-        grad_full = jax.vmap(
-            jax.vmap(
-                grad_step,
-                in_axes=(None, 0, None, 0, 0, 0, 0)
-            ),
-            in_axes=(0, None, None, None, None, None, None)
-        )(x_curr, x_prev, y_curr, logw_prev, logw_aux, alpha_prev, beta_prev)
-        logw_curr = jax.vmap(
-            lambda ltarg, lprop:
-            jsp.special.logsumexp(ltarg) - jsp.special.logsumexp(lprop)
-        )(grad_full["logw_targ"], grad_full["logw_prop"])
-        loglik2 = loglik2 + jsp.special.logsumexp(logw_curr)
-        alpha_curr = jax.vmap(
-            pfex._tree_mean
-        )(grad_full["alpha"], grad_full["logw_targ"])
-        beta_curr = jax.vmap(
-            pfex._tree_mean
-        )(grad_full["beta"], grad_full["logw_targ"]) - \
-            jax.vmap(
-            jnp.outer
-        )(alpha_curr, alpha_curr)
-        # set prev to curr
-        logw_prev = logw_curr
-        alpha_prev = alpha_curr
-        beta_prev = beta_curr
-
-    # finalize calculations
-    loglik2 = loglik2 - n_obs * jnp.log(n_particles)
-    gamma_curr = jax.vmap(
-        lambda a, b: jnp.outer(a, a) + b
-    )(alpha_curr, beta_curr)
-    score2 = pfex._tree_mean(alpha_curr, logw_curr)
-    fisher2 = pfex._tree_mean(gamma_curr, logw_curr) - \
-        jnp.outer(score2, score2)
-    # calculate difference
-    max_diff = {"loglik": rel_err(pf_out1["loglik"], loglik2)}
-    if score or fisher:
-        max_diff["score"] = rel_err(pf_out1["score"], score2)
-    if fisher:
-        max_diff["fisher"] = rel_err(pf_out1["fisher"], fisher2)
-    print_dict(max_diff)
-
-    # # true gradient value
-    # jax.grad(bm_model.loglik_exact, argnums=1)(y_meas[0:2], theta)
-
-    # # filter approximation
-    # score
-    # pf_out1["score"]
-
-    # # true hessian value
-    # jax.jacfwd(jax.jacrev(bm_model.loglik_exact,
-    #                       argnums=1), argnums=1)(y_meas[0:2], theta)
