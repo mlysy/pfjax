@@ -69,10 +69,14 @@ if False:
         # check outputs
         if history:
             max_diff = {k: rel_err(pf_out1[k], pf_out2[k])
-                        for k in ["x_particles", "logw", "ancestors"]}
+                        for k in ["x_particles", "logw"]}
+            max_diff["ancestors"] = rel_err(
+                x1=pf_out1["ancestors"],
+                x2=pf_out2["resample_out"]["ancestors"]
+            )
         else:
             max_diff = {k: rel_err(pf_out1[k][n_obs-1],  pf_out2[k])
-                        for k in ["x_particles", "logw", "ancestors"]}
+                        for k in ["x_particles", "logw"]}
         max_diff["loglik"] = rel_err(pf.particle_loglik(pf_out1["logw"]),
                                      pf_out2["loglik"])
         print_dict(max_diff)
@@ -123,16 +127,20 @@ if False:
         # check outputs
         if history:
             max_diff = {k: rel_err(pf_out1[k],  pf_out2[k])
-                        for k in ["x_particles", "logw", "ancestors"]}
+                        for k in ["x_particles", "logw"]}
+            max_diff["ancestors"] = rel_err(
+                x1=pf_out1["resample_out"]["ancestors"],
+                x2=pf_out2["resample_out"]["ancestors"]
+            )
         else:
             max_diff = {k: rel_err(pf_out1[k][n_obs-1],  pf_out2[k])
-                        for k in ["x_particles", "logw", "ancestors"]}
+                        for k in ["x_particles", "logw"]}
 
         max_diff["loglik"] = rel_err(pf_out1["loglik"], pf_out2["loglik"])
         if score or fisher:
             # score and hess using smoothing accumulator
             x_particles = pf_out1["x_particles"]
-            ancestors = pf_out1["ancestors"]
+            ancestors = pf_out1["resample_out"]["ancestors"]
             logw = pf_out1["logw"][n_obs-1]
             alpha, beta = pftest.accumulate_smooth(
                 logw=logw,
@@ -223,7 +231,7 @@ if False:
         print_dict(max_diff)
 
 
-if True:
+if False:
     # test online vs brute force derivative calculations
     # gradient and hessian functions
     grad_meas = jax.grad(bm_model.meas_lpdf, argnums=2)

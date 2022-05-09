@@ -23,6 +23,13 @@ def lwgt_to_prob(logw):
     return prob
 
 
+def rm_keys(x, keys):
+    r"""
+    Remove specified keys from given dict.
+    """
+    return {k: x[k] for k in x.keys() if k not in keys}
+
+
 # --- tree helper functions ----------------------------------------------------
 
 
@@ -58,10 +65,3 @@ def tree_zeros(tree):
     Fill pytree with zeros.
     """
     return jtu.tree_map(lambda x: jnp.zeros_like(x), tree)
-
-
-def rm_keys(x, keys):
-    r"""
-    Remove specified keys from given dict.
-    """
-    return {k: x[k] for k in x.keys() if k not in keys}

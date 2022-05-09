@@ -18,7 +18,7 @@ def particle_accumulator(model, key, y_meas, theta, n_particles,
 
     Notes:
 
-    - This is a precursor to `auxillary_filter_fast()` with a more general accumulator.  It will probably be depreciated however since the accumulator has very high variance and is thus not recommended to use in practice.
+    - This is a precursor to the score/fisher calculation used in `particle_filter()` with a more general accumulator.  It will probably be depreciated however since the accumulator has very high variance and is thus not recommended to use in practice.
 
     - **Warning:** The accumulator only works with `resampler = resample_multinomial()`.
 

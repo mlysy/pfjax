@@ -23,8 +23,8 @@ import jax.tree_util as jtu
 from jax import random
 from jax import lax
 # from jax.experimental.host_callback import id_print
-from ..utils import *
-from ..particle_resamplers import resample_multinomial
+from pfjax.utils import *
+from pfjax.particle_resamplers import resample_multinomial
 
 
 def particle_filter(model, key, y_meas, theta, n_particles,
@@ -33,49 +33,72 @@ def particle_filter(model, key, y_meas, theta, n_particles,
     r"""
     Basic particle filter.
 
-    **FIXME:**
+    **Notes:**
 
-    - Resample outputs should go to `resample_out` instead of directly to output.  This avoids resampler overwriting dict elements set by particle_filter.  This is true even if using `resampler_multinomial`.
+    - Can optionally use an auxiliary particle filter if `model.pf_aux()` is provided.
+
+    - The score and fisher information are estimated using the method described by Poyiadjis et al 2011, Algorithm 1. 
+
+    - Should have the option of adding data as we go along.  So for example, could have an argument `init=None`, which if not none is the carry from `lax.scan()`.  Should then also return the carry as an output...
 
     Args:
-        model: Object specifying the state-space model.
+        model: Object specifying the state-space model having the following methods:
+            - `pf_init()`
+            - `pf_step()`
+            - Optionally `pf_aux()`
+            - Optionally `state_lpdf()` and `meas_lpdf()`, if `score or fisher == True`.
         key: PRNG key.
-        y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
+        y_meas: JAX array with leading dimension `n_obs` containing the measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
         theta: Parameter value.
         n_particles: Number of particles.
-        resampler: Resampling function.  Argument signature is `resampler(key, x_particles_prev, logw_prev, logw_aux) => (x_particles_curr, ancestors)`.
-        score: Whether or not to return an estimate of the score function at `theta`.
-        fisher: Whether or not to return an estimate of the Fisher information at `theta`.  If `True` returns score as well.
+        resampler: Function used at step `t` to obtain sample of particles from `p(x_{t} | y_{0:t}, theta)` out of a sample of particles from `p(x_{t-1} | y_{0:t-1}, theta)`.   The argument signature is `resampler(x_particles, logw, key)`, and the return value is a dictionary with mandatory element `x_particles`  and optional elements that get carried to the next step `t+1` via `lax.scan()`.
+        score: Whether or not to return an estimate of the score function at `theta`.  Only works if `resampler` has an output element named `ancestors`.
+        fisher: Whether or not to return an estimate of the Fisher information at `theta`.  Only works if `resampler` has an output element named `ancestors`.  If `True` returns score as well.
         history: Whether to output the history of the filter or only the last step.
 
     Returns:
         A dictionary with elements:
+            - `x_particles`: JAX array containing the state variable particles at the last time point (leading dimension `n_particles`) or at all time points (leading dimensions `(n_obs, n_particles)` if `history=True`.
+            - `logw`: JAX array containing unnormalized log weights at the last time point (dimensions `n_particles`) or at all time points (dimensions (n_obs, n_particles)`) if `history=True`.
             - `loglik`: The particle filter loglikelihood evaluated at `theta`.
-            - `score`: A vector of size `n_theta = length(theta)` containing the estimated score at `theta`.
-            - `fisher`: An array of size `(n_theta, n_theta)` containing the estimated observed fisher information at `theta`.
-            - `x_particles`: A jax array containing the state variable particles at the last time point (leading dimension `n_particles`) or at all time points (leading dimensions `(n_obs, n_particles)` if `history=True`.
-            - `logw`: A jax array containing unnormalized log weights at the last time point (dimensions `n_particles`) or at all time points (dimensions (n_obs, n_particles)`) if `history=True`.
-            - `ancestors`: If `history=True`, an array of shape `(n_obs-1, n_particles)` containing the ancestor of each particle at times `t=1,...,T`.
+            - `score`: Optional 1D JAX array of size `n_theta = length(theta)` containing the estimated score at `theta`.
+            - `fisher`: Optional JAX array of shape `(n_theta, n_theta)` containing the estimated observed fisher information at `theta`.
+            - `resample_out`: If `history=True`, a dictionary of additional outputs from `resampler` function.  The leading dimension of each element of the dictionary has leading dimension `n_obs-1`, since these additional outputs do not apply to the first time point `t=0`.
     """
     n_obs = y_meas.shape[0]
     has_acc = score or fisher
 
     # accumulator for derivatives
-    def accumulator(x_prev, x_curr, y_curr, theta):
+    def accumulator(x_prev, x_curr, y_curr, acc_prev):
+        """
+        Accumulator for derivative calculations.
+
+        Args:
+            acc_prev: Dictionary with elements alpha and optionally beta.
+
+        Returns:
+            Dictionary with elements:
+            - logw_targ: logw_bar + state_lpdf.
+            - logw_prop: logw_aux + prop_lpdf.
+            - alpha: optional current value of alpha_bar.
+            - beta: optional current value of beta_bar.
+        """
         grad_meas = jax.grad(model.meas_lpdf, argnums=2)
         grad_state = jax.grad(model.state_lpdf, argnums=2)
         alpha = grad_meas(y_curr, x_curr, theta) + \
-            grad_state(x_curr, x_prev, theta)
+            grad_state(x_curr, x_prev, theta) + \
+            acc_prev["alpha"]
+        acc_curr = {"alpha": alpha}
         if fisher:
             hess_meas = jax.jacfwd(jax.jacrev(model.meas_lpdf, argnums=2),
                                    argnums=2)
             hess_state = jax.jacfwd(jax.jacrev(model.state_lpdf, argnums=2),
                                     argnums=2)
             beta = hess_meas(y_curr, x_curr, theta) + \
-                hess_state(x_curr, x_prev, theta)
-            return (alpha, beta)
-        else:
-            return alpha
+                hess_state(x_curr, x_prev, theta) + \
+                acc_prev["beta"]
+            acc_curr["beta"] = beta
+        return acc_curr
 
     # internal functions for vmap
     def pf_step(key, x_prev, y_curr):
@@ -108,50 +131,59 @@ def particle_filter(model, key, y_meas, theta, n_particles,
 
     # lax.scan stepping function
     def filter_step(carry, t):
-        # sample particles from previous time point
+        # 1. sample particles from previous time point
         key, subkey = random.split(carry["key"])
+        # augment previous weights with auxiliary weights
         logw_aux = jax.vmap(
             pf_aux,
             in_axes=(0, 0, None)
         )(carry["logw"], carry["x_particles"], y_meas[t])
-        new_particles = resampler(
+        # resampled particles
+        resample_out = resampler(
             key=subkey,
             x_particles_prev=carry["x_particles"],
             logw=logw_aux
         )
-        # update particles to current time point (and get weights)
+        # 2. sample particles for current time point
         key, *subkeys = random.split(key, num=n_particles+1)
         x_particles, logw = jax.vmap(
             pf_step,
             in_axes=(0, 0, None)
-        )(jnp.array(subkeys), new_particles["x_particles"], y_meas[t])
+        )(jnp.array(subkeys), resample_out["x_particles"], y_meas[t])
         if has_acc:
-            # accumulate expectation
-            # note: we're calling the accumulated value "score"
-            # so we don't need to rename the dictionary item later.
-            acc_prev = carry["score"]
+            # 3. accumulate values for score and/or fisher information
+            acc_prev = {"alpha": carry["alpha"]}
+            if fisher:
+                acc_prev["beta"] = carry["beta"]
             # resample acc_prev
             acc_prev = tree_shuffle(
                 tree=acc_prev,
-                index=new_particles["ancestors"]
+                index=resample_out["ancestors"]
             )
+            # add new values to get acc_curr
             acc_curr = jax.vmap(
-                pf_acc,
-                in_axes=(0, 0, 0, None)
-            )(acc_prev, new_particles["x_particles"], x_particles, y_meas[t])
+                accumulator,
+                in_axes=(0, 0, None, 0)
+            )(resample_out["x_particles"], x_particles, y_meas[t], acc_prev)
         # output
         res_carry = {
             "x_particles": x_particles,
             "logw": logw,
             "key": key,
-            "loglik": carry["loglik"] + jsp.special.logsumexp(logw),
-            "ancestors": new_particles["ancestors"]
+            "loglik": carry["loglik"] + jsp.special.logsumexp(logw)
         }
         if has_acc:
-            res_carry["score"] = acc_curr
-        res_stack = rm_keys(
-            res_carry, ["key", "loglik", "score"]
-        ) if history else None
+            res_carry.update(acc_curr)
+        if history:
+            res_stack = {k: res_carry[k]
+                         for k in ["x_particles", "logw"]}
+            if set(["x_particles"]) < resample_out.keys():
+                res_stack["resample_out"] = rm_keys(
+                    x=resample_out,
+                    keys="x_particles"
+                )
+        else:
+            res_stack = None
         return res_carry, res_stack
 
     # lax.scan initial value
@@ -160,24 +192,32 @@ def particle_filter(model, key, y_meas, theta, n_particles,
     x_particles, logw = jax.vmap(
         pf_init
     )(jnp.array(subkeys))
-    # dummy initialization for ancestors
-    init_ancestors = jnp.array([0] * n_particles)
-    if has_acc:
-        # dummy initialization for accumulate
-        init_acc = jax.vmap(
-            accumulator,
-            in_axes=(0, 0, None, None)
-        )(x_particles, x_particles, y_meas[0], theta)
-        init_acc = tree_zeros(init_acc)
     filter_init = {
         "x_particles": x_particles,
         "logw": logw,
         "loglik": jsp.special.logsumexp(logw),
         "key": key,
-        "ancestors": init_ancestors
     }
     if has_acc:
-        filter_init["score"] = init_acc
+        # dummy initialization for derivatives
+        filter_init["alpha"] = jnp.zeros((n_particles, theta.size))
+        if fisher:
+            filter_init["beta"] = jnp.zeros(
+                (n_particles, theta.size, theta.size)
+            )
+    # # dummy initialization for resampler
+    # init_res = resampler(key, x_particles, logw)
+    # init_res = tree_zeros(rm_keys(init_res, ["x_particles"]))
+    # if set("x_particles") < init_res.keys():
+    #     filter_init["resample_out"]
+    # if has_acc:
+    #     # dummy initialization for accumulator
+    #     init_acc = jax.vmap(
+    #         accumulator,
+    #         in_axes=(0, 0, None, None)
+    #     )(x_particles, x_particles, y_meas[0], theta)
+    #     init_acc = tree_zeros(init_acc)
+    #     filter_init.update(init_acc)
 
     # lax.scan itself
     last, full = lax.scan(filter_step, filter_init, jnp.arange(1, n_obs))
@@ -191,27 +231,30 @@ def particle_filter(model, key, y_meas, theta, n_particles,
         full["logw"] = jnp.concatenate([
             filter_init["logw"][None], full["logw"]
         ])
-        if has_acc:
-            # append derivative calculations
-            full["score"] = last["score"]
+        # if has_acc:
+        #     # append derivative calculations
+        #     full["score"] = last["score"]
     else:
         full = last
 
     # calculate loglikelihood
     full["loglik"] = last["loglik"] - n_obs * jnp.log(n_particles)
     if has_acc:
-        prob = lwgt_to_prob(last["logw"])
         if not fisher:
-            # calculate score
-            alpha = jax.vmap(
-                jnp.multiply
-            )(prob, full["score"])
-            full["score"] = jnp.sum(alpha, axis=0)
+            # calculate score only
+            full["score"] = tree_mean(last["alpha"], last["logw"])
+            # alpha = jax.vmap(
+            #     jnp.multiply
+            # )(prob, full["score"])
+            # full["score"] = jnp.sum(alpha, axis=0)
         else:
             # calculate score and fisher information
+            prob = lwgt_to_prob(last["logw"])
+            alpha = last["alpha"]
+            beta = last["beta"]
             alpha, gamma = jax.vmap(
                 lambda p, a, b: (p * a, p * (jnp.outer(a, a) + b))
-            )(prob, full["score"][0], full["score"][1])
+            )(prob, alpha, beta)
             alpha = jnp.sum(alpha, axis=0)
             hess = jnp.sum(gamma, axis=0) - jnp.outer(alpha, alpha)
             full["score"] = alpha
@@ -230,31 +273,35 @@ def particle_filter_rb(model, key, y_meas, theta, n_particles,
 
         - Algorithm 2 of Poyiadjis et al 2011.
 
+        - Can optionally use an auxiliary particle filter if `model.pf_aux()` is provided.
+
         - Need to move `tilde_for` to a separate function `particle_filter_rb_for`.
 
     Args:
-        model: Object specifying the state-space model.  It must have the following methods:
-            - `state_lpdf()`
-            - `meas_lpdf()`
-            - `pf_step()`
-            - `prop_lpdf(x_curr, x_prev, y_curr, theta)`: log-density of the proposal distribution.
+        model: Object specifying the state-space model having the following methods:
+            - `pf_init()`.
+            - Either `pf_prop()` or `pf_step()`.
+            - `state_lpdf()`.
+            - `meas_lpdf()`.
+            - `prop_lpdf()`.
+            - Optionally `pf_aux()`.
         key: PRNG key.
-        y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
+        y_meas: JAX array with leading dimension `n_obs` containing the measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
         theta: Parameter value.
         n_particles: Number of particles.
-        resampler: Resampling function.  Argument signature is `resampler(key, x_particles_prev, logw) => (x_particles_curr, ancestors)`.
+        resampler: Function used at step `t` to obtain sample of particles from `p(x_{t} | y_{0:t}, theta)` out of a sample of particles from `p(x_{t-1} | y_{0:t-1}, theta)`.   The argument signature is `resampler(x_particles, logw, key)`, and the return value is a dictionary with mandatory element `x_particles`  and optional elements that get carried to the next step `t+1` via `lax.scan()`.
         score: Whether or not to return an estimate of the score function at `theta`.
         fisher: Whether or not to return an estimate of the Fisher information at `theta`.  If `True` returns score as well.
         history: Whether to output the history of the filter or only the last step.
 
     Returns:
         A dictionary with elements:
+            - `x_particles`: JAX array containing the state variable particles at the last time point (leading dimension `n_particles`) or at all time points (leading dimensions `(n_obs, n_particles)` if `history=True`.
+            - `logw_bar`: JAX array containing unnormalized log weights at the last time point (dimensions `n_particles`) or at all time points (dimensions (n_obs, n_particles)`) if `history=True`.
             - `loglik`: The particle filter loglikelihood evaluated at `theta`.
-            - `score`: A vector of size `n_theta = length(theta)` containing the estimated score at `theta`.
-            - `fisher`: An array of size `(n_theta, n_theta)` containing the estimated observed fisher information at `theta`.
-            - `x_particles`: A jax array containing the state variable particles at the last time point (leading dimension `n_particles`) or at all time points (leading dimensions `(n_obs, n_particles)` if `history=True`.
-            - `logw`: A jax array containing unnormalized log weights at the last time point (dimensions `n_particles`) or at all time points (dimensions (n_obs, n_particles)`) if `history=True`.
-            - `ancestors`: If `history=True`, an array of shape `(n_obs-1, n_particles)` containing the ancestor of each particle at times `t=1,...,T`.
+            - `score`: Optional 1D JAX array of size `n_theta = length(theta)` containing the estimated score at `theta`.
+            - `fisher`: Optional JAX array of shape `(n_theta, n_theta)` containing the estimated observed fisher information at `theta`.
+            - `resample_out`: If `history=True`, a dictionary of additional outputs from `resampler` function.  The leading dimension of each element of the dictionary has leading dimension `n_obs-1`, since these additional outputs do not apply to the first time point `t=0`.
     """
     n_obs = y_meas.shape[0]
     has_acc = score or fisher
@@ -262,7 +309,7 @@ def particle_filter_rb(model, key, y_meas, theta, n_particles,
     # internal functions for vmap
     def accumulator(x_prev, x_curr, y_curr, acc_prev, logw_aux):
         """
-        Accumulator for weights and possibly derivatives calculation.
+        Accumulator for weights and possibly derivative calculations.
 
         Args:
             acc_prev: Dictionary with elements logw_bar, and optionally alpha and beta.
@@ -473,23 +520,23 @@ def particle_filter_rb(model, key, y_meas, theta, n_particles,
     def filter_step(carry, t):
         # 1. sample particles from previous time point
         key, subkey = random.split(carry["key"])
-        # augment previous weights with auxillary weights.
+        # augment previous weights with auxiliary weights
         logw_aux = jax.vmap(
             pf_aux,
             in_axes=(0, 0, None)
         )(carry["logw_bar"], carry["x_particles"], y_meas[t])
         # resampled particles
-        res_particles = resampler(
+        resample_out = resampler(
             key=subkey,
             x_particles_prev=carry["x_particles"],
             logw=logw_aux
         )
-        # 2. sample particles from current timepoint
+        # 2. sample particles for current timepoint
         key, *subkeys = random.split(key, num=n_particles+1)
         x_particles = jax.vmap(
             pf_step,
             in_axes=(0, 0, None)
-        )(jnp.array(subkeys), res_particles["x_particles"], y_meas[t])
+        )(jnp.array(subkeys), resample_out["x_particles"], y_meas[t])
         # 3. compute all double summations
         acc_prev = {"logw_bar": carry["logw_bar"]}
         if has_acc:
@@ -515,12 +562,18 @@ def particle_filter_rb(model, key, y_meas, theta, n_particles,
             "x_particles": x_particles,
             "loglik": carry["loglik"] +
             jsp.special.logsumexp(acc_curr["logw_bar"]),
-            "key": key,
-            "resample_out": rm_keys(res_particles, "x_particles")
+            "key": key
+            # "resample_out": rm_keys(resample_out, "x_particles")
         }
         res_carry.update(acc_curr)
         if history:
-            res_stack = rm_keys(res_carry, ["key", "loglik"])
+            res_stack = {k: res_carry[k]
+                         for k in ["x_particles", "logw_bar"]}
+            if set(["x_particles"]) < resample_out.keys():
+                res_stack["resample_out"] = rm_keys(
+                    x=resample_out,
+                    keys="x_particles"
+                )
         else:
             res_stack = None
         return res_carry, res_stack
@@ -531,15 +584,15 @@ def particle_filter_rb(model, key, y_meas, theta, n_particles,
     x_particles, logw = jax.vmap(
         pf_init
     )(jnp.array(subkeys))
-    # dummy initialization for resampler
-    init_res = resampler(key, x_particles, logw)
-    init_res = tree_zeros(rm_keys(init_res, ["x_particles"]))
+    # # dummy initialization for resampler
+    # init_res = resampler(key, x_particles, logw)
+    # init_res = tree_zeros(rm_keys(init_res, ["x_particles"]))
     filter_init = {
         "x_particles": x_particles,
         "loglik": jsp.special.logsumexp(logw),
         "logw_bar": logw,
-        "key": key,
-        "resample_out": init_res
+        "key": key
+        # "resample_out": init_res
     }
     if has_acc:
         # dummy initialization for derivatives
@@ -566,13 +619,13 @@ def particle_filter_rb(model, key, y_meas, theta, n_particles,
     # calculate loglikelihood
     full["loglik"] = last["loglik"] - n_obs * jnp.log(n_particles)
     if has_acc:
-        logw_bar = last["logw_bar"]
+        # logw_bar = last["logw_bar"]
         if not fisher:
             # calculate score only
-            full["score"] = tree_mean(last["alpha"], logw_bar)
+            full["score"] = tree_mean(last["alpha"], last["logw_bar"])
         else:
             # calculate score and fisher information
-            prob = lwgt_to_prob(logw_bar)
+            prob = lwgt_to_prob(last["logw_bar"])
             alpha = last["alpha"]
             beta = last["beta"]
             alpha, gamma = jax.vmap(
