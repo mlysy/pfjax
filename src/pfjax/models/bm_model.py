@@ -191,3 +191,45 @@ class BMModel:
         x_curr = self.state_sample(key, x_prev, theta)
         logw = self.meas_lpdf(y_curr, x_curr, theta)
         return x_curr, logw
+
+    def prop_lpdf(self, x_curr, x_prev, y_curr, theta):
+        """
+        Calculates the log-density of the proposal distribution `q(x_curr | x_prev, y_curr, theta)`.
+
+        In this case we have a bootstrap filter, so this is just `state_lpdf()`.
+
+        Args:
+            x_curr: State variable at current time `t`.
+            x_prev: State variable at previous time `t-1`.
+            y_curr: Measurement variable at current time `t`.
+            theta: Parameter value.
+        """
+        return self.state_lpdf(x_curr=x_curr, x_prev=x_prev, theta=theta)
+
+    def loglik_exact(self, y_meas, theta):
+        """
+        Marginal loglikelihood of the BM model.
+
+        Actually calculates `log p(y_{1:N} | theta, y_0)`, since for the flat prior on `x_0` the marginal likelihood `p(y_{0:N} | theta)` does not exist.
+
+        Args:
+            y_meas: Vector of observations `y_0, ..., y_N`.
+            theta: Parameter value.
+
+        Returns:
+            The marginal loglikelihood `log p(y_{1:N} | theta, y_0)`.
+        """
+        mu = theta[0]
+        sigma2 = theta[1] * theta[1]
+        tau2 = theta[2] * theta[2]
+        n_obs = y_meas.shape[0]-1  # conditioning on y_0
+        t_meas = jnp.arange(1, n_obs+1) * self._dt
+        Sigma_y = sigma2 * jax.vmap(lambda t:
+                                    jnp.minimum(t, t_meas))(t_meas) + \
+            tau2 * (jnp.ones((n_obs, n_obs)) + jnp.eye(n_obs))
+        mu_y = y_meas[0] + mu * t_meas
+        return jsp.stats.multivariate_normal.logpdf(
+            x=jnp.squeeze(y_meas[1:]),
+            mean=mu_y,
+            cov=Sigma_y
+        )

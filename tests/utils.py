@@ -1,5 +1,5 @@
 import unittest
-import numpy as np
+# import numpy as np
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
@@ -9,6 +9,8 @@ import pfjax.mcmc as mcmc
 import pfjax.models
 import lotvol_model as lv
 import pfjax.models.pgnet_model as pg
+from pfjax.tests.utils import *
+
 
 def rel_err(X1, X2):
     """
@@ -20,6 +22,7 @@ def rel_err(X1, X2):
     x2 = X2.ravel() * 1.0
     return jnp.max(jnp.abs((x1 - x2)/(0.1 + x1)))
 
+
 def var_sim(key, size):
     """
     Generate a variance matrix of given size.
@@ -27,7 +30,8 @@ def var_sim(key, size):
     Z = random.normal(key, (size, size))
     return jnp.matmul(Z.T, Z)
 
-# --- now some generic external methods for constructing the tests... ----------
+# --- model-based setup methods ------------------------------------------------
+
 
 def bm_setup(self):
     """
@@ -76,15 +80,16 @@ def lv_setup(self):
     self.Model = pf.models.LotVolModel
     self.Model2 = lv.LotVolModel
 
+
 def pg_setup(self):
     """
     Creates input arguments to tests for LotVolModel.
     """
     self.key = random.PRNGKey(0)
     # parameter values
-    theta = np.array([0.1, 0.7, 0.35, 0.2, 0.1, 0.9, 0.3, 0.1])
-    tau = np.array([0.15, 0.2, 0.25, 0.3])
-    self.theta = np.append(theta, tau)
+    theta = jnp.array([0.1, 0.7, 0.35, 0.2, 0.1, 0.9, 0.3, 0.1])
+    tau = jnp.array([0.15, 0.2, 0.25, 0.3])
+    self.theta = jnp.append(theta, tau)
     # data specification
     dt = .09
     n_res = 4
@@ -124,7 +129,8 @@ def fact_setup(self):
 
     # joint distribution using single mvn
     self.mu_Y = jnp.matmul(self.A, self.mu_W + self.mu_XW)
-    self.Sigma_Y = jnp.linalg.multi_dot([self.A, self.Sigma_W + self.Sigma_XW, self.A.T]) + self.Omega
+    self.Sigma_Y = jnp.linalg.multi_dot(
+        [self.A, self.Sigma_W + self.Sigma_XW, self.A.T]) + self.Omega
     AS_W = jnp.matmul(self.A, self.Sigma_W)
     AS_XW = jnp.matmul(self.A, self.Sigma_W + self.Sigma_XW)
     self.mu = jnp.block([self.mu_W, self.mu_W + self.mu_XW, self.mu_Y])
@@ -134,7 +140,10 @@ def fact_setup(self):
         [AS_W, AS_XW, self.Sigma_Y]
     ])
 
-def test_for_sim(self):
+
+# --- for vs vmap/scan tests ---------------------------------------------------
+
+def test_for_simulate(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -144,7 +153,7 @@ def test_for_sim(self):
     n_particles = self.n_particles
     model = self.Model(**model_args)
     # simulate with for-loop
-    y_meas1, x_state1 = pf.simulate_for(
+    y_meas1, x_state1 = simulate_for(
         model, key, n_obs, x_init, theta)
     # simulate without for-loop
     y_meas2, x_state2 = pf.simulate(model, key, n_obs, x_init, theta)
@@ -152,7 +161,7 @@ def test_for_sim(self):
     self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
 
 
-def test_for_pf(self):
+def test_for_particle_filter(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -167,8 +176,8 @@ def test_for_pf(self):
     # particle filter specification
     key, subkey = random.split(key)
     # pf with for-loop
-    pf_out1 = pf.particle_filter_for(model, subkey,
-                                     y_meas, theta, n_particles)
+    pf_out1 = particle_filter_for(model, subkey,
+                                  y_meas, theta, n_particles)
     # pf without for-loop
     pf_out2 = pf.particle_filter(
         model, subkey, y_meas, theta, n_particles)
@@ -177,7 +186,7 @@ def test_for_pf(self):
             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
 
 
-def test_for_mvn_resampler(self):
+def test_for_resample_mvn(self):
     """ particle filter with mvn resampling function test """
     # un-self setUp members
     key = self.key
@@ -195,11 +204,11 @@ def test_for_mvn_resampler(self):
     x_particles, logw = jax.vmap(
         lambda k: model.pf_init(k, y_meas[0], theta))(jnp.array(subkeys))
     # x_particles = jnp.expand_dims(x_particles, 1)
-    new_particles_for = pf.particle_resample_mvn_for(
+    new_particles_for = resample_mvn_for(
         subkey,
         x_particles,
         logw)
-    new_particles = pf.particle_resample_mvn(
+    new_particles = pf.resample_mvn(
         subkey,
         x_particles,
         logw)
@@ -209,7 +218,7 @@ def test_for_mvn_resampler(self):
                 rel_err(new_particles[k], new_particles_for[k]), 0.0)
 
 
-def test_mvn_resample_shape(self):
+def test_shape_resample_mvn(self):
     """ particle filter with mvn resampling function test """
     # un-self setUp members
     key = self.key
@@ -217,11 +226,11 @@ def test_mvn_resample_shape(self):
     n_particles = 25
     logw = jnp.zeros(n_particles)
     particles = jax.random.normal(subkey, shape=(n_particles, 5, 2, 2))
-    new_particles_for = pf.particle_resample_mvn_for(
+    new_particles_for = resample_mvn_for(
         subkey,
         particles,
         logw)
-    new_particles = pf.particle_resample_mvn(
+    new_particles = pf.resample_mvn(
         subkey,
         particles,
         logw)
@@ -231,7 +240,7 @@ def test_mvn_resample_shape(self):
                 new_particles[k].shape, new_particles_for[k].shape)
 
 
-def test_for_smooth(self):
+def test_for_particle_smooth(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -249,7 +258,7 @@ def test_for_smooth(self):
         model, subkey, y_meas, theta, n_particles)
     # pf_smooth with for-loop
     key, subkey = random.split(key)
-    x_state1 = pf.particle_smooth_for(
+    x_state1 = particle_smooth_for(
         key=subkey,
         logw=pf_out["logw"][n_obs-1],
         x_particles=pf_out["x_particles"],
@@ -265,7 +274,7 @@ def test_for_smooth(self):
     self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
 
 
-def test_for_loglik(self):
+def test_for_loglik_full(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -277,15 +286,15 @@ def test_for_loglik(self):
     # simulate without for-loop
     y_meas, x_state = pf.simulate(model, key, n_obs, x_init, theta)
     # joint loglikelihood with for-loop
-    loglik1 = pf.full_loglik_for(model,
-                                 y_meas, x_state, theta)
+    loglik1 = loglik_full_for(model,
+                              y_meas, x_state, theta)
     # joint loglikelihood with vmap
-    loglik2 = pf.full_loglik(model,
+    loglik2 = pf.loglik_full(model,
                              y_meas, x_state, theta)
     self.assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
 
 
-def test_for_mwg(self):
+def test_for_param_mwg_update(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -303,8 +312,8 @@ def test_for_mwg(self):
     # with default order
     theta_order = jnp.arange(theta.size)
     key, subkey = random.split(key)
-    mwg_out1 = mcmc.param_mwg_update_for(model, prior, subkey, theta,
-                                         x_state, y_meas, rw_sd, theta_order)
+    mwg_out1 = param_mwg_update_for(model, prior, subkey, theta,
+                                    x_state, y_meas, rw_sd, theta_order)
     mwg_out2 = mcmc.param_mwg_update(model, prior, subkey, theta,
                                      x_state, y_meas, rw_sd, theta_order)
     for i in range(2):
@@ -316,16 +325,18 @@ def test_for_mwg(self):
     theta_order = random.choice(
         subkey, jnp.arange(theta.size), shape=(n_updates,))
     key, subkey = random.split(key)
-    mwg_out1 = mcmc.param_mwg_update_for(model, prior, subkey, theta,
-                                         x_state, y_meas, rw_sd, theta_order)
+    mwg_out1 = param_mwg_update_for(model, prior, subkey, theta,
+                                    x_state, y_meas, rw_sd, theta_order)
     mwg_out2 = mcmc.param_mwg_update(model, prior, subkey, theta,
                                      x_state, y_meas, rw_sd, theta_order)
     for i in range(2):
         with self.subTest(i=i):
             self.assertAlmostEqual(rel_err(mwg_out1[i], mwg_out2[i]), 0.0)
 
+# --- jit vs unjit tests -------------------------------------------------------
 
-def test_jit_sim(self):
+
+def test_jit_simulate(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -353,7 +364,7 @@ def test_jit_sim(self):
     self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
 
 
-def test_jit_pf(self):
+def test_jit_particle_filter(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -390,7 +401,7 @@ def test_jit_pf(self):
     self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
 
 
-def test_jit_pf_mvn(self):
+def test_jit_resample_mvn(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -407,11 +418,11 @@ def test_jit_pf_mvn(self):
     # pf without jit
     pf_out1 = pf.particle_filter(
         model, subkey, y_meas, theta, n_particles,
-        particle_sampler=pf.particle_resample_mvn)
+        resampler=pf.resample_mvn)
     # pf with jit
     pf_out2 = jax.jit(pf.particle_filter, static_argnums=(0, 4, 5))(
         model, subkey, y_meas, theta, n_particles,
-        particle_sampler=pf.particle_resample_mvn)
+        resampler=pf.resample_mvn)
     for k in pf_out1.keys():
         with self.subTest(k=k):
             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
@@ -420,7 +431,7 @@ def test_jit_pf_mvn(self):
     def obj_fun(model, key, y_meas, theta, n_particles):
         return pf.particle_loglik(pf.particle_filter(
             model, key, y_meas, theta, n_particles,
-            particle_sampler=pf.particle_resample_mvn)["logw"])
+            resampler=pf.resample_mvn)["logw"])
 
     # grad without jit
     grad1 = jax.grad(obj_fun, argnums=3)(
@@ -431,7 +442,7 @@ def test_jit_pf_mvn(self):
     self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
 
 
-def test_jit_smooth(self):
+def test_jit_particle_smooth(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -483,7 +494,7 @@ def test_jit_smooth(self):
     self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
 
 
-def test_jit_loglik(self):
+def test_jit_loglik_full(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -496,25 +507,25 @@ def test_jit_loglik(self):
     key, subkey = random.split(key)
     y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
     # joint loglikelihood without jit
-    loglik1 = pf.full_loglik(model,
+    loglik1 = pf.loglik_full(model,
                              y_meas, x_state, theta)
     # joint loglikelihood with jit
-    full_loglik_jit = jax.jit(pf.full_loglik, static_argnums=0)
-    loglik2 = full_loglik_jit(model,
+    loglik_full_jit = jax.jit(pf.loglik_full, static_argnums=0)
+    loglik2 = loglik_full_jit(model,
                               y_meas, x_state, theta)
     self.assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
     # grad without jit
-    grad1 = jax.grad(pf.full_loglik, argnums=(2, 3))(
+    grad1 = jax.grad(pf.loglik_full, argnums=(2, 3))(
         model, y_meas, x_state, theta)
     # grad with jit
-    grad2 = jax.jit(jax.grad(pf.full_loglik, argnums=(2, 3)),
+    grad2 = jax.jit(jax.grad(pf.loglik_full, argnums=(2, 3)),
                     static_argnums=0)(model, y_meas, x_state, theta)
     for i in range(2):
         with self.subTest(i=i):
             self.assertAlmostEqual(rel_err(grad1[i], grad2[i]), 0.0)
 
 
-def test_jit_mwg(self):
+def test_jit_param_mwg_update(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -564,7 +575,7 @@ def test_jit_mwg(self):
             self.assertAlmostEqual(rel_err(grad1[i], grad2[i]), 0.0)
 
 
-def test_models_sim(self):
+def test_models_simulate(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -582,7 +593,7 @@ def test_models_sim(self):
     self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
 
 
-def test_models_loglik(self):
+def test_models_loglik_full(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -595,15 +606,15 @@ def test_models_loglik(self):
     # simulate with inherited class
     y_meas, x_state = pf.simulate(model2, key, n_obs, x_init, theta)
     # joint loglikelihood with non-inherited class
-    loglik1 = pf.full_loglik(model1,
+    loglik1 = pf.loglik_full(model1,
                              y_meas, x_state, theta)
     # joint loglikelihood with inherited class
-    loglik2 = pf.full_loglik(model2,
+    loglik2 = pf.loglik_full(model2,
                              y_meas, x_state, theta)
     self.assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
 
 
-def test_models_pf(self):
+def test_models_particle_filter(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -626,3 +637,46 @@ def test_models_pf(self):
     for k in pf_out1.keys():
         with self.subTest(k=k):
             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+
+
+def test_for_sde_state_sample(self):
+    # un-self setUp members
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_res = model_args["n_res"]
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model = self.Model(**model_args)
+    # generate previous timepoint
+    key, subkey = random.split(key)
+    x_prev = self.x_init
+    x_prev = x_prev + random.normal(subkey, x_prev.shape)
+    # simulate state using for-loop
+    x_state1 = model.state_sample_for(key, x_prev, theta)
+    # simulate state using lax.scan
+    x_state2 = model.state_sample(key, x_prev, theta)
+    self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
+
+
+def test_for_sde_state_lpdf(self):
+    # un-self setUp members
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_res = model_args["n_res"]
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model = self.Model(**model_args)
+    # generate previous timepoint
+    key, subkey = random.split(key)
+    x_prev = self.x_init
+    x_prev = x_prev + random.normal(subkey, x_prev.shape)
+    # simulate state using lax.scan
+    x_curr = model.state_sample(key, x_prev, theta)
+    # lpdf using for
+    lp1 = model.state_lpdf_for(x_curr, x_prev, theta)
+    lp2 = model.state_lpdf(x_curr, x_prev, theta)
+    self.assertAlmostEqual(rel_err(lp1, lp2), 0.0)

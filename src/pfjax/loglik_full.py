@@ -8,7 +8,7 @@ The API requires the user to define a model class with the following methods:
 
 The provided function is:
 
-- `full_loglik()`
+- `loglik_full()`
 """
 
 import jax
@@ -18,35 +18,7 @@ from jax import random
 from jax import lax
 
 
-def full_loglik_for(model, y_meas, x_state, theta):
-    """
-    Calculate the joint loglikelihood `p(y_{0:T} | x_{0:T}, theta) * p(x_{0:T} | theta)`.
-
-    For-loop version for testing.
-
-    Args:
-        model: Object specifying the state-space model.
-        y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
-        x_state: The sequence of `n_obs` state variables `x_state = (x_0, ..., x_T)`.
-        theta: Parameter value.
-
-    Returns:
-        The value of the loglikelihood.
-    """
-    n_obs = y_meas.shape[0]
-    loglik = model.meas_lpdf(y_curr=y_meas[0], x_curr=x_state[0],
-                             theta=theta)
-    for t in range(1, n_obs):
-        loglik = loglik + \
-            model.state_lpdf(x_curr=x_state[t], x_prev=x_state[t-1],
-                             theta=theta)
-        loglik = loglik + \
-            model.meas_lpdf(y_curr=y_meas[t], x_curr=x_state[t],
-                            theta=theta)
-    return loglik
-
-
-def full_loglik(model, y_meas, x_state, theta):
+def loglik_full(model, y_meas, x_state, theta):
     """
     Calculate the joint loglikelihood `p(y_{0:T} | x_{0:T}, theta) * p(x_{0:T} | theta)`.
 
