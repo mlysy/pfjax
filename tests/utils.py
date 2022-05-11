@@ -9,7 +9,8 @@ import pfjax.mcmc as mcmc
 import pfjax.models
 import lotvol_model as lv
 import pfjax.models.pgnet_model as pg
-from pfjax.tests.utils import *
+import pfjax.particle_resamplers as resamplers
+from pfjax.test.utils import *
 
 
 def rel_err(X1, X2):
@@ -208,7 +209,7 @@ def test_for_resample_mvn(self):
         subkey,
         x_particles,
         logw)
-    new_particles = pf.resample_mvn(
+    new_particles = resamplers.resample_mvn(
         subkey,
         x_particles,
         logw)
@@ -230,7 +231,7 @@ def test_shape_resample_mvn(self):
         subkey,
         particles,
         logw)
-    new_particles = pf.resample_mvn(
+    new_particles = resamplers.resample_mvn(
         subkey,
         particles,
         logw)
@@ -418,11 +419,11 @@ def test_jit_resample_mvn(self):
     # pf without jit
     pf_out1 = pf.particle_filter(
         model, subkey, y_meas, theta, n_particles,
-        resampler=pf.resample_mvn)
+        resampler=resamplers.resample_mvn)
     # pf with jit
     pf_out2 = jax.jit(pf.particle_filter, static_argnums=(0, 4, 5))(
         model, subkey, y_meas, theta, n_particles,
-        resampler=pf.resample_mvn)
+        resampler=resamplers.resample_mvn)
     for k in pf_out1.keys():
         with self.subTest(k=k):
             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
@@ -431,7 +432,7 @@ def test_jit_resample_mvn(self):
     def obj_fun(model, key, y_meas, theta, n_particles):
         return pf.particle_loglik(pf.particle_filter(
             model, key, y_meas, theta, n_particles,
-            resampler=pf.resample_mvn)["logw"])
+            resampler=resamplers.resample_mvn)["logw"])
 
     # grad without jit
     grad1 = jax.grad(obj_fun, argnums=3)(
