@@ -80,10 +80,15 @@ class LotVolModel(sde.SDEModel):
         # than if using prespecified SDE dimensions...
         self._n_state = (self._n_res, 2)
 
+    def _get_params(self, params):
+        params = jnp.exp(params)
+        return params
+
     def drift(self, x, theta):
         r"""
         Calculates the SDE drift function.
         """
+        theta = self._get_params(theta)
         alpha = theta[0]
         beta = theta[1]
         gamma = theta[2]
@@ -95,6 +100,7 @@ class LotVolModel(sde.SDEModel):
         r"""
         Calculates the SDE diffusion function.
         """
+        theta = self._get_params(theta)
         return theta[4:6]
 
     def state_lpdf_for(self, x_curr, x_prev, theta):
@@ -110,6 +116,7 @@ class LotVolModel(sde.SDEModel):
         Returns:
             The log-density of `p(x_curr | x_prev, theta)`.
         """
+        theta = self._get_params(theta)
         dt_res = self._dt/self._n_res
         x0 = jnp.append(jnp.expand_dims(
             x_prev[self._n_res-1], axis=0), x_curr[:self._n_res-1], axis=0)
@@ -138,6 +145,7 @@ class LotVolModel(sde.SDEModel):
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
+        theta = self._get_params(theta)
         dt_res = self._dt/self._n_res
         sigma = theta[4:6] * jnp.sqrt(dt_res)
         x_curr = jnp.zeros(self._n_state)
@@ -163,6 +171,7 @@ class LotVolModel(sde.SDEModel):
         Returns:
             The log-density of `p(x_curr | x_prev, theta)`.
         """
+        theta = self._get_params(theta)
         dt_res = self._dt/self._n_res
         x0 = jnp.append(jnp.expand_dims(
             x_prev[self._n_res-1], axis=0), x_curr[:self._n_res-1], axis=0)
@@ -191,6 +200,7 @@ class LotVolModel(sde.SDEModel):
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
+        theta = self._get_params(theta)
         dt_res = self._dt/self._n_res
         sigma = theta[4:6] * jnp.sqrt(dt_res)
         x_curr = jnp.zeros(self._n_state)
@@ -215,6 +225,7 @@ class LotVolModel(sde.SDEModel):
         Returns
             The log-density of `p(y_curr | x_curr, theta)`.
         """
+        theta = self._get_params(theta)
         tau = theta[6:8]
         return jnp.sum(
             jsp.stats.norm.logpdf(y_curr,
@@ -233,6 +244,7 @@ class LotVolModel(sde.SDEModel):
         Returns:
             Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
         """
+        theta = self._get_params(theta)
         tau = theta[6:8]
         return jnp.exp(x_curr[-1]) + \
             tau * random.normal(key, (self._n_state[1],))
@@ -252,6 +264,7 @@ class LotVolModel(sde.SDEModel):
             - x_init: A sample from the proposal distribution for `x_init`.
             - logw: The log-weight of `x_init`.
         """
+        theta = self._get_params(theta)
         tau = theta[6:8]
         key, subkey = random.split(key)
         x_init = jnp.log(y_init + tau * random.truncated_normal(
