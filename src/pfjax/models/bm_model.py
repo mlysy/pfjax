@@ -192,6 +192,20 @@ class BMModel:
         logw = self.meas_lpdf(y_curr, x_curr, theta)
         return x_curr, logw
 
+    def prop_lpdf(self, x_curr, x_prev, y_curr, theta):
+        """
+        Calculates the log-density of the proposal distribution `q(x_curr | x_prev, y_curr, theta)`.
+
+        In this case we have a bootstrap filter, so this is just `state_lpdf()`.
+
+        Args:
+            x_curr: State variable at current time `t`.
+            x_prev: State variable at previous time `t-1`.
+            y_curr: Measurement variable at current time `t`.
+            theta: Parameter value.
+        """
+        return self.state_lpdf(x_curr=x_curr, x_prev=x_prev, theta=theta)
+
     def loglik_exact(self, y_meas, theta):
         """
         Marginal loglikelihood of the BM model.
