@@ -4,6 +4,8 @@
 
 ### Changes to Function Names, Arguments, Outputs
 
+- [x] `particle_filter()` has different outputs as described in the docstrip.
+
 - [x] `particle_resample()`, `particle_resample_mvn()`, etc. -> `resample_multinomial()`, `resample_mvn()`, etc.
 
 - [ ] `logw` -> `lwgt`.
@@ -18,7 +20,11 @@
 
 ### Other
 
-- [x] Moved testing functions e.g., `*_for()` to `tests/utils.py`.
+- [x] Moved testing functions to the following locations:
+
+	- Things only used for formal unit testing are in `tests/utils.py`.
+	
+	- Things used both for formal and informal (i.e., interactive) unit testing are in `src/pfjax/test`.  This is so that the containing modules can be imported from `tests/interactive`, which is not a submodule of **pfjax**.
 
 - [x] Models won't be loaded by default, instead will be in the `models` module, i.e.,
 
@@ -33,11 +39,13 @@
 
 ## Backward-Compatible Changes
 
+- [x] Added `score`, `fisher`, and `history` flags to `particle_filter()` for computing derivatives via the (unbiased) accumulator method, and for keeping or discarding the entire particle history (discard by default).
+
+- [x] Added `particle_filter_rb()` which has quadratic complexity but computes the score an hessian much more precisely than the method in `particle_filter()`.
+
 - [x] Added `particle_filter.pf_resampler_ot()` for resampling via (regularized) optimal transport.
 
 - [x] Created an `experimental` module for placing code that's useful but that general users should not rely on: anything in the `experimental` module is subject to change/disappear without any notice!
-
-	Currently this module contains `stoch_opt.py` and the `neg_loglik_*()` functions.
 
 - [x] Added `mvn_bridge` module which can e.g., be used for SDE bridge proposals.
 

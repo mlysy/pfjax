@@ -65,3 +65,17 @@ def tree_zeros(tree):
     Fill pytree with zeros.
     """
     return jtu.tree_map(lambda x: jnp.zeros_like(x), tree)
+
+
+def tree_rm_last(x):
+    """
+    Remove last element of each leaf of pytree.
+    """
+    return jtu.tree_map(lambda y: y[:-1], x)
+
+
+def tree_rm_first(x):
+    """
+    Remove first element of each leaf of pytree.
+    """
+    return jtu.tree_map(lambda y: y[1:], x)
