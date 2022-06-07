@@ -17,6 +17,7 @@ import jax.scipy as jsp
 import jax.tree_util as jtu
 from jax import random
 from jax import lax
+from pfjax.utils import *
 
 
 def simulate(model, key, n_obs, x_init, theta):
@@ -52,10 +53,8 @@ def simulate(model, key, n_obs, x_init, theta):
     # scan itself
     last, full = lax.scan(fun, init, jnp.arange(n_obs-1))
     # append initial values
-    x_state = jtu.tree_map(lambda x, y: jnp.concatenate([x[None], y]),
-                           init["x_state"], full["x_state"])
-    y_meas = jtu.tree_map(lambda x, y: jnp.concatenate([x[None], y]),
-                          init["y_meas"], full["y_meas"])
+    x_state = tree_append_first(full["x_state"], first=init["x_state"])
+    y_meas = tree_append_first(full["y_meas"], first=init["y_meas"])
     # x_state = jnp.append(jnp.expand_dims(init["x_state"], axis=0),
     #                      full["x_state"], axis=0)
     # y_meas = jnp.append(jnp.expand_dims(init["y_meas"], axis=0),

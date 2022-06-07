@@ -17,7 +17,7 @@ import jax.scipy as jsp
 import jax.tree_util as jtu
 from jax import random
 from jax import lax
-from .utils import *
+from pfjax.utils import *
 
 
 def loglik_full(model, y_meas, x_state, theta):
@@ -42,7 +42,7 @@ def loglik_full(model, y_meas, x_state, theta):
         lambda xc, xp, yc:
         model.state_lpdf(x_curr=xc, x_prev=xp, theta=theta) +
         model.meas_lpdf(y_curr=yc, x_curr=xc, theta=theta)
-    )(tree_rm_first(x_state), tree_rm_last(x_state), tree_rm_first(y_meas))
+    )(tree_remove_first(x_state), tree_remove_last(x_state), tree_remove_first(y_meas))
     # ll_step = jax.vmap(lambda t:
     #                    model.state_lpdf(x_curr=x_state[t],
     #                                     x_prev=x_state[t-1],
