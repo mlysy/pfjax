@@ -231,3 +231,4 @@ class LotVolModelLog(sde.SDEModel):
                 key, x_prev, y_curr, theta, y_curr, 
                 jnp.eye(2), jnp.diag(omega))
         return x_curr, logw
+        

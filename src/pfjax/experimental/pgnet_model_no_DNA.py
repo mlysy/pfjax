@@ -251,3 +251,4 @@ class PGNETModelNoDNA(sde.SDEModel):
                 jnp.log(y_curr), jnp.eye(4)[:-1, :], jnp.diag(omega)
             )
         return x_curr, logw
+
