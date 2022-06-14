@@ -353,8 +353,9 @@ class SDEModel(object):
         x_curr = self.state_sample(key, x_prev, theta)
         logw = lax.cond(
             self.is_valid_state(x_curr, theta),
-            lambda: self.meas_lpdf(y_curr, x_curr, theta),
-            lambda: -jnp.inf
+            lambda _x: self.meas_lpdf(y_curr, x_curr, theta),
+            lambda _x: -jnp.inf,
+            0.0
         )
         # logw = self.meas_lpdf(y_curr, x_curr, theta)
         return x_curr, logw
@@ -437,8 +438,9 @@ class SDEModel(object):
         logw = logw + self.meas_lpdf(y_curr, x_prop, theta) - last["lp"]
         logw = lax.cond(
             self.is_valid_state(x_prop, theta),
-            lambda: logw,
-            lambda: -jnp.inf
+            lambda _x: logw,
+            lambda _x: -jnp.inf,
+            0.0
         )
         return x_prop, logw
 
