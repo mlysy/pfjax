@@ -1074,7 +1074,6 @@ def test_sde_bridge_prop_for(self):
                         [jnp.log(jnp.array([5., 3.]))]])
     y_curr = jnp.exp(x_prev[-1]) + \
         theta[6:8] * random.normal(subkey, (x_prev.shape[1],))
-
     # bridge proposal using lax.scan
     x_curr1, logw1 = model.bridge_prop(
         key=key,
