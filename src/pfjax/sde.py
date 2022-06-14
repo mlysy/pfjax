@@ -12,6 +12,7 @@ import jax.scipy as jsp
 from jax import random
 from jax import lax
 from pfjax import mvn_bridge as mb
+from pfjax.utils import *
 
 
 def euler_sim_diag(key, x, dt, drift, diff, theta):
@@ -181,13 +182,23 @@ class SDEModel(object):
         Returns:
             The log-density of `p(x_curr | x_prev, theta)`.
         """
-        x = jnp.append(jnp.expand_dims(x_prev[self._n_res-1], axis=0),
-                       x_curr, axis=0)
-        lp = jax.vmap(lambda t:
+        x0 = tree_append_first(
+            x=tree_remove_last(x_curr),
+            first=tree_keep_last(x_prev)
+        )
+        x1 = x_curr
+        lp = jax.vmap(lambda xp, xc:
                       self.euler_lpdf(
-                          x_curr=x[t+1], x_prev=x[t],
+                          x_curr=xc, x_prev=xp,
                           dt=self._dt/self._n_res,
-                          theta=theta))(jnp.arange(self._n_res))
+                          theta=theta))(x0, x1)
+        # x = jnp.append(jnp.expand_dims(x_prev[self._n_res-1], axis=0),
+        #                x_curr, axis=0)
+        # lp = jax.vmap(lambda t:
+        #               self.euler_lpdf(
+        #                   x_curr=x[t+1], x_prev=x[t],
+        #                   dt=self._dt/self._n_res,
+        #                   theta=theta))(jnp.arange(self._n_res))
         return jnp.sum(lp)
         # x = jnp.append(jnp.expand_dims(x_prev[self._n_res-1], axis=0),
         #                x_curr, axis=0)
@@ -247,11 +258,11 @@ class SDEModel(object):
                 dt=self._dt/self._n_res, theta=theta
             )
             res = {"x": x, "key": key}
-            return res, res
+            return res, x
         # scan initial value
-        init = {"x": x_prev[self._n_res-1], "key": key}
+        init = {"x": tree_keep_last(x_prev), "key": key}
         last, full = lax.scan(fun, init, jnp.arange(self._n_res))
-        return full["x"]
+        return full
         # return self.euler_sim(
         #     key=key,
         #     n_steps=self._n_res,

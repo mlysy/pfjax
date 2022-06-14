@@ -484,14 +484,16 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
 
     Notes:
 
-        - Algorithm 2 of Poyiadjis et al 2011.
-
-        - Auxillary filter currently disabled.
+        - Algorithm 2 of Poyiadjis et al 2011, except weights.  Here we use the basic weights for now, as it avoids having to define `model.prop_lpdf()`.
 
         - Loglikelihood not currently returned.
 
     Args:
-        model: Object specifying the state-space model.
+        model: Object specifying the state-space model.  It must have the following methods:
+            - `state_lpdf()`
+            - `meas_lpdf()`
+            - `pf_step()`
+            - `prop_lpdf(x_curr, x_prev, y_curr, theta)`: log-density of the proposal distribution.
         key: PRNG key.
         y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
         theta: Parameter value.
@@ -539,12 +541,13 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
             return lpdf, alpha_acc
 
     # internal functions for vmap
-
     def pf_prop(key, x_prev, y_curr):
         """
-        Calculate proposal `x_curr` and its log-density `logw_prop`.
+        Sample proposal `x_curr ~ q(x_t | x_t-1, y_t, theta)` and calculate its log-density `logw_prop`.
 
-        Can get this from pf_step, state_lpdf, and meas_lpdf, or directly from pf_prop.
+        Can get this from model.pf_step, model.state_lpdf, and model.meas_lpdf, or directly from model.pf_prop.
+
+        Currently unused, since we're using basic weight calculation instead of O(N^2) method.  Also, the proposed O(N^2) filter requires model.prop_lpdf to be defined, since it requires evaluation of the proposal at every cobination of x_curr and x_prev.
         """
         if callable(getattr(model, "pf_prop", None)):
             x_curr, logw_prop = model.pf_prop(
@@ -573,14 +576,17 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
             )
             return x_curr, logw_targ - logw_step
 
+    def pf_step(key, x_prev, y_curr):
+        return model.pf_step(key=key, x_prev=x_prev, y_curr=y_curr, theta=theta)
+
     def pf_init(key):
         return model.pf_init(key=key, y_init=y_meas[0], theta=theta)
 
     def pf_aux(logw_prev, x_prev, y_curr):
         """
-        Calculate the log-density for auxillary sampling.
+        Add the log-density for auxillary sampling `logw_aux` to the log-weights from the previous step `logw_prev`.
 
-        If model.pf_aux is missing, taken to return 0.
+        The auxillary log-density is given by model.pf_aux(). If this method is missing, `logw_aux` is set to 0.
         """
         if callable(getattr(model, "pf_aux", None)):
             logw_aux = model.pf_aux(
@@ -593,6 +599,11 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
             return logw_prev
 
     def pf_tilde(logw_bar, x_prev, x_curr, y_curr):
+        """
+        Update the marginal distribution logw_tilde = log p(x_t, y_0:t | theta).
+
+        This is the vmap version, which does the loop over x_prev here and the loop over x_curr in filter_step.
+        """
         lpdf = jax.vmap(
             model.state_lpdf,
             in_axes=(None, 0, None)
@@ -605,6 +616,11 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
         ) + lpdf
 
     def pf_acc(logw_bar, x_prev, x_curr, y_curr, acc_prev):
+        """
+        Update the values of alpha and/or beta.
+
+        This is the vmap version, which does the loop over x_prev here and the loop over x_curr in filter_step.
+        """
         acc = jax.vmap(
             accumulator,
             in_axes=(0, 0, None, None)
@@ -623,6 +639,11 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
             return alpha_curr
 
     def pf_tilde_for(logw_bar, x_prev, x_curr, y_curr):
+        """
+        Update the marginal distribution logw_tilde = log p(x_t, y_0:t | theta).
+
+        This is the for-loop version, which does both loops inside the helper function.
+        """
         lpdf = jnp.zeros((n_particles))
         _lpdf = jnp.zeros((n_particles))
         for i in jnp.arange(x_curr.shape[0]):
@@ -647,6 +668,11 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
         return lpdf
 
     def pf_acc_for(logw_bar, x_prev, x_curr, y_curr, acc_prev):
+        """
+        Update the values of alpha and/or beta.
+
+        This is the for-loop version, which does both loops inside the helper function.
+        """
         n_theta = theta.size
         # grad and hess
         grad_meas = jax.grad(model.meas_lpdf, argnums=2)
@@ -700,47 +726,50 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
 
     # lax.scan stepping function
     def filter_step(carry, t):
-        # sample particles from previous time point
+        # 1. sample particles from previous time point
         key, subkey = random.split(carry["key"])
+        # augment previous weights with auxillary weights.
         logw_aux = jax.vmap(
             pf_aux,
             in_axes=(0, 0, None)
         )(carry["logw_bar"], carry["x_particles"], y_meas[t])
+        # resampled particles
         res_particles = resampler(
             key=subkey,
             x_particles_prev=carry["x_particles"],
             logw=logw_aux
         )
-        # update particles to current time point (and get weights)
+        # 2. sample particles from current timepoint
         key, *subkeys = random.split(key, num=n_particles+1)
-        x_particles, logw_prop = jax.vmap(
-            pf_prop,  # fixme: pf_step as a function of pf_prop
+        x_particles, logw_bar = jax.vmap(
+            pf_step,
             in_axes=(0, 0, None)
         )(jnp.array(subkeys), res_particles["x_particles"], y_meas[t])
-        # compute logw_tilde = log p_tilde(x_t, y_0:t) and logw_bar
-        if not tilde_for:
-            logw_tilde = jax.vmap(
-                pf_tilde,
-                in_axes=(None, None, 0, None)
-            )(carry["logw_bar"], res_particles["x_particles"],
-              x_particles, y_meas[t])
-        else:
-            logw_tilde = pf_tilde_for(
-                logw_bar=carry["logw_bar"],
-                x_prev=res_particles["x_particles"],
-                x_curr=x_particles,
-                y_curr=y_meas[t]
-            )
-        logw_bar = logw_tilde - logw_prop
-        # gradient update
+        # 3. compute logw_tilde = log p_tilde(x_t, y_0:t)
+        #    No longer needed, since we only need logw_bar for
+        #    the accumulate step below.
+        # if not tilde_for:
+        #     logw_tilde = jax.vmap(
+        #         pf_tilde,
+        #         in_axes=(None, None, 0, None)
+        #     )(carry["logw_bar"], res_particles["x_particles"],
+        #       x_particles, y_meas[t])
+        # else:
+        #     logw_tilde = pf_tilde_for(
+        #         logw_bar=carry["logw_bar"],
+        #         x_prev=res_particles["x_particles"],
+        #         x_curr=x_particles,
+        #         y_curr=y_meas[t]
+        #     )
+        # logw_bar = logw_tilde - logw_prop
+        # 4. accumulate score and fisher information
         if has_acc:
-            # accumulate expectation
             # note: we're calling the accumulated value "score"
             # so we don't need to rename the dictionary item later.
             if tilde_for:
                 acc_curr = pf_acc_for(
                     logw_bar=carry["logw_bar"],
-                    x_prev=res_particles["x_particles"],
+                    x_prev=carry["x_particles"],
                     x_curr=x_particles,
                     y_curr=y_meas[t],
                     acc_prev=carry["score"]
@@ -749,16 +778,16 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
                 acc_curr = jax.vmap(
                     pf_acc,
                     in_axes=(None, None, 0, None, None),
-                )(carry["logw_bar"], res_particles["x_particles"],
+                )(carry["logw_bar"], carry["x_particles"],
                   x_particles, y_meas[t], carry["score"])
         # output
         res_carry = {
             "x_particles": x_particles,
-            "loglik": carry["loglik"] + jsp.special.logsumexp(logw_tilde),
+            "loglik": carry["loglik"] + jsp.special.logsumexp(logw_bar),
             # "logw_prop": logw_prop,
             # "logw_aux": logw_aux,
             "logw_bar": logw_bar,
-            "logw_tilde": logw_tilde,
+            # "logw_tilde": logw_tilde,
             "key": key,
             "ancestors": res_particles["ancestors"]
         }
@@ -788,7 +817,7 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
         "x_particles": x_particles,
         "loglik": jsp.special.logsumexp(logw),
         "logw_bar": logw,
-        "logw_tilde": logw,
+        # "logw_tilde": logw,
         # "loglik": jsp.special.logsumexp(logw),
         "key": key,
         "ancestors": init_ancestors
@@ -820,6 +849,8 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
         # calculate loglikelihood
         full["loglik"] = last["loglik"]
         # if has_acc:
+        #     full["acc"] = full["score"]
+        # if has_acc:
         #     if fisher:
         #         alpha = last["score"][0][-1]
         #         beta = full["score"][1][-1]
@@ -836,18 +867,19 @@ def auxillary_filter_quad(model, key, y_meas, theta, n_particles,
         #     else:
         #         alpha = full["score"]
     # calculate loglikelihood
-    # full["loglik"] = jsp.special.logsumexp(logw_tilde)
+    full["loglik"] = last["loglik"] - n_obs * jnp.log(n_particles)
     if has_acc:
-        prob = lwgt_to_prob(logw_bar)
         if not fisher:
             # calculate score
-            alpha = last["score"]
-            alpha = jax.vmap(
-                jnp.add
-            )(prob, alpha)
-            full["score"] = jnp.sum(alpha, axis=0)
+            # alpha = last["score"]
+            # alpha = jax.vmap(
+            #     jnp.multiply
+            # )(prob, alpha)
+            # full["score"] = jnp.sum(alpha, axis=0)
+            full["score"] = _tree_mean(last["score"], logw_bar)
         else:
             # calculate score and fisher information
+            prob = lwgt_to_prob(logw_bar)
             alpha = last["score"][0]
             beta = last["score"][1]
             alpha, gamma = jax.vmap(

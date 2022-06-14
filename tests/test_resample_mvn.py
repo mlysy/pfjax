@@ -1,5 +1,5 @@
 """
-Unit tests for `pfjax.particle_filter()`.
+Unit tests for `pfjax.resamplers.resample_mvn()`.
 
 Things to test:
 
@@ -10,7 +10,7 @@ Things to test:
 Test code: from `pfjax/tests`:
 
 ```
-python -m unittest -v test_particle_filter
+python -m unittest -v test_resample_mvn
 ```
 """
 
@@ -22,8 +22,9 @@ class TestBMModel(unittest.TestCase):
 
     setUp = utils.bm_setup
 
-    test_for = utils.test_particle_filter_for
-    test_deriv = utils.test_particle_filter_deriv
+    test_for = utils.test_resample_mvn_for
+    test_shape = utils.test_resample_mvn_shape
+    test_jit = utils.test_resample_mvn_jit
 
 
 if __name__ == '__main__':

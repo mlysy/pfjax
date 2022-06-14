@@ -25,7 +25,7 @@ class BMModel:
         self._dt = dt
 
     def state_lpdf(self, x_curr, x_prev, theta):
-        """
+        r"""
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
 
         Args:
@@ -44,7 +44,7 @@ class BMModel:
         )
 
     def state_sample(self, key, x_prev, theta):
-        """
+        r"""
         Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
 
         Args:
@@ -62,7 +62,7 @@ class BMModel:
         return x_mean + x_sd * random.normal(key=key)
 
     def meas_lpdf(self, y_curr, x_curr, theta):
-        """
+        r"""
         Log-density of `p(y_curr | x_curr, theta)`.
 
         Args:
@@ -79,7 +79,7 @@ class BMModel:
         )
 
     def meas_sample(self, key, x_curr, theta):
-        """
+        r"""
         Sample from `p(y_curr | x_curr, theta)`.
 
         Args:
@@ -94,7 +94,7 @@ class BMModel:
         return x_curr + tau * random.normal(key=key)
 
     def init_logw(self, x_init, y_init, theta):
-        """
+        r"""
         Log-weight of the importance sampler for initial state variable `x_init`.
 
         Suppose that 
@@ -118,7 +118,7 @@ class BMModel:
         return jnp.zeros(())
 
     def init_sample(self, key, y_init, theta):
-        """
+        r"""
         Sampling distribution for initial state variable `x_init`. 
 
         Samples from an importance sampling proposal distribution
@@ -138,8 +138,8 @@ class BMModel:
         return self.meas_sample(key, y_init, theta)
 
     def pf_init(self, key, y_init, theta):
-        """
-        Particle filter calculation for `x_init`. 
+        r"""
+        Get particles for initial state `x_init = x_state[0]`. 
 
         Samples from an importance sampling proposal distribution
         ```
@@ -149,8 +149,11 @@ class BMModel:
         ```
         logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
         ```
-
-        **FIXME:** Explain what the proposal is and why it gives `logw = 0`.
+        In this case we have an exact proposal 
+        ```
+        q(x_init) = p(x_init | y_init, theta)   <=>   x_init ~ N(y_init, tau)
+        ```
+        Moreover, due to symmetry of arguments we have `q(x_init) = p(y_init | x_init, theta)`, and since `p(x_init | theta) \propto 1` we have `logw = 0`.
 
         Args:
             key: PRNG key.
@@ -164,8 +167,8 @@ class BMModel:
         return self.meas_sample(key, y_init, theta), jnp.zeros(())
 
     def pf_step(self, key, x_prev, y_curr, theta):
-        """
-        Particle filter calculation for `x_curr`. 
+        r"""
+        Get particles at current step `t_curr` from previous step `t_prev`. 
 
         Samples from an importance sampling proposal distribution
         ```
@@ -176,7 +179,7 @@ class BMModel:
         logw = log p(y_curr | x_curr, theta) + log p(x_curr | x_prev, theta) - log q(x_curr)
         ```
 
-        **FIXME:** Explain that this is a bootstrap particle filter.
+        In this case we have a bootstrap particle filter, so `q(x_curr) = p(x_curr | x_prev, theta)` and `logw = log p(y_curr | x_curr, theta)`.
 
         Args:
             key: PRNG key.
@@ -192,8 +195,22 @@ class BMModel:
         logw = self.meas_lpdf(y_curr, x_curr, theta)
         return x_curr, logw
 
-    def loglik_exact(self, y_meas, theta):
+    def prop_lpdf(self, x_curr, x_prev, y_curr, theta):
+        r"""
+        Calculate the log-density of the proposal distribution `q(x_curr) = q(x_curr | x_prev, y_curr, theta)`.
+
+        In this case we have a bootstrap filter, so `q(x_curr) = p(x_curr | x_prev, theta)`.
+
+        Args:
+            x_curr: State variable at current time `t`.
+            x_prev: State variable at previous time `t-1`.
+            y_curr: Measurement variable at current time `t`.
+            theta: Parameter value.
         """
+        return self.state_lpdf(x_curr=x_curr, x_prev=x_prev, theta=theta)
+
+    def loglik_exact(self, y_meas, theta):
+        r"""
         Marginal loglikelihood of the BM model.
 
         Actually calculates `log p(y_{1:N} | theta, y_0)`, since for the flat prior on `x_0` the marginal likelihood `p(y_{0:N} | theta)` does not exist.

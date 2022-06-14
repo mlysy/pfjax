@@ -93,10 +93,10 @@ class PGNETModel(sde.SDEModel):
         sigma34 = A
         sigma44 = A
 
-        Sigma = jnp.array([[sigma11, 0, 0, 0],
-                           [0, sigma22, sigma23, 0],
-                           [0, sigma23, sigma33, sigma34],
-                           [0, 0, sigma34, sigma44]])
+        Sigma = jnp.array([[sigma11, 0., 0., 0.],
+                           [0., sigma22, sigma23, 0.],
+                           [0., sigma23, sigma33, sigma34],
+                           [0., 0, sigma34, sigma44]])
 
         return Sigma
 
@@ -235,7 +235,7 @@ class PGNETModel(sde.SDEModel):
         else:
             omega = (theta[8:12] / y_curr)**2
             x_curr, logw = self.bridge_prop(
-                key, x_prev, y_curr, theta, 
+                key, x_prev, y_curr, theta,
                 jnp.log(y_curr), jnp.eye(4), jnp.diag(omega)
             )
         return x_curr, logw
