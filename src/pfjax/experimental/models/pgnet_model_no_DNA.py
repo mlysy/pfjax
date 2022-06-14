@@ -65,9 +65,9 @@ class PGNETModelNoDNA(sde.SDEModel):
         self._K = 10
         self._bootstrap = bootstrap
 
-    def _parse_params (self, params):
+    def _parse_params(self, params):
         """ 
-            kappa, tau, dna0 = self._parse_params(theta)
+        kappa, tau, dna0 = self._parse_params(theta)
         """
         theta = params[:8]
         tau = params[8:11]
@@ -157,7 +157,8 @@ class PGNETModelNoDNA(sde.SDEModel):
         # tau = theta[8:11]
         _, tau, _ = self._parse_params(theta)
         return jnp.sum(
-            jsp.stats.norm.logpdf(y_curr, loc=jnp.exp(x_curr[-1, :3]), scale=tau)
+            jsp.stats.norm.logpdf(
+                y_curr, loc=jnp.exp(x_curr[-1, :3]), scale=tau)
         )
 
     def meas_sample(self, key, x_curr, theta):
@@ -247,8 +248,7 @@ class PGNETModelNoDNA(sde.SDEModel):
         else:
             omega = (tau / y_curr)**2
             x_curr, logw = self.bridge_prop(
-                key, x_prev, y_curr, jnp.append(_theta, tau), 
+                key, x_prev, y_curr, jnp.append(_theta, tau),
                 jnp.log(y_curr), jnp.eye(4)[:-1, :], jnp.diag(omega)
             )
         return x_curr, logw
-
