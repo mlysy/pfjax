@@ -14,8 +14,10 @@ The provided function is:
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
+import jax.tree_util as jtu
 from jax import random
 from jax import lax
+from pfjax.utils import *
 
 
 def loglik_full(model, y_meas, x_state, theta):
@@ -36,11 +38,16 @@ def loglik_full(model, y_meas, x_state, theta):
     ll_init = model.meas_lpdf(y_curr=y_meas[0], x_curr=x_state[0],
                               theta=theta)
     # subsequent measurements and state variables
-    ll_step = jax.vmap(lambda t:
-                       model.state_lpdf(x_curr=x_state[t],
-                                        x_prev=x_state[t-1],
-                                        theta=theta) +
-                       model.meas_lpdf(y_curr=y_meas[t],
-                                       x_curr=x_state[t],
-                                       theta=theta))(jnp.arange(1, n_obs))
+    ll_step = jax.vmap(
+        lambda xc, xp, yc:
+        model.state_lpdf(x_curr=xc, x_prev=xp, theta=theta) +
+        model.meas_lpdf(y_curr=yc, x_curr=xc, theta=theta)
+    )(tree_remove_first(x_state), tree_remove_last(x_state), tree_remove_first(y_meas))
+    # ll_step = jax.vmap(lambda t:
+    #                    model.state_lpdf(x_curr=x_state[t],
+    #                                     x_prev=x_state[t-1],
+    #                                     theta=theta) +
+    #                    model.meas_lpdf(y_curr=y_meas[t],
+    #                                    x_curr=x_state[t],
+    #                                    theta=theta))(jnp.arange(1, n_obs))
     return ll_init + jnp.sum(ll_step)

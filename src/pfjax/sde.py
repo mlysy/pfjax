@@ -12,6 +12,7 @@ import jax.scipy as jsp
 from jax import random
 from jax import lax
 from pfjax import mvn_bridge as mb
+from pfjax.utils import *
 
 
 def euler_sim_diag(key, x, dt, drift, diff, theta):
@@ -169,6 +170,36 @@ class SDEModel(object):
             setattr(self.__class__, 'euler_lpdf', euler_lpdf)
             setattr(self.__class__, 'diff_full', diff_full)
 
+    def is_valid(self, x, theta):
+        """
+        Checks whether SDE observations are valid.
+
+        Args:
+            x: SDE variables.  A vector of size `n_dims`.
+            theta: Parameter value.
+
+        Returns:
+            Whether or not `x` is valid SDE data.
+        """
+        return jnp.array(True)
+
+    def is_valid_state(self, x, theta):
+        """
+        Checks whether SDE latent variables are valid.
+
+        Applies `is_valid()` to each of the `n_res` SDE variables, and also checks for nans.
+
+        Args:
+            x: State variable of size `n_res x n_dims`.
+            theta: Parameter value.
+
+        Returns:
+            Whether or not all `n_res` latent variables are valid.
+        """
+        valid_x = jax.vmap(self.is_valid, in_axes=(0, None))(x, theta)
+        nan_x = jnp.any(jnp.isnan(x), axis=1)
+        return jnp.alltrue(valid_x, where=~nan_x) and jnp.alltrue(~nan_x)
+
     def state_lpdf(self, x_curr, x_prev, theta):
         """
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
@@ -181,13 +212,25 @@ class SDEModel(object):
         Returns:
             The log-density of `p(x_curr | x_prev, theta)`.
         """
-        x = jnp.append(jnp.expand_dims(x_prev[self._n_res-1], axis=0),
-                       x_curr, axis=0)
-        lp = jax.vmap(lambda t:
+        # No need to do tree version since SDE has 2D x_state
+        # x0 = tree_append_first(
+        #     x=tree_remove_last(x_curr),
+        #     first=tree_keep_last(x_prev)
+        # )
+        x0 = jnp.concatenate([x_prev[-1][None], x_curr[:-1]])
+        x1 = x_curr
+        lp = jax.vmap(lambda xp, xc:
                       self.euler_lpdf(
-                          x_curr=x[t+1], x_prev=x[t],
+                          x_curr=xc, x_prev=xp,
                           dt=self._dt/self._n_res,
-                          theta=theta))(jnp.arange(self._n_res))
+                          theta=theta))(x0, x1)
+        # x = jnp.append(jnp.expand_dims(x_prev[self._n_res-1], axis=0),
+        #                x_curr, axis=0)
+        # lp = jax.vmap(lambda t:
+        #               self.euler_lpdf(
+        #                   x_curr=x[t+1], x_prev=x[t],
+        #                   dt=self._dt/self._n_res,
+        #                   theta=theta))(jnp.arange(self._n_res))
         return jnp.sum(lp)
         # x = jnp.append(jnp.expand_dims(x_prev[self._n_res-1], axis=0),
         #                x_curr, axis=0)
@@ -247,11 +290,12 @@ class SDEModel(object):
                 dt=self._dt/self._n_res, theta=theta
             )
             res = {"x": x, "key": key}
-            return res, res
+            return res, x
         # scan initial value
-        init = {"x": x_prev[self._n_res-1], "key": key}
+        # init = {"x": tree_keep_last(x_prev), "key": key}
+        init = {"x": x_prev[-1], "key": key}
         last, full = lax.scan(fun, init, jnp.arange(self._n_res))
-        return full["x"]
+        return full
         # return self.euler_sim(
         #     key=key,
         #     n_steps=self._n_res,
@@ -307,7 +351,13 @@ class SDEModel(object):
             - logw: The log-weight of `x_curr`.
         """
         x_curr = self.state_sample(key, x_prev, theta)
-        logw = self.meas_lpdf(y_curr, x_curr, theta)
+        logw = lax.cond(
+            self.is_valid_state(x_curr, theta),
+            lambda _x: self.meas_lpdf(y_curr, x_curr, theta),
+            lambda _x: -jnp.inf,
+            0.0
+        )
+        # logw = self.meas_lpdf(y_curr, x_curr, theta)
         return x_curr, logw
 
     def bridge_prop(self, key, x_prev, y_curr, theta, Y, A, Omega):
@@ -386,6 +436,12 @@ class SDEModel(object):
             theta=theta
         )
         logw = logw + self.meas_lpdf(y_curr, x_prop, theta) - last["lp"]
+        logw = lax.cond(
+            self.is_valid_state(x_prop, theta),
+            lambda _x: logw,
+            lambda _x: -jnp.inf,
+            0.0
+        )
         return x_prop, logw
 
     def bridge_prop_for(self, key, x_prev, y_curr, theta, Y, A, Omega):
