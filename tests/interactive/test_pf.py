@@ -14,6 +14,7 @@ from pfjax.models import BMModel
 def expand_grid(**kwargs):
     """
     JAX equivalent of expand_grid in R.
+
     Unlike R, leftmost vectors are changing fastest.
     """
     keys = list(kwargs)
