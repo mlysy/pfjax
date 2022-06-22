@@ -271,12 +271,7 @@ class PGNETModel(sde.SDEModel):
             # logy_curr = jnp.log(y_curr)
 
             x_curr, logw = self.bridge_prop(
-<<<<<<< HEAD
-                key, x_prev, y_curr, theta,
-                jnp.log(y_curr), jnp.eye(4), jnp.diag(omega)
-=======
                 key, x_prev, y_curr, theta, 
                 logy_curr, jnp.eye(4), jnp.diag(omega)
->>>>>>> c2f4263 (Updated pgnet model)
             )
         return x_curr, logw
