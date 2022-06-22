@@ -1,8 +1,6 @@
 """
 Prokaryotic auto-regulatory gene network Model.
-
 The base model involves differential equations of the chemical reactions:
-
 ```
 DNA + P2 --> DNA_P2
 DNA_P2   --> DNA + P2
@@ -17,24 +15,20 @@ These equations are associated with a parameter in `theta = (theta0, ..., theta7
 The model is approximated by a SDE described in Golightly & Wilkinson (2005). 
 A particular restriction on the chemical reactions is by the conservation law which implies that `DNA + DNA_P2 = K`.
 Thus the SDE model can be described in terms of `x_t = (RNA, P, P2, DNA)`. 
-
 Then assuming a standard form of the SDE, the base model can be written as
 ```
 x_mt = x_{m, t-1} + mu_mt dt/m + Sigma_mt^{1/2} dt/m
 y_t ~ N( exp(x_{m,mt}), diag(tau^2) )
 ```
-
 Ito's Lemma is applied to transform the base model on the log-scale to allow for unconstrained variables
 ```
 logx_mt = log(x_mt)
 ```
 so `mu_mt` and `Sigma_mt` are transformed accordingly. 
-
 - Model parameters: `theta = (theta0, ... theta7, tau0, ... tau3)`.
 - Global constants: `dt` and `n_res`, i.e., `m`.
 - State dimensions: `n_state = (n_res, 4)`.
 - Measurement dimensions: `n_meas = 4`.
-
 """
 
 import jax
@@ -52,28 +46,39 @@ class PGNETModel(sde.SDEModel):
     def __init__(self, dt, n_res, bootstrap=True):
         r"""
         Class constructor for the PGNET model.
-
         Args:
             dt: SDE interobservation time.
             n_res: SDE resolution number.  There are `n_res` latent variables per observation, equally spaced with interobservation time `dt/n_res`.
             bootstrap (bool): Flag indicating whether to use a Bootstrap particle filter or a bridge filter.
-
         """
         # creates "private" variables self._dt and self._n_res
         super().__init__(dt, n_res, diff_diag=False)
         self._n_state = (self._n_res, 4)
         self._K = 10
+        self._eps = 1e-10
         self._bootstrap = bootstrap
+
+    def _expit(self, x):
+        """
+        Inverts the logit function.
+        """
+        x4 = self._K*jnp.exp(x[3])/(jnp.exp(x[3]) + 1)
+        return jnp.append(jnp.exp(x[:3]), x4)
+
+    def _logit(self, x):
+        return jnp.log(x/(self._K - x))
 
     def _drift(self, x, theta):
         """
         Calculate the drift on the original scale.
         """
         mu1 = theta[2]*x[3] - theta[6]*x[0]
+        sigma_max = jnp.where(0 < x[1]*(x[1]-1), x[1]*(x[1]-1), 0)
+        # sigma_max = x[1]*(x[1]-1)
         mu2 = 2*theta[5]*x[2] - theta[7]*x[1] + \
-            theta[3]*x[0] - theta[4]*x[1]*(x[1]-1)
+            theta[3]*x[0] - theta[4]*sigma_max 
         mu3 = theta[1]*(self._K-x[3]) - theta[0]*x[3]*x[2] - \
-            theta[5]*x[2] + 0.5*theta[4]*x[1]*(x[1]-1)
+            theta[5]*x[2] + 0.5*theta[4]*sigma_max
         mu4 = theta[1]*(self._K-x[3]) - theta[0]*x[3]*x[2]
         mu = jnp.stack([mu1, mu2, mu3, mu4])
         return mu
@@ -85,7 +90,7 @@ class PGNETModel(sde.SDEModel):
         A = theta[0]*x[3]*x[2] + theta[1]*(self._K-x[3])
         sigma11 = theta[2]*x[3] + theta[6]*x[0]
         sigma_max = jnp.where(0 < x[1]*(x[1]-1), x[1]*(x[1]-1), 0)
-        sigma_max = x[1]*(x[1]-1)
+        # sigma_max = x[1]*(x[1]-1)
         sigma22 = theta[7]*x[1] + 4*theta[5]*x[2] + \
             theta[3]*x[0] + 2*theta[4]*sigma_max
         sigma23 = -2*theta[5]*x[2] - theta[4]*sigma_max
@@ -93,10 +98,10 @@ class PGNETModel(sde.SDEModel):
         sigma34 = A
         sigma44 = A
 
-        Sigma = jnp.array([[sigma11, 0., 0., 0.],
-                           [0., sigma22, sigma23, 0.],
-                           [0., sigma23, sigma33, sigma34],
-                           [0., 0, sigma34, sigma44]])
+        Sigma = jnp.array([[sigma11, 0, 0, 0],
+                           [0, sigma22, sigma23, 0],
+                           [0, sigma23, sigma33, sigma34],
+                           [0, 0, sigma34, sigma44]])
 
         return Sigma
 
@@ -104,31 +109,33 @@ class PGNETModel(sde.SDEModel):
         """
         Calculates the SDE drift function on the log scale.
         """
-        x = jnp.exp(x)
-        # K = self._K
+        x = self._expit(x) + self._eps
+        # x = jnp.exp(x) + 1 + self._eps
         mu = self._drift(x, theta)
         Sigma = self._diff(x, theta)
 
-        #f_p = jnp.array([1/x[0], 1/x[1], 1/x[2], 1/x[3] + 1/(K-x[3])])
-        #f_pp = jnp.array([-1/x[0]/x[0], -1/x[1]/x[1], -1/x[2]/x[2], -1/x[3]/x[3] + 1/(K-x[3])/(K-x[3])])
-        f_p = jnp.array([1/x[0], 1/x[1], 1/x[2], 1/x[3]])
-        f_pp = jnp.array(
-            [-1/x[0]/x[0], -1/x[1]/x[1], -1/x[2]/x[2], -1/x[3]/x[3]]
-        )
+        f_p = jnp.array([1/x[0], 1/x[1], 1/x[2], 1/x[3] + 1/(self._K-x[3])])
+        f_pp = jnp.array([-1/x[0]/x[0], -1/x[1]/x[1], -1/x[2]/x[2], -1/x[3]/x[3] + 1/(self._K-x[3])/(self._K-x[3])])
+        # f_p = jnp.array([1/x[0], 1/x[1], 1/x[2], 1/x[3]])
+        # f_pp = jnp.array(
+        #     [-1/x[0]/x[0], -1/x[1]/x[1], -1/x[2]/x[2], -1/x[3]/x[3]]
+        # )
 
         mu_trans = f_p * mu + 0.5 * f_pp * jnp.diag(Sigma)
+        # mu2 = jnp.where(-1 < mu_trans[1], mu_trans[1], -1)
+        # mu_trans = mu_trans.at[1].set(mu2)
         return mu_trans
 
     def diff(self, x, theta):
         """
         Calculates the SDE diffusion function on the log scale.
         """
-        x = jnp.exp(x)
-        # K = self._K
+        x = self._expit(x) + self._eps
+        # x = jnp.exp(x) + 1 + self._eps
         Sigma = self._diff(x, theta)
 
-        #f_p = jnp.array([1/x[0], 1/x[1], 1/x[2], 1/x[3] + 1/(K-x[3])])
-        f_p = jnp.array([1/x[0], 1/x[1], 1/x[2], 1/x[3]])
+        f_p = jnp.array([1/x[0], 1/x[1], 1/x[2], 1/x[3] + 1/(self._K-x[3])])
+        # f_p = jnp.array([1/x[0], 1/x[1], 1/x[2], 1/x[3]])
         Sigma_trans = jnp.outer(f_p, f_p) * Sigma
 
         return Sigma_trans
@@ -136,39 +143,36 @@ class PGNETModel(sde.SDEModel):
     def meas_lpdf(self, y_curr, x_curr, theta):
         """
         Log-density of `p(y_curr | x_curr, theta)`.
-
         Args:
             y_curr: Measurement variable at current time `t`.
             x_curr: State variable at current time `t`.
             theta: Parameter value.
-
         Returns
             The log-density of `p(y_curr | x_curr, theta)`.
         """
         tau = theta[8:12]
         return jnp.sum(
-            jsp.stats.norm.logpdf(y_curr, loc=jnp.exp(x_curr[-1]), scale=tau)
+            # jsp.stats.norm.logpdf(y_curr, loc=jnp.exp(x_curr[-1]), scale=tau)
+            jsp.stats.norm.logpdf(y_curr, loc=self._expit(x_curr[-1]), scale=tau)
         )
 
     def meas_sample(self, key, x_curr, theta):
         """
         Sample from `p(y_curr | x_curr, theta)`.
-
         Args:
             x_curr: State variable at current time `t`.
             theta: Parameter value.
             key: PRNG key.
-
         Returns:
             Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
         """
         tau = theta[8:12]
-        return jnp.exp(x_curr[-1]) + tau * random.normal(key, (self._n_state[1],))
+        # return jnp.exp(x_curr[-1]) + tau * random.normal(key, (self._n_state[1],))
+        return self._expit(x_curr[-1]) + tau * random.normal(key, (self._n_state[1],))
 
     def pf_init(self, key, y_init, theta):
         """
         Particle filter calculation for `x_init`.
-
         Samples from an importance sampling proposal distribution
         ```
         x_init ~ q(x_init) = q(x_init | y_init, theta)
@@ -177,16 +181,12 @@ class PGNETModel(sde.SDEModel):
         ```
         logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
         ```
-
         **FIXME:** Explain what the proposal is and why it gives `logw = 0`.
-
         In fact, if you think about it hard enough then it's not actually a perfect proposal...
-
         Args:
             y_init: Measurement variable at initial time `t = 0`.
             theta: Parameter value.
             key: PRNG key.
-
         Returns:
             - x_init: A sample from the proposal distribution for `x_init`.
             - logw: The log-weight of `x_init`.
@@ -201,12 +201,26 @@ class PGNETModel(sde.SDEModel):
         #     jnp.zeros(())
 
         key, subkey = random.split(key)
-        x_init = jnp.log(y_init + tau * random.truncated_normal(
+        # x_init = jnp.log(y_init + tau * random.truncated_normal(
+        #     subkey,
+        #     lower=-y_init/tau,
+        #     upper=jnp.inf,
+        #     shape=(self._n_state[1],)
+        # ))
+
+        x_init123 = jnp.log(y_init[:3] + tau[:3] * random.truncated_normal(
             subkey,
-            lower=-y_init/tau,
+            lower=-y_init[:3]/tau[:3],
             upper=jnp.inf,
-            shape=(self._n_state[1],)
+            shape=(self._n_state[1]-1,)
         ))
+        x_init4 = self._logit(y_init[3] + tau[3] * random.truncated_normal(
+            subkey,
+            lower=-y_init[3]/tau[3],
+            upper=(self._K - y_init[3])/tau[3],
+            shape=(1,)
+        ))
+        x_init = jnp.append(x_init123, x_init4)
         logw = jnp.sum(jsp.stats.norm.logcdf(y_init/tau))
         #x_init = theta[12:16]
         #logw = -jnp.float_(0)
@@ -219,13 +233,11 @@ class PGNETModel(sde.SDEModel):
     def pf_step(self, key, x_prev, y_curr, theta):
         """
         Choose between bootstrap filter and bridge proposal.
-
         Args:
             x_prev: State variable at previous time `t-1`.
             y_curr: Measurement variable at current time `t`.
             theta: Parameter value.
             key: PRNG key.
-
         Returns:
             - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
             - logw: The log-weight of `x_curr`.
@@ -233,9 +245,14 @@ class PGNETModel(sde.SDEModel):
         if self._bootstrap:
             x_curr, logw = super().pf_step(key, x_prev, y_curr, theta)
         else:
-            omega = (theta[8:12] / y_curr)**2
+            omega = jnp.append((theta[8:11] / y_curr[:3]), theta[11]*(1/y_curr[3] + 1/(self._K - y_curr[3])))**2
+            logy_curr = jnp.append(jnp.log(y_curr[:3]), self._logit(y_curr[3]))
+            
+            # omega = (theta[8:12] / y_curr)**2
+            # logy_curr = jnp.log(y_curr)
+
             x_curr, logw = self.bridge_prop(
-                key, x_prev, y_curr, theta,
-                jnp.log(y_curr), jnp.eye(4), jnp.diag(omega)
+                key, x_prev, y_curr, theta, 
+                logy_curr, jnp.eye(4), jnp.diag(omega)
             )
         return x_curr, logw
