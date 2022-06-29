@@ -198,7 +198,8 @@ class SDEModel(object):
         """
         valid_x = jax.vmap(self.is_valid, in_axes=(0, None))(x, theta)
         nan_x = jnp.any(jnp.isnan(x), axis=1)
-        return jnp.alltrue(valid_x, where=~nan_x) and jnp.alltrue(~nan_x)
+        return jnp.alltrue(valid_x, where=~nan_x) & jnp.alltrue(~nan_x)
+        # return jnp.alltrue(valid_x) and jnp.alltrue(~nan_x)
 
     def state_lpdf(self, x_curr, x_prev, theta):
         """
@@ -353,9 +354,8 @@ class SDEModel(object):
         x_curr = self.state_sample(key, x_prev, theta)
         logw = lax.cond(
             self.is_valid_state(x_curr, theta),
-            lambda _x: self.meas_lpdf(y_curr, x_curr, theta),
-            lambda _x: -jnp.inf,
-            0.0
+            lambda: self.meas_lpdf(y_curr, x_curr, theta),
+            lambda: -jnp.inf
         )
         # logw = self.meas_lpdf(y_curr, x_curr, theta)
         return x_curr, logw
@@ -436,12 +436,12 @@ class SDEModel(object):
             theta=theta
         )
         logw = logw + self.meas_lpdf(y_curr, x_prop, theta) - last["lp"]
-        logw = lax.cond(
-            self.is_valid_state(x_prop, theta),
-            lambda _x: logw,
-            lambda _x: -jnp.inf,
-            0.0
-        )
+        # logw = lax.cond(
+        #     self.is_valid_state(x_prop, theta),
+        #     lambda _x: logw,
+        #     lambda _x: -jnp.inf,
+        #     0.0
+        # )
         return x_prop, logw
 
     def bridge_prop_for(self, key, x_prev, y_curr, theta, Y, A, Omega):
