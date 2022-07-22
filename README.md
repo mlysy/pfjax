@@ -3,7 +3,8 @@
 ---
 
 ## What is pfjax?
-- An [introduction](examples/pfjax.ipynb) to **pjfax**.
+
+- An [introduction](docs/notebooks/pfjax.ipynb) to **pjfax**.
 
 ## Installation
 
@@ -16,7 +17,7 @@ pip install .
 ``` 
 
 ## Quickstart 
-- An [example](examples/lotvol.ipynb) of inference with **pfjax** for a stochastic differential equation model.
+- An [example](docs/notebooks/lotvol.ipynb) of inference with **pfjax** for a stochastic differential equation model.
 
 ### Brownian Motion
 
