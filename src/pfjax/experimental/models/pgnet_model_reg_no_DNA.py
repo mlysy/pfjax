@@ -1,5 +1,5 @@
 """
-Prokaryotic auto-regulatory gene network Model with unobserved DNA 
+Prokaryotic auto-regulatory gene network Model.
 
 The base model involves differential equations of the chemical reactions:
 
@@ -21,14 +21,11 @@ Thus the SDE model can be described in terms of `x_t = (RNA, P, P2, DNA)`.
 Then assuming a standard form of the SDE, the base model can be written as
 ```
 x_mt = x_{m, t-1} + mu_mt dt/m + Sigma_mt^{1/2} dt/m
-y_t ~ N( exp(x_{m,mt}), diag(tau^2) )
+y_t ~ N( x_{m,mt}, diag(tau^2) )
 ```
 
-Ito's Lemma is applied to transform the base model on the log-scale to allow for unconstrained variables
-```
-logx_mt = log(x_mt)
-```
-so `mu_mt` and `Sigma_mt` are transformed accordingly. 
+This model is on the regular scale.
+
 
 - Model parameters: `theta = (theta0, ... theta7, tau0, ... tau3)`.
 - Global constants: `dt` and `n_res`, i.e., `m`.
@@ -47,7 +44,7 @@ from pfjax import sde as sde
 # --- main functions -----------------------------------------------------------
 
 
-class PGNETModelNoDNA(sde.SDEModel):
+class RegPGNETModelNoDNA(sde.SDEModel):
 
     def __init__(self, dt, n_res, bootstrap=True):
         r"""
@@ -75,17 +72,7 @@ class PGNETModelNoDNA(sde.SDEModel):
         dna0 = params[11]
         return theta, tau, dna0
 
-    def _expit(self, x):
-        """
-        Inverts the logit function.
-        """
-        x4 = self._K*jnp.exp(x[3])/(jnp.exp(x[3]) + 1)
-        return jnp.append(jnp.exp(x[:3]), x4)
-
-    def _logit(self, x):
-        return jnp.log(x/(self._K - x))
-
-    def _drift(self, x, theta):
+    def drift(self, x, theta):
         """
         Calculate the drift on the original scale.
         """
@@ -100,7 +87,7 @@ class PGNETModelNoDNA(sde.SDEModel):
         mu = jnp.stack([mu1, mu2, mu3, mu4])
         return mu
 
-    def _diff(self, x, theta):
+    def diff(self, x, theta):
         """
         Calculate the diffusion matrix on the original scale.
         """
@@ -122,37 +109,6 @@ class PGNETModelNoDNA(sde.SDEModel):
 
         return Sigma
 
-    def drift(self, x, theta):
-        """
-        Calculates the SDE drift function on the log scale.
-        """
-        x = self._expit(x) + self._eps
-        mu = self._drift(x, theta)
-        Sigma = self._diff(x, theta)
-
-        f_p = jnp.array([1/x[0], 1/x[1], 1/x[2], 1/x[3] + 1/(self._K-x[3])])
-        f_pp = jnp.array([-1/x[0]/x[0], -1/x[1]/x[1], -1/x[2]/x[2], -1/x[3]/x[3] + 1/(self._K-x[3])/(self._K-x[3])])
-        # f_p = jnp.array([1/x[0], 1/x[1], 1/x[2], 1/x[3]])
-        # f_pp = jnp.array(
-        #     [-1/x[0]/x[0], -1/x[1]/x[1], -1/x[2]/x[2], -1/x[3]/x[3]]
-        # )
-
-        mu_trans = f_p * mu + 0.5 * f_pp * jnp.diag(Sigma)
-        return mu_trans
-
-    def diff(self, x, theta):
-        """
-        Calculates the SDE diffusion function on the log scale.
-        """
-        x = self._expit(x) + self._eps
-        Sigma = self._diff(x, theta)
-
-        f_p = jnp.array([1/x[0], 1/x[1], 1/x[2], 1/x[3] + 1/(self._K-x[3])])
-        # f_p = jnp.array([1/x[0], 1/x[1], 1/x[2], 1/x[3]])
-        Sigma_trans = jnp.outer(f_p, f_p) * Sigma
-
-        return Sigma_trans
-
     def meas_lpdf(self, y_curr, x_curr, theta):
         """
         Log-density of `p(y_curr | x_curr, theta)`.
@@ -165,11 +121,9 @@ class PGNETModelNoDNA(sde.SDEModel):
         Returns
             The log-density of `p(y_curr | x_curr, theta)`.
         """
-        # tau = theta[8:11]
         _, tau, _ = self._parse_params(theta)
         return jnp.sum(
-            jsp.stats.norm.logpdf(
-                y_curr, loc=jnp.exp(x_curr[-1, :3]), scale=tau)
+            jsp.stats.norm.logpdf(y_curr, loc=x_curr[-1, :3], scale=tau)
         )
 
     def meas_sample(self, key, x_curr, theta):
@@ -185,7 +139,7 @@ class PGNETModelNoDNA(sde.SDEModel):
             Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
         """
         _, tau, _ = self._parse_params(theta)
-        return jnp.exp(x_curr[-1, :3]) + tau * random.normal(key, (self._n_state[1]-1,))
+        return x_curr[-1, :3] + tau * random.normal(key, (self._n_state[1],))
 
     def pf_init(self, key, y_init, theta):
         """
@@ -214,25 +168,17 @@ class PGNETModelNoDNA(sde.SDEModel):
             - logw: The log-weight of `x_init`.
         """
         _, tau, dna0 = self._parse_params(theta)
-        # key, subkey = random.split(key)
-        # x_init = jnp.log(y_init +
-        #         tau * random.normal(subkey, (self.n_state[1],)))
-        # return \
-        #     jnp.append(jnp.zeros((self.n_res-1,) + x_init.shape),
-        #                jnp.expand_dims(x_init, axis=0), axis=0), \
-        #     jnp.zeros(())
 
         key, subkey = random.split(key)
-        x_init = jnp.log(y_init + tau * random.truncated_normal(
+        x_init = y_init + tau * random.truncated_normal(
             subkey,
             lower=-y_init/tau,
             upper=jnp.inf,
             shape=(self._n_state[1]-1,)
-        ))
-        x_init = jnp.append(x_init, self._logit(dna0))
+        )
+
+        x_init = jnp.append(x_init, dna0)
         logw = jnp.sum(jsp.stats.norm.logcdf(y_init/tau))
-        #x_init = theta[12:16]
-        #logw = -jnp.float_(0)
 
         return \
             jnp.append(jnp.zeros((self._n_res-1,) + x_init.shape),
@@ -257,9 +203,23 @@ class PGNETModelNoDNA(sde.SDEModel):
         if self._bootstrap:
             x_curr, logw = super().pf_step(key, x_prev, y_curr, jnp.append(_theta, tau))
         else:
-            omega = (tau / y_curr)**2
+            omega = tau**2
+            
             x_curr, logw = self.bridge_prop(
                 key, x_prev, y_curr, jnp.append(_theta, tau),
-                jnp.log(y_curr), jnp.eye(4)[:-1, :], jnp.diag(omega)
+                y_curr, jnp.eye(4)[:-1, :], jnp.diag(omega)
             )
         return x_curr, logw
+
+    def is_valid(self, x, theta):
+        """
+        Checks whether SDE observations are valid.
+
+        Args:
+            x: SDE variables.  A vector of size `n_dims`.
+            theta: Parameter value.
+
+        Returns:
+            Whether or not `x>=0`.
+        """
+        return (x >= 0) & (x[3] <= self._K)
