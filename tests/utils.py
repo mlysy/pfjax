@@ -8,6 +8,7 @@ import pfjax as pf
 import pfjax.mcmc as mcmc
 import pfjax.models
 import lotvol_model as lv
+import pfjax.experimental.stoichmodel as st
 
 
 def rel_err(X1, X2):
@@ -563,3 +564,62 @@ def test_models_pf(self):
     for k in pf_out1.keys():
         with self.subTest(k=k):
             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+
+def gnet_setup(self):
+    self.key = random.PRNGKey(0)
+
+    In = jnp.array([[1., 0., 1., 0., 0., 0., 0., 0., 0., 0., 1., 0.],
+                    [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1.],
+                    [0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+                    [0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.],
+                    [1., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0.],
+                    [0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 0., 0.],
+                    [0., 0., 0., 0., 0., 1., 0., 0., 1., 0., 0., 0.],
+                    [0., 0., 0., 0., 0., 0., 0., 1., 0., 1., 0., 0.]])
+
+    Out = jnp.array([[0., 1., 0., 1., 0., 1., 0., 0., 0., 0., 0., 0.],
+                     [0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0.],
+                     [1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+                     [0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+                     [0., 1., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0.],
+                     [0., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0., 0.],
+                     [0., 0., 0., 0., 1., 1., 0., 0., 0., 0., 0., 0.],
+                     [0., 0., 0., 0., 0., 0., 1., 1., 0., 0., 0., 0.]])
+
+    X_init = jnp.array([8.5,29,2,3,8,7,18,9])
+    tau = jnp.array([0.12,0.15,0.31,0.17,0.09,0.16])
+    param = jnp.array([0.08, 0.82, 0.09, 0.9, 0.25, 0.1, 0.35, 0.3, 0.1, 0.1, 0.12, 0.1])
+
+    self.K1 = 10
+    self.K2 = 10
+
+    self.n_param = len(param)
+    self.n_tau = len(tau)
+    self.n_X_init = len(X_init)
+
+    self.theta = jnp.concatenate((param, tau, X_init))
+    self.mask = jnp.array([True,  True, False, False, True,  True, True,  True])
+    self.Model = st.StoichModel(1,2,In,Out)
+    self.Model2 = st.StoichModel(1,2,In,Out, self.mask)
+
+def test_drift(self):
+    # un-self setUp members
+    theta = self.theta
+    param = self.theta[0:self.n_param]
+    model = self.Model
+
+    I,G,Ii,Ig,i,g,ri,rg = (8.5,29,4,2,6,8,18,9)
+    X = jnp.array([I,G,Ii,Ig,ri,rg])
+
+    # simulate with inherited class
+    drift1 = model._drift(X, theta)
+    drift2 = jnp.array([param[1]*Ii + param[3]*Ig + param[5]*ri - param[0]*I*i - param[2]*I*g - param[10]*I , 
+                        param[7]*rg - param[11]*G, 
+                        param[1]*Ii - param[0]*I*i,
+                        param[3]*Ig - param[2]*I*g,
+                        param[4]*i - param[8]*ri,
+                        param[6]*g - param[9]*rg])
+                        
+    for k in range(len(X)):
+        with self.subTest(k=k):
+            self.assertAlmostEqual(rel_err(drift1[k], drift2[k]), 0.0)
