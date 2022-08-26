@@ -583,7 +583,7 @@ def test_particle_filter_rb_deriv(self):
             x_prev=x_prev,
             theta=theta
         ) + logw_prev
-        logw_prop = model.prop_lpdf(
+        logw_prop = model.step_lpdf(
             x_curr=x_curr,
             x_prev=x_prev,
             y_curr=y_curr,

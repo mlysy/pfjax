@@ -205,7 +205,7 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
         """
         Calculate log-density of the proposal distribution `x_curr ~ q(x_t | x_t-1, y_t, theta)`.
         """
-        return model.prop_lpdf(x_curr=x_curr, x_prev=x_prev, y_curr=y_curr,
+        return model.step_lpdf(x_curr=x_curr, x_prev=x_prev, y_curr=y_curr,
                                theta=theta)
 
     def pf_step(key, x_prev, y_curr):
@@ -282,7 +282,7 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
                 # id_print(acc_prev["logw_bar"][j])
                 # id_print(_logw_targ[j])
                 _logw_prop = _logw_prop.at[j].set(
-                    model.prop_lpdf(
+                    model.step_lpdf(
                         x_prev=x_prev[j],
                         x_curr=x_curr[i],
                         y_curr=y_curr,
