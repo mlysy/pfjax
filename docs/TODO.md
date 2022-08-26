@@ -12,3 +12,5 @@
 	THey are now in `docs/notebooks/internal`.  Skip rendering by adding to `exclude_patterns` in `conf.py`.
 
 - [ ] Fix math rendering in jupyter notebooks.  Ideally we would like to use the latex macros and citations defined in `latexdefs.tex` and `biblio.bib` respectively, using `jupyter-contrib-nbextensions` as documented [here](https://jupyter-contrib-nbextensions.readthedocs.io/en/latest/nbextensions/latex_envs/README.html).  Note however that while the macros at least render fine when you open a regular jupyter notebook, I never got the citations to work.  And neither of these currently work in the rendered readthedocs. 
+
+	The math part is semi-fixed.  Only `\begin{aligned}` still not working.

@@ -1,13 +1,11 @@
 \newcommand{\bm}[1]{\boldsymbol{#1}}
-\makeatletter
 \newcommand{\ud}{\mathop{}\!{\mathrm{d}}}
 \newcommand{\iid}{\stackrel {\mathrm{iid}}{\sim}}
 \newcommand{\ind}{\stackrel {\mathrm{ind}}{\sim}}
-\newcommand{\thickhline}{%
-    \noalign {\ifnum 0=`}\fi \hrule height 1pt
-    \futurelet \reserved@a \@xhline
-}
-\makeatother
+% \newcommand{\thickhline}{%
+%     \noalign {\ifnum 0=`}\fi \hrule height 1pt
+%     \futurelet \reserved@a \@xhline
+% }
 \newcommand{\del}[2][]{\frac{\partial^{#1}}{\partial {#2}^{#1}}}
 \newcommand{\der}[2][]{\frac{\textnormal{d}^{#1}}{\textnormal{d} {#2}^{#1}}}
 \newcommand{\fdel}[3][]{\frac{\partial^{#1}#3}{\partial{#2}^{#1}}}

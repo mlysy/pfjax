@@ -17,6 +17,7 @@
 # sys.path.append(os.path.abspath(
 #     os.path.join(__file__, "../../src")
 # ))
+import re
 
 autoapi_dirs = ["../src"]  # location to parse for API reference
 autoapi_ignore = ["*/deprecated/*"]
@@ -40,6 +41,7 @@ extensions = [
     "autoapi.extension",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
+    "sphinx.ext.mathjax"
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -61,3 +63,32 @@ html_theme = 'sphinx_rtd_theme'
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
+
+# -- Options for myst-nb -----------------------------------------------------
+
+myst_enable_extensions = [
+    "amsmath",
+    "colon_fence",
+    "deflist",
+    "dollarmath",
+    "html_image",
+]
+
+mathjax3_config = {'tex': {'macros': {}}}
+
+with open('notebooks/latexdefs.tex', 'r') as f:
+    for line in f:
+        # newcommand macros
+        macros = re.findall(
+            r'\\(newcommand){\\(.*?)}(\[(\d)\])?{(.+)}', line)
+        for macro in macros:
+            if len(macro[2]) == 0:
+                mathjax3_config['tex']['macros'][macro[1]] = "{"+macro[4]+"}"
+            else:
+                mathjax3_config['tex']['macros'][macro[1]] = [
+                    "{"+macro[4]+"}", int(macro[3])]
+        # DeclarMathOperator macros
+        macros = re.findall(r'\\(DeclareMathOperator){\\(.*?)}{(.+)}', line)
+        for macro in macros:
+            mathjax3_config['tex']['macros'][macro[1]
+                                             ] = "{\\operatorname{"+macro[2]+"}}"
