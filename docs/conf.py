@@ -18,6 +18,7 @@
 #     os.path.join(__file__, "../../src")
 # ))
 import re
+from pfjax import __version__, __author__
 
 autoapi_dirs = ["../src"]  # location to parse for API reference
 autoapi_ignore = ["*/deprecated/*"]
@@ -25,11 +26,11 @@ autoapi_ignore = ["*/deprecated/*"]
 # -- Project information -----------------------------------------------------
 
 project = 'pfjax'
-copyright = '2022, Pranav Subramani, Jonathan Ramkissoon, Michelle Ko, Mohan Wu, Yunfeng Yang, Martin Lysy'
-author = 'Pranav Subramani, Jonathan Ramkissoon, Michelle Ko, Mohan Wu, Yunfeng Yang, Martin Lysy'
+copyright = 'Martin Lysy 2022'
+author = __author__
 
 # The full version, including alpha/beta/rc tags
-release = '0.0.1'
+release = __version__
 
 # -- General configuration ---------------------------------------------------
 
