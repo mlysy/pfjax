@@ -23,6 +23,7 @@ class BMModel(BaseModel):
         Args:
             dt: Interobservation time.
         """
+        super().__init__(bootstrap=True)
         self._dt = dt
 
     def state_lpdf(self, x_curr, x_prev, theta):

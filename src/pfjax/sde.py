@@ -121,6 +121,8 @@ class SDEModel(object):
     **Notes:**
 
     - Currently contains `state_sample_for()` and `state_lpdf_for()` for testing purposes.  May want to move these elsewhere at some point to obfuscate from users...
+
+    - Should derive from `pf.BaseModel`.
     """
 
     def __init__(self, dt, n_res, diff_diag):

@@ -1,5 +1,3 @@
-
-
 class BaseModel(object):
     r"""
     Base model for particle filters.
@@ -10,11 +8,11 @@ class BaseModel(object):
 
     - To use the "basic" particle filter `pfjax.particle_filter()`, the derived class must provide methods `pf_init()` and `pf_step()`.
 
+    - To use the Rao-Blackwellized particle filter `pfjax.particle_filter_rb()`, the derived class must provide methods `pf_init()`, `step_sample()`, and `step_lpdf()`.
+
     - If `pf_init()` is missing, the base class will automatically construct it from `prior_lpdf()`, `init_sample()`, and `init_lpdf()`.
 
     - if `pf_step()` is missing, the base class will automatically construct it from `state_lpdf()`, `meas_lpdf()`, `step_sample()`, and `step_lpdf()`.
-
-    - To use the Rao-Blackwellized particle filter `pfjax.particle_filter_rb()`, the derived class must provide methods `pf_init()`, `step_sample()`, and `step_lpdf()`.
 
     - If in either of the above `step_sample()` and `step_lpdf()` are missing, the base class assumes a bootstrap particle filter and sets `step_sample = state_sample` and `step_lpdf = state_lpdf`.
 
@@ -26,6 +24,15 @@ class BaseModel(object):
 
     - In general, nothing is stopping the user from creating e.g., `pf_step()` which is inconsistent with `step_sample()`, etc.
     """
+
+    def __init__(self, bootstrap):
+        """
+        Class constructor.
+
+        Args:
+            bootstrap: Boolean for whether or not to create a bootstrap particle filter.
+        """
+        self._bootstrap = bootstrap
 
     def step_sample(self, key, x_prev, y_curr, theta):
         r"""
@@ -43,8 +50,10 @@ class BaseModel(object):
         Returns:
             Sample of the state variable `x_curr` at current time `t`.
         """
-
-        return self.state_sample(key=key, x_prev=x_prev, theta=theta)
+        if self._bootstrap:
+            return self.state_sample(key=key, x_prev=x_prev, theta=theta)
+        else:
+            pass
 
     def step_lpdf(self, x_curr, x_prev, y_curr, theta):
         r"""
@@ -62,7 +71,10 @@ class BaseModel(object):
         Returns:
             Log-density of the state variable `x_curr` at current time `t`.
         """
-        return self.state_lpdf(x_curr=x_curr, x_prev=x_prev, theta=theta)
+        if self._bootstrap:
+            return self.state_lpdf(x_curr=x_curr, x_prev=x_prev, theta=theta)
+        else:
+            pass
 
     def init_sample(self, key, y_init, theta):
         r"""
@@ -79,7 +91,10 @@ class BaseModel(object):
         Returns:
             Sample of the state variable `x_init` at initial time `t = 0`.
         """
-        return self.prior_sample(key=key, theta=theta)
+        if self._bootstrap:
+            return self.prior_sample(key=key, theta=theta)
+        else:
+            pass
 
     def init_lpdf(self, x_init, y_init, theta):
         r"""
@@ -96,7 +111,10 @@ class BaseModel(object):
         Returns:
             Log-density of the state variable `x_init` at initial time `t = 0`.
         """
-        return self.prior_lpdf(x_init=x_init, theta=theta)
+        if self._bootstrap:
+            return self.prior_lpdf(x_init=x_init, theta=theta)
+        else:
+            pass
 
     def pf_step(self, key, x_prev, y_curr, theta):
         r"""
@@ -122,14 +140,18 @@ class BaseModel(object):
             - logw: The log-weight of `x_curr`.
         """
 
-        x_curr = self.step_sample(key=key, x_prev=x_prev,
-                                  y_curr=y_curr, theta=theta)
-        lp_prop = self.step_lpdf(x_curr=x_curr,
-                                 x_prev=x_prev, y_curr=y_curr, theta=theta)
-        lp_targ = self.state_lpdf(
-            x_curr=x_curr, x_prev=x_prev, theta=theta
-        ) + self.meas_lpdf(y_curr=y_curr, x_curr=x_curr, theta=theta)
-        logw = lp_targ - lp_prop
+        if self._bootstrap:
+            x_curr = self.state_sample(key=key, x_prev=x_prev, theta=theta)
+            logw = self.meas_lpdf(y_curr=y_curr, x_curr=x_curr, theta=theta)
+        else:
+            x_curr = self.step_sample(key=key, x_prev=x_prev,
+                                      y_curr=y_curr, theta=theta)
+            lp_prop = self.step_lpdf(x_curr=x_curr,
+                                     x_prev=x_prev, y_curr=y_curr, theta=theta)
+            lp_targ = self.state_lpdf(
+                x_curr=x_curr, x_prev=x_prev, theta=theta
+            ) + self.meas_lpdf(y_curr=y_curr, x_curr=x_curr, theta=theta)
+            logw = lp_targ - lp_prop
         return x_curr, logw
 
     def pf_init(self, key, y_init, theta):
@@ -154,9 +176,13 @@ class BaseModel(object):
             - x_init: A sample from the proposal distribution at initial tme `t = 0`.
             - logw: The log-weight of `x_init`.
         """
-
-        x_curr = self.init_sample(key=key, theta=theta)
-        lp_prop = self.init_lpdf(x_curr=x_curr, theta=theta)
-        lp_targ = self.prior_lpdf(x_curr=x_curr, theta=theta) + \
-            self.meas_lpdf(y_curr=y_init, x_curr=x_curr, theta=theta)
+        if self._bootstrap:
+            x_curr = self.prior_sample(key=key, theta=theta)
+            logw = self.meas_lpdf(y_curr=y_init, x_curr=x_curr, theta=theta)
+        else:
+            x_curr = self.init_sample(key=key, theta=theta)
+            lp_prop = self.init_lpdf(x_curr=x_curr, theta=theta)
+            lp_targ = self.prior_lpdf(x_curr=x_curr, theta=theta) + \
+                self.meas_lpdf(y_curr=y_init, x_curr=x_curr, theta=theta)
+            logw = lp_targ - lp_prop
         return x_curr, logw
