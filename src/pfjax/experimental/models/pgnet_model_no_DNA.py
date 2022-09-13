@@ -263,3 +263,17 @@ class PGNETModelNoDNA(sde.SDEModel):
                 jnp.log(y_curr), jnp.eye(4)[:-1, :], jnp.diag(omega)
             )
         return x_curr, logw
+
+    def prop_lpdf(self, x_curr, x_prev, y_curr, theta):
+        r"""
+        Calculate the log-density of the proposal distribution `q(x_curr) = q(x_curr | x_prev, y_curr, theta)`.
+
+        In this case we have a bootstrap filter, so `q(x_curr) = p(x_curr | x_prev, theta)`.
+
+        Args:
+            x_curr: State variable at current time `t`.
+            x_prev: State variable at previous time `t-1`.
+            y_curr: Measurement variable at current time `t`.
+            theta: Parameter value.
+        """
+        return super().state_lpdf(x_curr=x_curr, x_prev=x_prev, theta=theta)

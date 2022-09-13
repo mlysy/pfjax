@@ -436,12 +436,12 @@ class SDEModel(object):
             theta=theta
         )
         logw = logw + self.meas_lpdf(y_curr, x_prop, theta) - last["lp"]
-        # logw = lax.cond(
-        #     self.is_valid_state(x_prop, theta),
-        #     lambda _x: logw,
-        #     lambda _x: -jnp.inf,
-        #     0.0
-        # )
+        logw = lax.cond(
+            self.is_valid_state(x_prop, theta),
+            lambda _x: logw,
+            lambda _x: -jnp.inf,
+            0.0
+        )
         return x_prop, logw
 
     def bridge_prop_for(self, key, x_prev, y_curr, theta, Y, A, Omega):
