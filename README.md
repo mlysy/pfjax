@@ -30,7 +30,18 @@ From within `pfjax/tests`:
 python3 -m unittest -v
 ```
 
-Or, install [**tox**](https://tox.wiki/en/latest/index.html), then from within `pfjax` enter command line: `tox`.
+Or, install [**tox**](https://tox.wiki/en/latest/index.html), then from within `pfjax` at the command line: `tox`.
+
+## Documentation
+
+From within `pfjax/docs`:
+
+```bash
+make html
+# or alternatively
+make clean html
+```
 
 ## Reference docs
+
 More examples and further documentation can be found here:

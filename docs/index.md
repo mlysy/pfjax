@@ -6,6 +6,7 @@
 :maxdepth: 1
 :hidden:
 
-example.ipynb
+notebooks/pfjax.ipynb
+notebooks/stochopt_tutorial.ipynb
 autoapi/index
 ```

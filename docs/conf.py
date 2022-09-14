@@ -75,6 +75,8 @@ myst_enable_extensions = [
     "html_image",
 ]
 
+# convert latexdefs.tex to mathjax format
+
 mathjax3_config = {'tex': {'macros': {}}}
 
 with open('notebooks/latexdefs.tex', 'r') as f:
@@ -89,7 +91,7 @@ with open('notebooks/latexdefs.tex', 'r') as f:
                 mathjax3_config['tex']['macros'][macro[1]] = [
                     "{"+macro[4]+"}", int(macro[3])]
         # DeclarMathOperator macros
-        macros = re.findall(r'\\(DeclareMathOperator){\\(.*?)}{(.+)}', line)
+        macros = re.findall(r'\\(DeclareMathOperator\*?){\\(.*?)}{(.+)}', line)
         for macro in macros:
             mathjax3_config['tex']['macros'][macro[1]
                                              ] = "{\\operatorname{"+macro[2]+"}}"
