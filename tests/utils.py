@@ -11,6 +11,7 @@ import pfjax as pf
 # import pfjax.experimental.particle_filter as pfex
 import pfjax.mcmc as mcmc
 import pfjax.models as models
+import pfjax.utils as utils
 import lotvol_model as lv
 # import pfjax.models.pgnet_model as pg
 import pfjax.particle_resamplers as resamplers
@@ -454,7 +455,7 @@ def test_particle_filter_deriv(self):
                     accumulator=accumulate_deriv,
                     mean=False
                 )
-                prob = pf.lwgt_to_prob(logw)
+                prob = utils.lwgt_to_prob(logw)
                 _score = jax.vmap(jnp.multiply)(prob, alpha)
                 _hess = jax.vmap(
                     lambda p, a, b: p * (jnp.outer(a, a) + b)
