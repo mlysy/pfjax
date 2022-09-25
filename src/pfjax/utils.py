@@ -8,6 +8,64 @@ import jax.scipy as jsp
 import jax.tree_util as jtu
 
 
+def continuous_cdf (xs, weights, u):
+    """
+    Return one sample from a continuous approximation of the ECDF of x.
+    
+    Should bbe trivial to extend to multiple samples if needed by: 
+        list(map(lambda x: np.argmax(w_cdf > x), u))
+    """
+    n = len(weights)
+    
+    pi = jnp.zeros(n + 1)
+    pi = pi.at[0].set(weights[0] / 2)
+    pi = pi.at[n].set(weights[-1] / 2)
+    pi = pi.at[1:n].set((weights[:-1] + weights[1:]) / 2)
+    
+    w_cdf = jnp.cumsum(pi)
+    r = jnp.argmax(w_cdf > u)
+    u_new = (u - w_cdf[r-1]) / pi[r]
+    
+    # select region: 
+    new_x = jax.lax.cond(
+        r == 0,
+        lambda _: xs[0],
+        lambda _: jax.lax.cond(
+            r == n,
+            lambda _: xs[-1],
+            lambda _: (xs[r] - xs[r-1]) * u_new + xs[r-1],
+            r
+        ),
+        r
+    )
+    return new_x
+
+
+def sort_marginal (x, weights):
+    r""" 
+    Sort X and return corresponding w
+    """
+    sorted_x, sorted_w = jax.lax.sort_key_val(x, weights)
+    return {"x": sorted_x, "w": sorted_w}
+
+
+def weighted_corr (X, weights):
+    r"""
+    Return weighted correlation matrix
+    """
+    corr_mat = jnp.cov(X, aweights = weights)
+    stddevs = jnp.sqrt(jnp.diag(corr_mat))
+    corr_mat = corr_mat / stddevs[:, None] / stddevs[None, :]
+    return corr_mat
+
+
+def marginal_cdf (x, data, weights):
+    r"""
+    Return quantile of x given data and weights
+    """
+    return sum(jnp.where(data < x, x = weights, y=0))
+
+
 def lwgt_to_prob(logw):
     r"""
     Calculate normalized probabilities from unnormalized log weights.

@@ -8,7 +8,67 @@ from jax import lax
 import ott
 from ott.geometry import pointcloud
 from ott.core import sinkhorn
-from .utils import lwgt_to_prob
+from .utils import lwgt_to_prob, marginal_cdf, weighted_corr, sort_marginal, continuous_cdf
+
+
+# @partial(jax.jit, static_argnums=(3,))
+def resample_gaussian_copula(key, x_particles_prev, logw):
+    r"""
+    Particle resampler with Gaussian Copula distribution.
+
+    Estimate and sample from a Gaussian copula as follows: 
+        - Find Y = (F_1(X_1), ..., F_d(X_d))
+        - rho_hat = weighted correlation of Y 
+        - Sample Z ~ N(0, rho_hat) N times
+        - Create U = (phi(Z_1), ..., phi(Z_d))
+        - Use inverse-CDF of marginals to create samples: (inv-CDF(U_1), ..., inv-CDF(U_d))
+
+    Args: 
+        key: PRNG key
+        x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
+        logw: Vector of corresponding `n_particles` unnormalized log-weights.
+
+    Returns: 
+        A dictionary with elements:
+            - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.  These are sampled with replacement from `x_particles_prev` with probability vector `exp(logw) / sum(exp(logw))`.
+            - `ancestors`: Vector of `n_particles` integers between 0 and `n_particles-1` giving the index of each element of `x_particles_prev` corresponding to the elements of `x_particles`.
+
+    TODO: 
+        - Change `continuous_cdf` to accept a vector of U
+        - See if we can optimize any other parts of the resampler to reduce the number of vmaps
+    """
+    N, d = x_particles_prev.shape
+    prob = lwgt_to_prob(logw)
+
+    # estimate correlation matrix: 
+    Y = jax.vmap(
+        lambda x: 
+        jax.vmap(
+            marginal_cdf,
+            in_axes = (0, None, None)
+        )(x, x, prob),
+        in_axes = (1))(x_particles_prev)
+    rho_hat = weighted_corr(Y, weights = prob)
+
+    # gaussian copula: 
+    Z = random.multivariate_normal(key=key, mean = jnp.zeros(d), cov = rho_hat, shape = (N,))
+    U = jax.scipy.stats.norm.cdf(Z)
+
+    sorted_marginals = jax.vmap(
+        sort_marginal,
+        in_axes = (1, None)
+    )(x_particles_prev, prob)
+
+    x_samples = jax.vmap(
+        lambda x, w, u: jax.vmap(
+            continuous_cdf,
+            in_axes= (None, None, 0)
+        )(x, w, u),
+        in_axes = (0, 0, 1))(sorted_marginals["x"], sorted_marginals["w"], U)
+
+    return {
+        "x_particles": x_samples
+    }
 
 
 def resample_multinomial(key, x_particles_prev, logw):
