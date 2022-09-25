@@ -1,19 +1,5 @@
 """
 Particle filters which approximate the score and fisher information.
-
-The API requires the user to define a model class with the following methods:
-
-- `pf_init: (key, y_init, theta) => (x_particles, logw)`: Sampling and log-weights for the initial latent variable.
-
-- `pf_step: (key, x_prev, y_curr, theta) => (x_particles, logw)`: Sampling and log-weights for each subsequent latent variable.
-
-- `pf_aux: (x_prev, y_curr, theta) => logw`: The look-forward log-weights of the auxillary particle filter.
-
-- `state_lpdf: (x_curr, x_prev, theta) => lpdf`: The log-density of the state model.
-
-- `meas_lpdf: (y_curr, x_curr, theta) => lpdf`: The log-density of the measurement model.
-
-For now the resampling function is just the multinomial, but we'll keep the `resampler` argument to eventually pass in other resamplers with `ancestors`.
 """
 
 import jax
@@ -39,14 +25,15 @@ def particle_filter(model, key, y_meas, theta, n_particles,
 
     - The score and fisher information are estimated using the method described by Poyiadjis et al 2011, Algorithm 1. 
 
-    - Should have the option of adding data as we go along.  So for example, could have an argument `init=None`, which if not none is the carry from `lax.scan()`.  Should then also return the carry as an output...
+    - Should have the option of adding new measurements as we go along.  So for example, could have an argument `init=None`, which if not `None` is the carry from `lax.scan()`.  Should then also return the carry as an output...
 
     Args:
         model: Object specifying the state-space model having the following methods:
-            - `pf_init()`
-            - `pf_step()`
-            - Optionally `pf_aux()`
-            - Optionally `state_lpdf()` and `meas_lpdf()`, if `score or fisher == True`.
+            - `pf_init : (key, y_init, theta) -> (x_particles, logw)`: For sampling and calculating log-weights for the initial latent variable.
+            - `pf_step : (key, x_prev, y_curr, theta) -> (x_particles, logw)`: For sampling and calculating log-weights for each subsequent latent variable.
+            - `pf_aux : (x_prev, y_curr, theta) -> logw`: Optional method providing look-forward log-weights of the auxillary particle filter.
+            - `state_lpdf : (x_curr, x_prev, theta) -> lpdf`: Optional method specifying the log-density of the state model.  Only required if `score or fisher == True`.
+            - `meas_lpdf : (y_curr, x_curr, theta) -> lpdf`: Optional method specifying the log-density of the measurement model.  Only required if `score or fisher == True`.
         key: PRNG key.
         y_meas: JAX array with leading dimension `n_obs` containing the measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
         theta: Parameter value.
@@ -276,12 +263,12 @@ def particle_filter_rb(model, key, y_meas, theta, n_particles,
 
     Args:
         model: Object specifying the state-space model having the following methods:
-            - `pf_init()`.
-            - Either `pf_prop()` or `pf_step()`.
-            - `state_lpdf()`.
-            - `meas_lpdf()`.
-            - `prop_lpdf()`.
-            - Optionally `pf_aux()`.
+            - `pf_init : (key, y_init, theta) -> (x_particles, logw)`: For sampling and calculating log-weights for the initial latent variable.
+            - `step_sample : (key, x_prev, y_curr, theta) -> x_curr`: Sampling from the proposal distribution for each subsequent latent variable.
+            - `step_lpdf : (x_curr, x_prev, y_curr, theta) -> logw`: Calculate log-weights for each subsequent latent variable.
+            - `state_lpdf : (x_curr, x_prev, theta) -> lpdf`: Calculates the log-density of the state model.
+            - `meas_lpdf : (y_curr, x_curr, theta) -> lpdf`: Calculates the log-density of the measurement model.
+            - `pf_aux : (x_prev, y_curr, theta) -> logw`: Optional method providing look-forward log-weights of the auxillary particle filter.
         key: PRNG key.
         y_meas: JAX array with leading dimension `n_obs` containing the measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
         theta: Parameter value.
@@ -322,7 +309,7 @@ def particle_filter_rb(model, key, y_meas, theta, n_particles,
         logw_targ = model.state_lpdf(x_curr=x_curr, x_prev=x_prev,
                                      theta=theta) + \
             logw_bar
-        logw_prop = model.prop_lpdf(x_curr=x_curr, x_prev=x_prev,
+        logw_prop = model.step_lpdf(x_curr=x_curr, x_prev=x_prev,
                                     y_curr=y_curr, theta=theta) + \
             logw_aux
         acc_full = {"logw_targ": logw_targ, "logw_prop": logw_prop}
@@ -351,22 +338,22 @@ def particle_filter_rb(model, key, y_meas, theta, n_particles,
         """
         Calculate log-density of the proposal distribution `x_curr ~ q(x_t | x_t-1, y_t, theta)`.
         """
-        return model.prop_lpdf(x_curr=x_curr, x_prev=x_prev, y_curr=y_curr,
+        return model.step_lpdf(x_curr=x_curr, x_prev=x_prev, y_curr=y_curr,
                                theta=theta)
 
     def pf_step(key, x_prev, y_curr):
         """
         Sample from the proposal distribution `x_curr ~ q(x_t | x_t-1, y_t, theta)`.
-
-        If `model.pf_prop()` is missing, use `model.pf_step()` instead.  However, in this case discards the log-weight for the proposal as it is not used in this particle filter.
         """
-        if callable(getattr(model, "pf_prop", None)):
-            x_curr = model.pf_prop(key=key, x_prev=x_prev, y_curr=y_curr,
-                                   theta=theta)
-        else:
-            x_curr, _ = model.pf_step(key=key, x_prev=x_prev, y_curr=y_curr,
-                                      theta=theta)
-        return x_curr
+        return model.step_sample(key=key, x_prev=x_prev, y_curr=y_curr,
+                                 theta=theta)
+        # if callable(getattr(model, "pf_prop", None)):
+        #     x_curr = model.pf_prop(key=key, x_prev=x_prev, y_curr=y_curr,
+        #                            theta=theta)
+        # else:
+        #     x_curr, _ = model.pf_step(key=key, x_prev=x_prev, y_curr=y_curr,
+        #                               theta=theta)
+        # return x_curr
 
     def pf_init(key):
         return model.pf_init(key=key, y_init=y_meas[0], theta=theta)

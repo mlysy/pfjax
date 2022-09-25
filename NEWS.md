@@ -49,3 +49,5 @@
 
 - [x] Added `mvn_bridge` module which can e.g., be used for SDE bridge proposals.
 
+- [x] Moved `examples` folder to `docs/notebooks/internal`.
+
