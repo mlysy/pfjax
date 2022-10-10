@@ -198,6 +198,7 @@ class SDEModel(object):
         Returns:
             Whether or not all `n_res` latent variables are valid.
         """
+        return True
         valid_x = jax.vmap(self.is_valid, in_axes=(0, None))(x, theta)
         nan_x = jnp.any(jnp.isnan(x), axis=1)
         return jnp.alltrue(valid_x, where=~nan_x) and jnp.alltrue(~nan_x)

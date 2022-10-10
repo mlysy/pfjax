@@ -8,20 +8,20 @@ import jax.scipy as jsp
 import jax.tree_util as jtu
 
 
-def continuous_cdf (xs, weights, u):
+def continuous_cdf (xs, pi, u):
     """
-    Return one sample from a continuous approximation of the ECDF of x.
+    Return a sample from a continuous approximation of the ECDF of x.
+
+    Args: 
+        - xs: Marginals
+        - pi: interpolated weights of each x. Should be of length: len(xs) + 1
+        - u: U(0,1)
     
-    Should bbe trivial to extend to multiple samples if needed by: 
-        list(map(lambda x: np.argmax(w_cdf > x), u))
+    Returns: 
+        Sample
     """
-    n = len(weights)
-    
-    pi = jnp.zeros(n + 1)
-    pi = pi.at[0].set(weights[0] / 2)
-    pi = pi.at[n].set(weights[-1] / 2)
-    pi = pi.at[1:n].set((weights[:-1] + weights[1:]) / 2)
-    
+    n = len(xs)    
+
     w_cdf = jnp.cumsum(pi)
     r = jnp.argmax(w_cdf > u)
     u_new = (u - w_cdf[r-1]) / pi[r]
@@ -41,12 +41,40 @@ def continuous_cdf (xs, weights, u):
     return new_x
 
 
-def sort_marginal (x, weights):
-    r""" 
-    Sort X and return corresponding w
+def interpolate_weights (weights):
+    """ Interpolate weights as in Malik&Pitt """
+    n = len(weights) 
+    pi = jnp.zeros(n + 1)
+    pi = pi.at[0].set(weights[0] / 2)
+    pi = pi.at[n].set(weights[-1] / 2)
+    pi = pi.at[1:n].set((weights[:-1] + weights[1:]) / 2)
+    return pi
+
+
+# def sort_marginal (x, weights):
+#     r""" 
+#     Sort X and return corresponding w
+#     """
+#     sorted_x, sorted_w = jax.lax.sort_key_val(x, weights)
+#     return {"x": sorted_x, "w": sorted_w}
+
+def argsort_marginal (x, w):
+    """ sort (x,w) based on x and return the indices of the sort """
+    sort_indices = jnp.argsort(x)
+    return {"x": jnp.take(x, sort_indices),
+            "w": jnp.take(w, sort_indices),
+            "unsorted_x": x,
+            "indices": sort_indices}
+
+
+def quantile_func (x, sorted_samples, cumulative_weights):
     """
-    sorted_x, sorted_w = jax.lax.sort_key_val(x, weights)
-    return {"x": sorted_x, "w": sorted_w}
+    x: vector of points to evaluate cdf
+    cdf: {"x": sorted samples
+          "w": cumulative sum of weights}
+    """
+    cdf_fn = jax.vmap(lambda y: cumulative_weights[jnp.argmax(sorted_samples == y)])
+    return cdf_fn(x)
 
 
 def weighted_corr (X, weights):
@@ -59,11 +87,11 @@ def weighted_corr (X, weights):
     return corr_mat
 
 
-def marginal_cdf (x, data, weights):
-    r"""
-    Return quantile of x given data and weights
-    """
-    return sum(jnp.where(data < x, x = weights, y=0))
+# def marginal_cdf (x, data, weights):
+#     r"""
+#     Return quantile of x given data and weights
+#     """
+#     return sum(jnp.where(data <= x, x = weights, y=0))
 
 
 def lwgt_to_prob(logw):
