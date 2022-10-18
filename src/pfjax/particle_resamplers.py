@@ -73,65 +73,6 @@ def resample_gaussian_copula(key, x_particles_prev, logw):
     }
 
 
-# # # @partial(jax.jit, static_argnums=(3,))
-# def resample_gaussian_copula2(key, x_particles_prev, logw):
-#     r"""
-#     Particle resampler with Gaussian Copula distribution.
-
-#     Estimate and sample from a Gaussian copula as follows: 
-#         - Find Y = (F_1(X_1), ..., F_d(X_d))
-#         - rho_hat = weighted correlation of Y 
-#         - Sample Z ~ N(0, rho_hat) N times
-#         - Create U = (phi(Z_1), ..., phi(Z_d))
-#         - Use inverse-CDF of marginals to create samples: (inv-CDF(U_1), ..., inv-CDF(U_d))
-
-#     Args: 
-#         key: PRNG key
-#         x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
-#         logw: Vector of corresponding `n_particles` unnormalized log-weights.
-
-#     Returns: 
-#         A dictionary with elements:
-#             - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.  These are sampled with replacement from `x_particles_prev` with probability vector `exp(logw) / sum(exp(logw))`.
-#             - `ancestors`: Vector of `n_particles` integers between 0 and `n_particles-1` giving the index of each element of `x_particles_prev` corresponding to the elements of `x_particles`.
-#     """
-#     p_shape = x_particles_prev.shape
-#     n_particles = p_shape[0]
-#     x_particles = x_particles_prev.reshape((n_particles, -1))
-#     d = x_particles.shape[-1]
-#     prob = lwgt_to_prob(logw)
-
-#     # estimate correlation matrix: 
-#     Y = jax.vmap(
-#         lambda x: 
-#         jax.vmap(
-#             marginal_cdf,
-#             in_axes = (0, None, None)
-#         )(x, x, prob),
-#         in_axes = (1))(x_particles)
-#     rho_hat = weighted_corr(Y, weights = prob)
-
-#     # gaussian copula: 
-#     Z = random.multivariate_normal(key=key, mean = jnp.zeros(d), cov = rho_hat, shape = (n_particles,))
-#     U = jax.scipy.stats.norm.cdf(Z)
-
-#     sorted_marginals = jax.vmap(
-#         argsort_marginal,
-#         in_axes = (-1, None)
-#     )(x_particles, prob)
-
-#     interpolated_weights = jax.vmap(interpolate_weights, in_axes = (0,))(sorted_marginals["w"])
-#     x_samples = jax.vmap(
-#         lambda x, w, u: jax.vmap(
-#             continuous_cdf,
-#             in_axes= (None, None, 0)
-#         )(x, w, u),
-#         in_axes = (0, 0, 1))(sorted_marginals["x"], interpolated_weights, U)
-
-#     return {
-#         "x_particles": jnp.reshape(jnp.transpose(x_samples), newshape=p_shape)
-#     }
-
 
 def resample_multinomial(key, x_particles_prev, logw):
     r"""
