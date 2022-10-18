@@ -11,8 +11,8 @@ from ott.geometry import pointcloud
 from ott.core import sinkhorn
 from ott.tools import transport
 import pfjax as pf
-import pfjax.experimental.particle_filter as pfex
-from pfjax.particle_resamplers import resample_ot
+# import pfjax.experimental.particle_filter as pfex
+from pfjax.particle_resamplers import resample_ot, resample_multinomial
 from pfjax.models.lotvol_model import LotVolModel
 
 key = random.PRNGKey(0)
@@ -40,7 +40,7 @@ n_particles = 100
 
 
 def particle_filter(theta, y_meas, key):
-    return pfex.particle_filter(
+    return pf.particle_filter(
         model=lv_model,
         key=key,
         theta=theta,
@@ -49,21 +49,91 @@ def particle_filter(theta, y_meas, key):
         score=False,
         fisher=False,
         history=True,
-        resampler=pf.resample_multinomial
+        resampler=resample_multinomial
     )
 
 
 pf_out = jax.jit(particle_filter)(theta=theta, y_meas=y_meas[0:2], key=key)
 
+# simplified ot interface: n_iterations and epsilon provided as constants
 epsilon = jnp.array(1.0)
 n_iterations = 10
-jax.jit(resample_ot, static_argnames="sinkhorn_kwargs")(
+
+
+# unjitted
+def resample_ot_simple(x_particles_prev, logw, key):
+    return resample_ot(
+        x_particles_prev=x_particles_prev,
+        logw=logw,
+        key=key,
+        sinkhorn_kwargs={"min_iterations": n_iterations,
+                         "max_iterations": n_iterations},
+        pointcloud_kwargs={"epsilon": epsilon}
+    )
+
+
+%timeit resample_ot_simple(x_particles_prev=pf_out["x_particles"][0], logw=pf_out["logw"][0], key=key)
+
+# jitted
+%timeit jax.jit(resample_ot_simple)(x_particles_prev=pf_out["x_particles"][0], logw=pf_out["logw"][0], key=key)
+
+# try jitting a different way
+# first unjitted
+partial(resample_ot,
+        sinkhorn_kwargs={"min_iterations": n_iterations,
+                         "max_iterations": n_iterations},
+        pointcloud_kwargs={"epsilon": epsilon})(
+            x_particles_prev=pf_out["x_particles"][0],
+            logw=pf_out["logw"][0],
+            key=key
+)
+
+# now jitted
+jax.jit(partial(resample_ot,
+                sinkhorn_kwargs={"min_iterations": n_iterations,
+                                 "max_iterations": n_iterations},
+                pointcloud_kwargs={"epsilon": epsilon}))(
+    x_particles_prev=pf_out["x_particles"][0],
+    logw=pf_out["logw"][0],
+    key=key
+)
+
+jax.jit(partial(resample_ot,
+                sinkhorn_kwargs={"min_iterations": n_iterations,
+                                 "max_iterations": n_iterations}))(
+    x_particles_prev=pf_out["x_particles"][0],
+    logw=pf_out["logw"][0],
+    key=key,
+)
+jax.jit(resample_ot)(
     x_particles_prev=pf_out["x_particles"][0],
     logw=pf_out["logw"][0],
     key=key,
     sinkhorn_kwargs={"min_iterations": n_iterations,
                      "max_iterations": n_iterations}
     # pointcloud_kwargs={"epsilon": epsilon}
+)
+
+# unjitted
+
+
+# jitted
+@jax.jit
+def resample_jit(x_particles_prev, logw, key):
+    return resample_ot(
+        x_particles_prev=x_particles_prev,
+        logw=logw,
+        key=key,
+        sinkhorn_kwargs={"min_iterations": n_iterations,
+                         "max_iterations": n_iterations}
+        # pointcloud_kwargs={"epsilon": epsilon}
+    )
+
+
+resample_jit(
+    x_particles_prev=pf_out["x_particles"][0],
+    logw=pf_out["logw"][0],
+    key=key
 )
 
 # --- check ott vs custom sinkhorn algorithm -----------------------------------

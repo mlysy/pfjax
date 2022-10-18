@@ -30,7 +30,8 @@ copyright = 'Martin Lysy 2022'
 author = __author__
 
 # The full version, including alpha/beta/rc tags
-release = __version__
+version = __version__
+release = version
 
 # -- General configuration ---------------------------------------------------
 
@@ -39,10 +40,12 @@ release = __version__
 # ones.
 extensions = [
     "myst_nb",
+    # "myst_parser",
     "autoapi.extension",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
-    "sphinx.ext.mathjax"
+    "sphinx.ext.mathjax",
+    "sphinxcontrib.bibtex"
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -65,7 +68,23 @@ html_theme = 'sphinx_rtd_theme'
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 
+
+# A list of CSS files. The entry must be a filename string or a tuple
+# containing the filename string and the attributes dictionary. The filename
+# must be relative to the html_static_path, or a full URI with scheme like
+# https://example.org/style.css. The attributes is used for attributes
+# of <link> tag. It defaults to an empty list.
+html_css_files = [
+    'css/custom.css',
+]
+
 # -- Options for myst-nb -----------------------------------------------------
+
+
+nb_custom_formats = {
+    ".md": ["jupytext.reads", {"fmt": "md"}]
+}
+
 
 myst_enable_extensions = [
     "amsmath",
@@ -75,10 +94,10 @@ myst_enable_extensions = [
     "html_image",
 ]
 
+myst_title_to_header = True
+
 # convert latexdefs.tex to mathjax format
-
 mathjax3_config = {'tex': {'macros': {}}}
-
 with open('notebooks/latexdefs.tex', 'r') as f:
     for line in f:
         # newcommand macros
@@ -95,3 +114,8 @@ with open('notebooks/latexdefs.tex', 'r') as f:
         for macro in macros:
             mathjax3_config['tex']['macros'][macro[1]
                                              ] = "{\\operatorname{"+macro[2]+"}}"
+
+# bibtex options
+bibtex_bibfiles = ['notebooks/biblio.bib']
+bibtex_default_style = 'plain'
+bibtex_reference_style = 'label'

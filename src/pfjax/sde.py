@@ -201,7 +201,7 @@ class SDEModel(object):
         return True
         valid_x = jax.vmap(self.is_valid, in_axes=(0, None))(x, theta)
         nan_x = jnp.any(jnp.isnan(x), axis=1)
-        return jnp.alltrue(valid_x, where=~nan_x) and jnp.alltrue(~nan_x)
+        return jnp.alltrue(valid_x, where=~nan_x) & jnp.alltrue(~nan_x)
 
     def state_lpdf(self, x_curr, x_prev, theta):
         """
