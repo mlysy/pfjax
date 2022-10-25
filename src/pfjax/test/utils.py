@@ -439,7 +439,7 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
             alpha = jnp.sum(alpha, axis=0)
             hess = jnp.sum(gamma, axis=0) - jnp.outer(alpha, alpha)
             full["score"] = alpha
-            full["fisher"] = hess
+            full["fisher"] = -1. * hess
 
     return full
 

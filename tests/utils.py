@@ -465,7 +465,7 @@ def test_particle_filter_deriv(self):
                 max_diff["score"] = rel_err(_score, pf_out2["score"])
                 if case["fisher"]:
                     max_diff["fisher"] = rel_err(
-                        _hess - jnp.outer(_score, _score),
+                        -1. * (_hess - jnp.outer(_score, _score)),
                         pf_out2["fisher"]
                     )
             for k in max_diff.keys():
@@ -499,11 +499,11 @@ def test_particle_filter_rb_for(self):
         case = test_cases.iloc[i]
         with self.subTest(case=case):
             key, subkey = random.split(key)
-            # rb filter for-loop
+            # rb filter vmap
             pf_out1 = pf.particle_filter_rb(
                 model, subkey, y_meas, theta, n_particles, **case
             )
-            # rb filter vmap
+            # rb filter for-loop
             pf_out2 = test.particle_filter_rb_for(
                 model, subkey, y_meas, theta, n_particles, **case
             )
@@ -544,7 +544,7 @@ def test_particle_filter_rb_history(self):
                 history=False, **case
             )
             # rb filter history
-            pf_out2 = test.particle_filter_rb_for(
+            pf_out2 = pf.particle_filter_rb(
                 model, subkey, y_meas, theta, n_particles,
                 history=True, **case
             )
@@ -674,6 +674,7 @@ def test_particle_filter_rb_deriv(self):
     score2 = pf.utils.tree_mean(alpha_curr, logw_curr)
     fisher2 = pf.utils.tree_mean(gamma_curr, logw_curr) - \
         jnp.outer(score2, score2)
+    fisher2 = -1. * fisher2
     for i in range(n_cases):
         case = test_cases.iloc[i]
         with self.subTest(case=case):
