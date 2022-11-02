@@ -11,6 +11,26 @@ from ott.core import sinkhorn
 from .utils import lwgt_to_prob, weighted_corr, argsort_marginal, continuous_cdf, interpolate_weights, quantile_func
 
 
+def resample_continuous_bm (key, x_particles_prev, logw):
+    """
+    Continuous CDF resampler for the Brownian motion model with drift
+    """
+    p_shape = x_particles_prev.shape
+    n_particles = p_shape[0]
+    prob = lwgt_to_prob(logw)
+
+    sorted_marginals = jax.vmap(
+        argsort_marginal,
+        in_axes = (1, None)
+    )(x_particles, prob)
+
+    U = random.uniform(key, n_particles)
+    x_particles = jax.vmap(
+        lambda u: continuous_cdf(sorted_marginals["x"], sorted_marginals["w"], u), in_axes = (0))(U)
+    return {
+        "x_particles": x_particles,
+    }
+
 
 def resample_gaussian_copula(key, x_particles_prev, logw):
     r"""

@@ -13,7 +13,7 @@ def continuous_cdf (xs, pi, u):
     Return a sample from a continuous approximation of the ECDF of x.
 
     Args: 
-        - xs: Marginals
+        - xs: Sorted marginals
         - pi: interpolated weights of each x. Should be of length: len(xs) + 1
         - u: U(0,1)
     
