@@ -11,7 +11,7 @@ kernelspec:
   name: python3
 ---
 
-# Introduction to PFJAX
+# Introduction to PFJAX, Part I: State-Space Models
 
 **Martin Lysy -- University of Waterloo**
 
@@ -42,7 +42,13 @@ $$
 
 but this integral is typically intractable.  The state-of-the-art for approximating it is via [particle filtering methods](https://warwick.ac.uk/fac/sci/statistics/staff/academic-research/johansen/publications/dj11.pdf).  **PFJAX** provides several particle filters to estimate the marginal loglikelihood $\ell(\tth) = \log \Ell(\tth)$, along with its gradient $\nabla \ell(\tth) = \frac{\partial}{\partial \tth} \ell(\tth)$ and hessian $\nabla^2 \ell(\tth) = \frac{\partial^2}{\partial \tth \partial \tth'} \ell(\tth)$.  To do this efficiently, **PFJAX** uses JIT-compilation and automatic differentiation as provided by the [**JAX**](https://github.com/google/jax) library.
 
-In this tutorial, we'll show how to use **PFJAX** to:
+Using **PFJAX** typically involves two steps:
+
+1.  Specifying the model-specific components of the estimation procedure, e.g., the state-space model itself, and optional proposal functions $q(\xx_0 \mid \tth)$ and $r(\xx_{t} \mid \xx_{t-1}, \tth)$.  For more information on the later, please see [Part II](gradient_comparisons.md) of this tutorial.
+
+2.  Selecting among various particle filtering algorithms, depending on e.g., the model and the type of inference to be conducted (more on this in [Part II](gradient_comparisons.md)).
+
+This tutorial focus on step 1.  Specifically, we'll show how to use **PFJAX** to:
 
 - Create a state-space model class inheriting from `pfjax.BaseModel`.
 

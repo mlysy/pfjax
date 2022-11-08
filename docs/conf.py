@@ -26,8 +26,8 @@ autoapi_ignore = ["*/deprecated/*"]
 # -- Project information -----------------------------------------------------
 
 project = 'pfjax'
-copyright = 'Martin Lysy 2022'
 author = __author__
+copyright = '2022, ' + author
 
 # The full version, including alpha/beta/rc tags
 version = __version__
@@ -84,7 +84,6 @@ html_css_files = [
 nb_custom_formats = {
     ".md": ["jupytext.reads", {"fmt": "md"}]
 }
-
 
 myst_enable_extensions = [
     "amsmath",

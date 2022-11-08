@@ -6,8 +6,8 @@ from .base_model import BaseModel
 
 
 class BMModel(BaseModel):
-    def __init__(self, dt):
-        """
+    def __init__(self, dt, unconstrained_theta=False):
+        r"""
         Brownian motion state space model.
 
         The model is:
@@ -22,9 +22,17 @@ class BMModel(BaseModel):
 
         Args:
             dt: Interobservation time.
+            unconstrained_theta: Whether or not to use the unconstrained parameter scale `theta = (mu, log sigma, log tau)`.
         """
         super().__init__(bootstrap=True)
         self._dt = dt
+        self._unconstrained_theta = unconstrained_theta
+
+    def _constrain_theta(self, theta):
+        r"""
+        Convert `theta` to the constrained scale.
+        """
+        return jnp.array([theta[0], jnp.exp(theta[1]), jnp.exp(theta[2])])
 
     def state_lpdf(self, x_curr, x_prev, theta):
         r"""
@@ -38,6 +46,8 @@ class BMModel(BaseModel):
         Returns:
             The log-density of `p(x_curr | x_prev, theta)`.
         """
+        if self._unconstrained_theta:
+            theta = self._constrain_theta(theta)
         mu = theta[0]
         sigma = theta[1]
         return jnp.squeeze(
@@ -57,6 +67,8 @@ class BMModel(BaseModel):
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
+        if self._unconstrained_theta:
+            theta = self._constrain_theta(theta)
         mu = theta[0]
         sigma = theta[1]
         x_mean = x_prev + mu * self._dt
@@ -75,6 +87,8 @@ class BMModel(BaseModel):
         Returns:
             The log-density of `p(y_curr | x_curr, theta)`.
         """
+        if self._unconstrained_theta:
+            theta = self._constrain_theta(theta)
         tau = theta[2]
         return jnp.squeeze(
             jsp.stats.norm.logpdf(y_curr, loc=x_curr, scale=tau)
@@ -92,6 +106,8 @@ class BMModel(BaseModel):
         Returns:
             Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
         """
+        if self._unconstrained_theta:
+            theta = self._constrain_theta(theta)
         tau = theta[2]
         return x_curr + tau * random.normal(key=key)
 
@@ -137,6 +153,8 @@ class BMModel(BaseModel):
         Returns:
             The marginal loglikelihood `log p(y_{1:N} | theta, y_0)`.
         """
+        if self._unconstrained_theta:
+            theta = self._constrain_theta(theta)
         mu = theta[0]
         sigma2 = theta[1] * theta[1]
         tau2 = theta[2] * theta[2]

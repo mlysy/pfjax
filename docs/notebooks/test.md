@@ -38,7 +38,7 @@ x
 
 ## Cross-Referencing Test
 
-A review of particle filters is provided in {cite:t}`doucet_johansen09`, but it does not discuss score and hessian calculations {cite:p}`poyiadjis_etal11`.  In addition, please see [code](sec:code_test).
+A review of particle filters is provided in {cite:t}`doucet.johansen09`, but it does not discuss score and hessian calculations {cite:p}`poyiadjis.etal11`.  In addition, please see [code](sec:code_test).
 
 ## References
 

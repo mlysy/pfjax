@@ -32,8 +32,11 @@ def simulate(model, key, n_obs, x_init, theta):
         theta: Parameter value.
 
     Returns:
-        y_meas: The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
-        x_state: The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
+        A tuple with elements
+
+        - **y_meas** - The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
+
+        - **x_state** - The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
     """
     # lax.scan setup
     # scan function

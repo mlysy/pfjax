@@ -10,6 +10,108 @@ from jax import lax
 from jax.experimental.maps import xmap
 from .loglik_full import *
 
+# --- adaptive mwg class -------------------------------------------------------
+
+
+class AdaptiveMWG:
+    def __init__(self, n_params, adapt_max=.01, adapt_rate=.5):
+        r"""
+        Adaptive Metropolis-within-Gibbs.
+
+        Args:
+            n_params: The number of parameters to update per step.
+            adapt_max: Scalar or vector of `n_params` maximum adaptation amounts.
+            adapt_rate: Scalar or vector of `n_params` adaptation rates.
+        """
+        # fixed members
+        self._n_params = n_params
+        self._adapt_max = adapt_max
+        self._adapt_rate = adapt_rate
+        self._targ_acc = .44
+        # variable members (change with each call to update)
+        self._n_iter = 0.
+        self._accept_rate = jnp.zeros((self._n_params,))
+        self._n_accept = jnp.zeros((self._n_params,))
+
+    def adapt_sd(self, rw_sd):
+        r"""
+        Update random walk standard deviations.
+
+        Args:
+            rw_sd: Vector of `n_params` standard deviations for the random walk proposal on each parameter.
+
+        Returns:
+            Vector of updated random walk standard deviations.
+        """
+        delta = jnp.power(self._n_iter, -self._adapt_rate)
+        delta = jnp.minimum(delta, self._adapt_max)
+        low_acc = jnp.sign(self._targ_acc - self._accept_rate)
+        return jnp.exp(jnp.log(rw_sd) - delta * low_acc)
+
+    def update(self, key, logpost, param, rw_sd, param_order):
+        r"""
+        Update parameters via adaptive Metropolis-within-Gibbs.
+
+        Args:
+            key: PRNG key.
+            logpost: Function which takes a JAX array input `param` and returns a scalar corresponding to the logposterior at that input.
+            param: Current parameter vector.
+            rw_sd: Vector of length `n_params` standard deviations for the componentwise random walk proposal.
+            param_order: Vector of integers between 0 and `n_params-1` indicating the order in which to update the components of `param`.  Can use this to keep certain components fixed, randomize update order, etc.
+
+        Returns:
+            Tuple with elements
+
+            - **param** - Updated parameter vector.
+            - **rw_sd** - Updated vector of random walk standard deviations.
+            - **accept** - Boolean vector of length `n_params` indicating whether or not each proposal was accepted.
+        """
+        # lax.scan setup
+        def fun(carry, i):
+            lp_curr = carry["lp_curr"]
+            param_curr = carry["param_curr"]
+            key = carry["key"]
+            # 2 subkeys for each param: rw_jump and mh_accept
+            key, *subkeys = random.split(key, num=3)
+            # proposal
+            param_prop = param_curr.at[i].set(
+                param_curr[i] + rw_sd[i] * random.normal(key=subkeys[0])
+            )
+            # acceptance rate
+            lp_prop = logpost(param_prop)
+            lrate = lp_prop - lp_curr
+            # update parameter draw
+            acc = random.bernoulli(key=subkeys[1],
+                                   p=jnp.minimum(1.0, jnp.exp(lrate)))
+            res = {
+                "param_curr": param_curr.at[i].set(
+                    param_prop[i] * acc + param_curr[i] * (1-acc)
+                ),
+                "lp_curr": lp_prop * acc + lp_curr * (1-acc),
+                "accept": acc,
+                "key": key
+            }
+            return res, res
+        # scan initial value
+        init = {
+            "param_curr": param,
+            "lp_curr": logpost(param),
+            "accept": jnp.array(True),
+            "key": key
+        }
+        # scan itself
+        last, full = jax.lax.scan(fun, init, param_order)
+        param_next = last["param_curr"]
+        accept = full["accept"]
+        # update object internals
+        self._n_iter = self._n_iter + 1.
+        self._n_accept = self._n_accept + accept
+        self._accept_rate = (1. * self._n_accept) / self._n_iter
+        # output
+        rw_sd = self.adapt_sd(rw_sd)
+        return param_next, rw_sd, accept
+
+
 # --- a few priors -------------------------------------------------------------
 
 
@@ -123,9 +225,69 @@ def param_mwg_update(model, prior, key, theta, x_state, y_meas, rw_sd, theta_ord
     return last["theta_curr"], full["accept"]
 
 
+def mwg_update(key, logpost, param_curr, rw_sd, param_order):
+    r"""
+    Metropolis-within-Gibbs random walk update.
+
+    **TODO:**
+
+    - Integrate this with BlackJAX library.
+
+    Args:
+        key: PRNG key.
+        logpost: Function with argument signature `(param, **logpost_args)` returning the scalar-valued logposterior.
+        param_curr: Current parameter vector.
+        rw_sd: Vector of length `n_param = param.size` standard deviations for the componentwise random walk proposal.
+        param_order: Vector of integers between 0 and `n_param-1` indicating the order in which to update the components of `param`.  Can use this to keep certain components fixed.
+        logpost_args: Optional dictionary of additional arguments to `logpost()`.
+
+    Returns:
+        Tuple with elements
+
+        - **param_next** -  Updated parameter vector.
+        - **accept** - Boolean vector of size `param_order.size` indicating whether or not the proposal for that component was accepted. 
+    """
+    # lax.scan setup
+    def fun(carry, i):
+        lp_curr = carry["lp_curr"]
+        param_curr = carry["param_curr"]
+        key = carry["key"]
+        # 2 subkeys for each param: rw_jump and mh_accept
+        key, *subkeys = random.split(key, num=3)
+        # proposal
+        param_prop = param_curr.at[i].set(
+            param_curr[i] + rw_sd[i] * random.normal(key=subkeys[0])
+        )
+        # acceptance rate
+        lp_prop = logpost(param_prop)
+        lrate = lp_prop - lp_curr
+        # update parameter draw
+        acc = random.bernoulli(key=subkeys[1],
+                               p=jnp.minimum(1.0, jnp.exp(lrate)))
+        res = {
+            "param_curr": param_curr.at[i].set(
+                param_prop[i] * acc + param_curr[i] * (1-acc)
+            ),
+            "lp_curr": lp_prop * acc + lp_curr * (1-acc),
+            "accept": acc,
+            "key": key
+        }
+        return res, res
+    # scan initial value
+    init = {
+        "param_curr": param_curr,
+        "lp_curr": logpost(param),
+        "accept": jnp.array(True),
+        "key": key
+    }
+    # scan itself
+    last, full = lax.scan(fun, init, param_order)
+    return last["param_curr"], full["accept"]
+
+
 def mwg_adapt(rw_sd, accept_rate, n_iter,
               adapt_max=.01, adapt_rate=.5):
-    """
+    r"""
     Adapt random walk jump sizes of MWG proposals.
 
     Given a vector of random walk jump sizes, increase or decrease each of them depending on whether the cumulative acceptance rate is above or below 0.44.  The amount of change on log-scale is 
@@ -150,3 +312,64 @@ def mwg_adapt(rw_sd, accept_rate, n_iter,
     delta = jnp.minimum(delta, adapt_max)
     low_acc = jnp.sign(targ_acc - accept_rate)
     return jnp.exp(jnp.log(rw_sd) - delta * low_acc)
+
+
+def adaptive_mwg_update(key, logpost, param_curr, rw_sd, param_order,
+                        accept_rate, n_iter, adapt_max=.01, adapt_rate=.5):
+    r"""
+    Adaptive Metropolis-within-Gibbs random walk update.
+
+    Args:
+        key: PRNG key.
+        logpost: Function with argument signature `(param, **logpost_args)` returning the scalar-valued logposterior.
+        param_curr: Current parameter vector.
+        rw_sd: Vector of length `n_params = param_curr.size` standard deviations for the componentwise random walk proposal.
+        param_order: Vector of integers between 0 and `n_params-1` indicating the order in which to update the components of `param`.  Can use this to keep certain components fixed.
+        accept_rate: Vector of `n_params` cumulative acceptance rates (i.e., between 0 and 1).
+        n_iter: Number of MCMC iterations so far.
+        adapt_max: Scalar or vector of `n_params` maximum adaptation amounts.
+        adapt_rate: Scalar or vector of `n_params` adaptation rates.
+
+    Returns:
+        Tuple with elements
+
+        - **param_next** -  Updated parameter vector.
+        - **rw_sd** - Updated vector of standard deviations.
+        - **n_accept** - Vecor of size `n_params` indicating cumulatively how many times each parameter draw has been accepted so far. 
+    """
+    # lax.scan setup
+    def fun(carry, i):
+        lp_curr = carry["lp_curr"]
+        param_curr = carry["param_curr"]
+        key = carry["key"]
+        # 2 subkeys for each param: rw_jump and mh_accept
+        key, *subkeys = random.split(key, num=3)
+        # proposal
+        param_prop = param_curr.at[i].set(
+            param_curr[i] + rw_sd[i] * random.normal(key=subkeys[0])
+        )
+        # acceptance rate
+        lp_prop = logpost(param_prop, **logpost_args)
+        lrate = lp_prop - lp_curr
+        # update parameter draw
+        acc = random.bernoulli(key=subkeys[1],
+                               p=jnp.minimum(1.0, jnp.exp(lrate)))
+        res = {
+            "param_curr": param_curr.at[i].set(
+                param_prop[i] * acc + param_curr[i] * (1-acc)
+            ),
+            "lp_curr": lp_prop * acc + lp_curr * (1-acc),
+            "accept": acc,
+            "key": key
+        }
+        return res, res
+    # scan initial value
+    init = {
+        "param_curr": param_curr,
+        "lp_curr": logpost(param, **logpost_args),
+        "accept": jnp.array(True),
+        "key": key
+    }
+    # scan itself
+    last, full = lax.scan(fun, init, param_order)
+    return last["param_curr"], full["accept"]

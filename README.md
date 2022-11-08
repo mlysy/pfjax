@@ -1,10 +1,17 @@
-# **pfjax**: Particle Filtering in JAX
+# **PFJAX**: Particle Filtering in JAX
+
+[**Quickstart**](docs/notebooks/pfjax.md)
+| [**Installation**](#installation)
+| [**Documentation**](#documentation)
+| [**Developers**](#developers)
 
 ---
 
-## What is pfjax?
+## What is **PFJAX**?
 
-- An [introduction](docs/notebooks/pfjax.ipynb) to **pjfax**.
+**PFJAX** is a collection of tools for estimating the parameters of state-space models using particle filtering methods, with  [**JAX**](https://jax.readthedocs.io/) as the backend for JIT-compiling models and automatic differentiation.
+
+---
 
 ## Installation
 
@@ -17,10 +24,20 @@ pip install .
 ``` 
 
 ## Quickstart 
-- An [example](docs/notebooks/lotvol.ipynb) of inference with **pfjax** for a stochastic differential equation model.
 
-### Brownian Motion
+A brief [introduction to **PFJAX**](docs/notebooks/pfjax.md).
 
+## Documentation
+
+This is a work in progress!  Current modules include:
+
+- The [quickstart guide](docs/notebooks/pfjax.md).
+
+- A [comparison of gradient and hessian algorithms](docs/notebooks/gradient_comparisons.md) based on particle filters, which in turn are used for conducting parameter inference.
+
+- An example of parameter inference using [stochastic optimization](docs/notebooks/stochopt_tutorial.md).
+
+- An example of parameter inference using [Markov chain Monte Carlo]()
 
 ## Testing
 

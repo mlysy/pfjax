@@ -29,11 +29,17 @@ def particle_filter(model, key, y_meas, theta, n_particles,
 
     Args:
         model: Object specifying the state-space model having the following methods:
+
             - `pf_init : (key, y_init, theta) -> (x_particles, logw)`: For sampling and calculating log-weights for the initial latent variable.
+
             - `pf_step : (key, x_prev, y_curr, theta) -> (x_particles, logw)`: For sampling and calculating log-weights for each subsequent latent variable.
+
             - `pf_aux : (x_prev, y_curr, theta) -> logw`: Optional method providing look-forward log-weights of the auxillary particle filter.
+
             - `state_lpdf : (x_curr, x_prev, theta) -> lpdf`: Optional method specifying the log-density of the state model.  Only required if `score or fisher == True`.
+
             - `meas_lpdf : (y_curr, x_curr, theta) -> lpdf`: Optional method specifying the log-density of the measurement model.  Only required if `score or fisher == True`.
+
         key: PRNG key.
         y_meas: JAX array with leading dimension `n_obs` containing the measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
         theta: Parameter value.
@@ -44,13 +50,14 @@ def particle_filter(model, key, y_meas, theta, n_particles,
         history: Whether to output the history of the filter or only the last step.
 
     Returns:
-        A dictionary with elements:
-            - `x_particles`: JAX array containing the state variable particles at the last time point (leading dimension `n_particles`) or at all time points (leading dimensions `(n_obs, n_particles)` if `history=True`.
-            - `logw`: JAX array containing unnormalized log weights at the last time point (dimensions `n_particles`) or at all time points (dimensions (n_obs, n_particles)`) if `history=True`.
-            - `loglik`: The particle filter loglikelihood evaluated at `theta`.
-            - `score`: Optional 1D JAX array of size `n_theta = length(theta)` containing the estimated score at `theta`.
-            - `fisher`: Optional JAX array of shape `(n_theta, n_theta)` containing the estimated observed fisher information at `theta`.
-            - `resample_out`: If `history=True`, a dictionary of additional outputs from `resampler` function.  The leading dimension of each element of the dictionary has leading dimension `n_obs-1`, since these additional outputs do not apply to the first time point `t=0`.
+        A dictionary with elements
+
+        - **x_particles** - JAX array containing the state variable particles at the last time point (leading dimension `n_particles`) or at all time points (leading dimensions `(n_obs, n_particles)` if `history=True`.
+        - **logw** - JAX array containing unnormalized log weights at the last time point (dimensions `n_particles`) or at all time points (dimensions (n_obs, n_particles)`) if `history=True`.
+        - **loglik** - The particle filter loglikelihood evaluated at `theta`.
+        - **score** - Optional 1D JAX array of size `n_theta = length(theta)` containing the estimated score at `theta`.
+        - **fisher** - Optional JAX array of shape `(n_theta, n_theta)` containing the estimated observed fisher information at `theta`.
+        - **resample_out** - If `history=True`, a dictionary of additional outputs from `resampler` function.  The leading dimension of each element of the dictionary has leading dimension `n_obs-1`, since these additional outputs do not apply to the first time point `t=0`.
     """
     n_obs = y_meas.shape[0]
     has_acc = score or fisher

@@ -1,24 +1,24 @@
 import numpy as np
+import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
 import pfjax as pf
 import pfjax.mcmc as mcmc
+from pfjax.models import BMModel
 # import particle_filter as pf
 # import bm_model as bm
 
 
 key = random.PRNGKey(0)
 # parameter values
-mu = 5
-sigma = 1
-tau = .1
+mu, sigma, tau = 5., 1., .1
 theta = jnp.array([mu, sigma, tau])
 # data specification
 dt = .1
 n_obs = 10
-x_init = jnp.array([0.])
-bm_model = pf.BMModel(dt=dt)
+x_init = jnp.array(0.)
+bm_model = BMModel(dt=dt)
 # simulate
 key, subkey = random.split(key)
 y_meas, x_state = pf.simulate(bm_model, subkey, n_obs, x_init, theta)
@@ -62,3 +62,28 @@ print("theta1 = {}".format(theta1))
 print("theta2 = {}".format(theta2))
 
 breakpoint()
+
+
+# -------------------------------------------------------------------------------
+# ok let's see if it's possible to jit-compile functions through **kwargs.
+
+def bar(x, y):
+    return x + y
+
+
+def mcmc_update(theta, logpost, logpost_args={}):
+    return logpost(theta, **logpost_args)
+
+
+@jax.jit
+def baz(x, y):
+    return mcmc_update(theta=x, logpost=bar, logpost_args={"y": y})
+
+
+baz(x=3., y=5.)
+
+# ok can we jit foo directly?
+
+mcmc_update_jit = jax.jit(mcmc_update, static_argnums=1)
+
+mcmc_update_jit(x=3., bar=bar, bar_args={"y": 5.})
