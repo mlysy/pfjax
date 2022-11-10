@@ -124,7 +124,7 @@ plt.show()
 
 - The update for $p(\xx_{0:T} \mid \tth, \yy_{0:T})$ uses the functions `pfjax.particle_filter()` and `pfjax.particle_smooth()`.
 
-- The update for $p(\tth \mid \xx_{0:T}, \yy_{0:T})$ uses the adaptive Metropolis-within-Gibbs sampler provided by the class `pfjax.mcmc.AdaptiveMWG`.
+- The update for $p(\tth \mid \xx_{0:T}, \yy_{0:T})$ uses the adaptive Metropolis-within-Gibbs sampler provided by the class `pfjax.mcmc.AdaptiveMWG`.  The design of this sampler is heavily inspired by [**BlackJAX**](https://blackjax-devs.github.io/blackjax/index.html).  In particular, the MWG update step `pfjax.mcmc.AdaptiveMWG.update()` takes a `state` dictionary consisting of $\tth$ and the current value of the random walk standard deviations (and a few other things), and updates both of these together.
 
 ```{code-cell} ipython3
 def particle_gibbs(key, n_iter, theta_init, x_state_init, n_particles, rw_sd):
@@ -148,24 +148,22 @@ def particle_gibbs(key, n_iter, theta_init, x_state_init, n_particles, rw_sd):
     """
     # initialize the sampler
     n_params = theta_init.size
-    amwg = pfjax.mcmc.AdaptiveMWG(n_params=n_params)
-    # order in which to update the parameters
-    param_order = jnp.arange(n_params)
-    # initial state of sampler
+    amwg = pfjax.mcmc.AdaptiveMWG()
+    # initial state of MWG sampler
     initial_state = {
-        "theta": theta_init,
+        "theta_state": amwg.init(position=theta_init, rw_sd = rw_sd),
         "x_state": x_state_init,
-        "rw_sd": rw_sd,
-        "n_accept": jnp.zeros((n_params,))
+        "accept": jnp.zeros((n_params,))
     }
 
-    def mcmc_update(key, theta, x_state, rw_sd):
+    def mcmc_update(key, theta_state, x_state):
         """
         MCMC update for parameters and latent variables.
 
         Use Adaptive MWG for the former and a particle filter for the latter.
         """
         keys = jax.random.split(key, num=3) # two for particle_filter, one for amwg
+        theta = theta_state["position"] # the value of theta
         # latent variable update
         pf_out = pf.particle_filter(
             model=bm_model,
@@ -193,50 +191,47 @@ def particle_gibbs(key, n_iter, theta_init, x_state_init, n_particles, rw_sd):
                 x_state=x_state,
                 y_meas=y_meas
             )
-        theta, rw_sd, accept = amwg.update(
+        theta_state, accept = amwg.update(
             key=keys[2],
-            logpost=logpost, 
-            param=theta, 
-            rw_sd=rw_sd,
-            param_order=param_order
+            state=theta_state,
+            logprob_fn=logpost
         )
-        return theta, x_state, rw_sd, accept
+        return theta_state, x_state, accept
 
     @jax.jit
     def step(state, key):
         """
         One step of MCMC update.
         """
-        theta, x_state, rw_sd, accept = mcmc_update(
+        theta_state, x_state, accept = mcmc_update(
             key=key,
-            theta=state["theta"],
-            x_state=state["x_state"],
-            rw_sd=state["rw_sd"]
+            theta_state=state["theta_state"],
+            x_state=state["x_state"]
         )
         new_state = {
-            "theta": theta, 
+            "theta_state": theta_state, 
             "x_state": x_state, 
-            "rw_sd": rw_sd, 
-            "n_accept": state["n_accept"] + accept
+            "accept": state["accept"] + accept
         }
         stack_state = {
-            "theta": theta, 
+            "theta": theta_state["position"], 
             "x_state": x_state
         }
         return new_state, stack_state
     
     keys = jax.random.split(key, num=n_iter)
-    state_curr, out = jax.lax.scan(step, initial_state, keys)
-    out["accept_rate"] = (1.0 * state_curr["n_accept"]) / n_iter
+    state, out = jax.lax.scan(step, initial_state, keys)
+    # calculate acceptance rate
+    out["accept_rate"] = (1.0 * state["accept"]) / n_iter
     return out
 ```
 
 ### Run Sampler
 
 ```{code-cell} ipython3
-n_particles = 100
+n_particles = 50
 rw_sd = 1. * jnp.array([1., 1., 1.])
-n_iter = 10000
+n_iter = 20_000
 
 key, subkey = jax.random.split(key)
 pg_out = particle_gibbs(
@@ -247,10 +242,8 @@ pg_out = particle_gibbs(
     n_particles=n_particles, 
     rw_sd=rw_sd
 )
-```
 
-```{code-cell} ipython3
-pg_out["accept_rate"] # a bit high...
+pg_out["accept_rate"] # should be close to 0.44
 ```
 
 ### Plot MCMC Output
@@ -279,11 +272,9 @@ plt.ylabel("Value")
 plt.show()
 ```
 
-Histograms for the sampled values of each parameter is shown below.
+Histograms for the sampled values of each parameter are shown below.
 
 ```{code-cell} ipython3
-# fig, axes = plt.subplots(1, 3, sharex=True, figsize=(18,6))
-
 plot_pg = pd.DataFrame({"iter": jnp.arange(n_iter),
                          "mu": pg_out['theta'][:,0],
                          "sigma": jnp.exp(pg_out['theta'][:,1]),
@@ -301,15 +292,6 @@ hp.set(xlabel=None)
 # add true parameter values
 for ax, theta in zip(hp.axes.flat, jnp.array([mu, sigma, tau])):
     ax.axvline(theta, color="black")
-
-# sns.distplot(plot_par["mu"], ax=axes[0])
-# axes[0].axvline(theta_true[0], color="black")
-
-# sns.distplot(plot_par["sigma"], ax=axes[1])
-# axes[1].axvline(jnp.exp(theta_true[1]), color="black")
-
-# sns.distplot(plot_par["tau"], ax=axes[2])
-# axes[2].axvline(jnp.exp(theta_true[2]), color="black")
 ```
 
 ### Comparison to True Posterior

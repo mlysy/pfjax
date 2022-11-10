@@ -20,9 +20,6 @@
 import re
 from pfjax import __version__, __author__
 
-autoapi_dirs = ["../src"]  # location to parse for API reference
-autoapi_ignore = ["*/deprecated/*"]
-
 # -- Project information -----------------------------------------------------
 
 project = 'pfjax'
@@ -78,12 +75,21 @@ html_css_files = [
     'css/custom.css',
 ]
 
+# --- Options for autoapi ------------------------------------------------------
+
+autoapi_dirs = ["../src"]  # location to parse for API reference
+autoapi_ignore = ["*/deprecated/*"]
+
 # -- Options for myst-nb -----------------------------------------------------
 
 
 nb_custom_formats = {
     ".md": ["jupytext.reads", {"fmt": "md"}]
 }
+
+nb_execution_mode = "cache"
+
+nb_execution_timeout = -1
 
 myst_enable_extensions = [
     "amsmath",

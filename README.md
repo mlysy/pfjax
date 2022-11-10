@@ -15,7 +15,7 @@
 
 ## Installation
 
-This will clone the repo into a subfolder `pfjax` of where you issue the `git clone` command, then install the package from source.
+This will clone the repo into a subfolder `pfjax`, from where you (i) issue the `git clone` command and (ii) install the package from source.
 
 ```bash
 git clone https://github.com/mlysy/pfjax
@@ -37,9 +37,13 @@ This is a work in progress!  Current modules include:
 
 - An example of parameter inference using [stochastic optimization](docs/notebooks/stochopt_tutorial.md).
 
-- An example of parameter inference using [Markov chain Monte Carlo]()
+- An example of parameter inference using [Markov chain Monte Carlo](docs/notebooks/mcmc_tutorial).
 
-## Testing
+- The API reference documentation.
+
+## Developers
+
+### Testing
 
 From within `pfjax/tests`:
 
@@ -49,13 +53,15 @@ python3 -m unittest -v
 
 Or, install [**tox**](https://tox.wiki/en/latest/index.html), then from within `pfjax` at the command line: `tox`.
 
-## Documentation
+### Building Documentation
 
 From within `pfjax/docs`:
 
 ```bash
+# regular build
 make html
-# or alternatively
+
+# clean build incl. repeating cached computations
 make clean html
 ```
 
