@@ -81,9 +81,9 @@ autoapi_dirs = ["../src"]  # location to parse for API reference
 
 autoapi_ignore = [
     "*/deprecated/*",
-    "*/experimental/*",
-    "*/test/*",
-    "*/__metadata__.py"
+    "*/pfjax/experimental/*",
+    "*/pfjax/test/*",
+    "*/pfjax/__metadata__.py"
 ]
 
 autoapi_options = [
