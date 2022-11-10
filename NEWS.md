@@ -8,9 +8,11 @@
 
 - [x] `particle_resample()`, `particle_resample_mvn()`, etc. -> `resample_multinomial()`, `resample_mvn()`, etc.
 
-- [ ] `logw` -> `lwgt`.
+- [x] ~~`logw` -> `lwgt`.~~
 
-- [x] `_lweight_to_prob()` -> `lwgt_to_prob()`.
+	**Update:** Decided against this.  Even though `lwgt` is slightly more informative, its harder to pronounce and therefore more cumbersome.
+
+- [x] `_lweight_to_prob()` -> `logw_to_prob()`.
 
 - [x] `particle_sampler` argument to `particle_filter()` -> `resampler`.
 

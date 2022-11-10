@@ -243,7 +243,7 @@ def particle_filter(model, key, y_meas, theta, n_particles,
             # full["score"] = jnp.sum(alpha, axis=0)
         else:
             # calculate score and fisher information
-            prob = lwgt_to_prob(last["logw"])
+            prob = logw_to_prob(last["logw"])
             alpha = last["alpha"]
             beta = last["beta"]
             alpha, gamma = jax.vmap(
@@ -520,7 +520,7 @@ def particle_filter_rb(model, key, y_meas, theta, n_particles,
             full["score"] = tree_mean(last["alpha"], last["logw_bar"])
         else:
             # calculate score and fisher information
-            prob = lwgt_to_prob(last["logw_bar"])
+            prob = logw_to_prob(last["logw_bar"])
             alpha = last["alpha"]
             beta = last["beta"]
             alpha, gamma = jax.vmap(

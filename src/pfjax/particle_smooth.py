@@ -5,7 +5,7 @@ import jax.tree_util as jtu
 from jax import random
 from jax import lax
 # from jax.experimental.maps import xmap
-from .utils import lwgt_to_prob
+from .utils import logw_to_prob
 
 
 def particle_smooth(key, logw, x_particles, ancestors):
@@ -23,7 +23,7 @@ def particle_smooth(key, logw, x_particles, ancestors):
     """
     n_particles = logw.size
     n_obs = x_particles.shape[0]
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
     # wgt = jnp.exp(logw - jnp.max(logw))
     # prob = wgt / jnp.sum(wgt)
 

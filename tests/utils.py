@@ -455,7 +455,7 @@ def test_particle_filter_deriv(self):
                     accumulator=accumulate_deriv,
                     mean=False
                 )
-                prob = utils.lwgt_to_prob(logw)
+                prob = utils.logw_to_prob(logw)
                 _score = jax.vmap(jnp.multiply)(prob, alpha)
                 _hess = jax.vmap(
                     lambda p, a, b: p * (jnp.outer(a, a) + b)

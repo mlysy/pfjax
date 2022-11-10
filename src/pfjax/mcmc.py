@@ -10,87 +10,95 @@ from jax import lax
 
 
 class AdaptiveMWG:
+    r"""
+    Adaptive Metropolis-within-Gibbs.
+
+    **Notes:**
+
+    Design heavily inspired by [BlackJAX](https://blackjax-devs.github.io/blackjax/index.html).  Perhaps to be fully integrated with it some day.
+
+    Args:
+        adapt_max: Scalar or vector of maximum adaptation amounts.
+        adapt_rate: Scalar or vector of adaptation rates.
+    """
+
     def __init__(self, adapt_max=.01, adapt_rate=.5):
-        r"""
-        Adaptive Metropolis-within-Gibbs.
-
-        Notes:
-
-        - Design heavily inspired by [BlackJAX](https://blackjax-devs.github.io/blackjax/index.html).  Perhaps to be fully integrated with it some day.
-
-        Args:
-            adapt_max: Scalar or vector of maximum adaptation amounts.
-            adapt_rate: Scalar or vector of adaptation rates.
-        """
         # self._n_params = n_params
         self._adapt_max = adapt_max
         self._adapt_rate = adapt_rate
         self._targ_acc = .44
 
-    def adapt_sd(self, rw_sd, n_iter, accept_rate):
+    def adapt(self, pars, accept):
         r"""
         Update random walk standard deviations.
 
         Args:
-            rw_sd: Vector of standard deviations for the random walk proposal on each component of `position`.
-            n_iter: Number of MWG iterations (cycles) so far.
-            accept_rate: Vector of `n_params` acceptance rates.
+            pars: Adaptation parameters.  A dictionary with elements
+
+                - `rw_sd`: Vector of standard deviations for the random walk proposal on each component of `position`.
+                - `n_iter`: Number of MWG iterations (cycles) so far.
+                - `n_accept`: The number of accepted draws per component so far.
+
+            accept: Boolean vector indicating whether or not the latest proposal was accepted.
 
         Returns:
-            Vector of updated random walk standard deviations.
+            Dictionary with elements
+
+            - **rw_sd** - Vector of updated random walk standard deviations.
+            - **n_iter** - Updated number of iterations, i.e., ``n_iter += 1``.
+            - **n_accept** - Updated number of accepted draws, i.e., ``n_accept += accept``.
         """
+        rw_sd = pars["rw_sd"]
+        n_iter = pars["n_iter"] + 1.
+        n_accept = pars["n_accept"] + accept
+        accept_rate = (1. * n_accept) / n_iter
         delta = jnp.power(n_iter, -self._adapt_rate)
         delta = jnp.minimum(delta, self._adapt_max)
         low_acc = jnp.sign(self._targ_acc - accept_rate)
-        return jnp.exp(jnp.log(rw_sd) - delta * low_acc)
+        return {
+            "rw_sd": jnp.exp(jnp.log(rw_sd) - delta * low_acc),
+            "n_iter": n_iter,
+            "n_accept": n_accept
+        }
 
-    def init(self, position, rw_sd):
+    def init(self, rw_sd):
         r"""
-        Initialize the state of the sampler.
+        Initialize the adaptation parameters.
 
         Args:
-            position: The initial position of the sampler.
-            rw_sd: A vector of the same length as `position` of initial standard deviations for the componentwise random walk proposal.
+            rw_sd: A vector of initial standard deviations for the componentwise random walk proposal.
 
         Returns:
             A dictionary with elements
 
-                - `position`: The initial position of the sampler.
                 - `rw_sd`: The vector of  standard deviations for the componentwise random walk proposal.
                 - `n_iter`: The number of MWG steps taken so far, which is zero.
-                - `n_accept`: The number of draws of each component accepted so far, which is ``jnp.zeros_like(position)``.
+                - `n_accept`: The number of draws of each component accepted so far, which is ``jnp.zeros_like(rw_sd)``.
         """
         return {
-            "position": position,
             "rw_sd": rw_sd,
             "n_iter": 0.,
-            "n_accept": jnp.zeros_like(position)
+            "n_accept": jnp.zeros_like(rw_sd)
         }
 
-    def update(self, key, state, logprob_fn, order=None):
+    def step(self, key, position, logprob_fn, rw_sd, order=None):
         r"""
         Update parameters via adaptive Metropolis-within-Gibbs.
 
         Args:
             key: PRNG key.
-            state: The current state of the sampler.  A dictionary with elements
-
-                - `position`: The current position of the sampler.
-                - `rw_sd`: Vector of standard deviations for the componentwise random walk proposal.
-                - `n_iter`: The number of MWG steps taken so far.
-                - `n_accept`: The number of draws of each component accepted so far.
-
+            position: The current position of the sampler.
             logprob_fn: Function which takes a JAX array input `position` and returns a scalar corresponding to the log of the probability density at that input.
+            rw_sd: Vector of standard deviations for the componentwise random walk proposal.
             order: Optional vector of integers between 0 and ``position.size`` indicating the order in which to update the components of `position`.  Can use this to keep certain components fixed, randomize update order, etc.
 
         Returns:
             Tuple with elements
 
-            - **state** - The updated state dictionary.
+            - **position** - The updated position.
             - **accept** - Boolean vector of length ``position.size`` indicating whether or not each proposal was accepted.
         """
-        n_pos = state["position"].size  # number of components to update
-        rw_sd = state["rw_sd"]
+        n_pos = position.size  # number of components to update
         if order is None:
             order = jnp.arange(n_pos)
 
@@ -123,26 +131,12 @@ class AdaptiveMWG:
             return res, stack
         # scan initial value
         init = {
-            "position": state["position"],
-            "lp": logprob_fn(state["position"]),
+            "position": position,
+            "lp": logprob_fn(position),
             "key": key
         }
         # scan itself
         last, full = jax.lax.scan(fun, init, order)
         position = last["position"]
         accept = full["accept"]
-        # new adapt_pars
-        n_iter = state["n_iter"] + 1.
-        n_accept = state["n_accept"] + accept
-        rw_sd = self.adapt_sd(
-            rw_sd=rw_sd,
-            n_iter=n_iter,
-            accept_rate=(1. * n_accept) / n_iter
-        )
-        state = {
-            "position": position,
-            "rw_sd": rw_sd,
-            "n_iter": n_iter,
-            "n_accept": n_accept
-        }
-        return state, accept
+        return position, accept

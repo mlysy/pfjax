@@ -124,7 +124,7 @@ plt.show()
 
 - The update for $p(\xx_{0:T} \mid \tth, \yy_{0:T})$ uses the functions `pfjax.particle_filter()` and `pfjax.particle_smooth()`.
 
-- The update for $p(\tth \mid \xx_{0:T}, \yy_{0:T})$ uses the adaptive Metropolis-within-Gibbs sampler provided by the class `pfjax.mcmc.AdaptiveMWG`.  The design of this sampler is heavily inspired by [**BlackJAX**](https://blackjax-devs.github.io/blackjax/index.html).  In particular, the MWG update step `pfjax.mcmc.AdaptiveMWG.update()` takes a `state` dictionary consisting of $\tth$ and the current value of the random walk standard deviations (and a few other things), and updates both of these together.
+- The update for $p(\tth \mid \xx_{0:T}, \yy_{0:T})$ uses the adaptive Metropolis-within-Gibbs sampler provided by the class `pfjax.mcmc.AdaptiveMWG`.  The design of this sampler is heavily inspired by [**BlackJAX**](https://blackjax-devs.github.io/blackjax/index.html).
 
 ```{code-cell} ipython3
 def particle_gibbs(key, n_iter, theta_init, x_state_init, n_particles, rw_sd):
@@ -151,19 +151,18 @@ def particle_gibbs(key, n_iter, theta_init, x_state_init, n_particles, rw_sd):
     amwg = pfjax.mcmc.AdaptiveMWG()
     # initial state of MWG sampler
     initial_state = {
-        "theta_state": amwg.init(position=theta_init, rw_sd = rw_sd),
+        "theta": theta_init,
         "x_state": x_state_init,
-        "accept": jnp.zeros((n_params,))
+        "adapt_pars": amwg.init(rw_sd),
     }
 
-    def mcmc_update(key, theta_state, x_state):
+    def mcmc_update(key, theta, x_state, adapt_pars):
         """
         MCMC update for parameters and latent variables.
 
         Use Adaptive MWG for the former and a particle filter for the latter.
         """
         keys = jax.random.split(key, num=3) # two for particle_filter, one for amwg
-        theta = theta_state["position"] # the value of theta
         # latent variable update
         pf_out = pf.particle_filter(
             model=bm_model,
@@ -191,30 +190,34 @@ def particle_gibbs(key, n_iter, theta_init, x_state_init, n_particles, rw_sd):
                 x_state=x_state,
                 y_meas=y_meas
             )
-        theta_state, accept = amwg.update(
+        theta_state, accept = amwg.step(
             key=keys[2],
-            state=theta_state,
-            logprob_fn=logpost
+            position=theta,
+            logprob_fn=logpost,
+            rw_sd=adapt_pars["rw_sd"]
         )
-        return theta_state, x_state, accept
+        # adapt random walk jump sizes
+        adapt_pars = amwg.adapt(pars=adapt_pars, accept=accept)
+        return theta_state, x_state, adapt_pars, accept
 
     @jax.jit
     def step(state, key):
         """
         One step of MCMC update.
         """
-        theta_state, x_state, accept = mcmc_update(
+        theta, x_state, adapt_pars, accept = mcmc_update(
             key=key,
-            theta_state=state["theta_state"],
-            x_state=state["x_state"]
+            theta=state["theta"],
+            x_state=state["x_state"],
+            adapt_pars=state["adapt_pars"]
         )
         new_state = {
-            "theta_state": theta_state, 
+            "theta": theta, 
             "x_state": x_state, 
-            "accept": state["accept"] + accept
+            "adapt_pars": adapt_pars
         }
         stack_state = {
-            "theta": theta_state["position"], 
+            "theta": theta, 
             "x_state": x_state
         }
         return new_state, stack_state
@@ -222,7 +225,7 @@ def particle_gibbs(key, n_iter, theta_init, x_state_init, n_particles, rw_sd):
     keys = jax.random.split(key, num=n_iter)
     state, out = jax.lax.scan(step, initial_state, keys)
     # calculate acceptance rate
-    out["accept_rate"] = (1.0 * state["accept"]) / n_iter
+    out["accept_rate"] = (1.0 * state["adapt_pars"]["n_accept"]) / n_iter
     return out
 ```
 
@@ -308,23 +311,23 @@ grad_fun = jax.jit(jax.grad(bm_model.loglik_exact, argnums = 1))
 # Gradient ascent learning rate
 learning_rate = 0.01
 
-params = theta_true
+theta_mode = theta_true
 
 for i in range(1000):
-    grads = grad_fun(y_meas, params)
+    grads = grad_fun(y_meas, theta_mode)
     # Update parameters via gradient ascent
-    params = params + learning_rate * grads
+    theta_mode = theta_mode + learning_rate * grads
 
 # def hessian(f):
 #     return jax.jacfwd(jax.grad(f, argnums = 2), argnums = 2)
 
-# hess = hessian(bm_loglik)(y_meas, dt, params)
-hess = jax.jacfwd(jax.jacrev(bm_model.loglik_exact, argnums=1), argnums=1)(y_meas, params)
-quad = -jnp.linalg.inv(hess)
+# hess = hessian(bm_loglik)(y_meas, dt, theta_mode)
+hess = jax.jacfwd(jax.jacrev(bm_model.loglik_exact, argnums=1), argnums=1)(y_meas, theta_mode)
+theta_quad = -jnp.linalg.inv(hess)
 
-print(params)
+print(theta_mode)
 print(theta_true)
-print(quad)
+print(theta_quad)
 ```
 
 From the mode-quadrature proposal distribution, parameter samples are drawn with an inflation factor of 1.5 for the covariance. After adjusting the weights of each draw via importance sampling (IS), the parameter samples are redrawn accordingly. The resulting kernel density estimates are shown below, with an overlay of those obtained from the particle Gibbs (PG) sampler above.
@@ -334,13 +337,13 @@ From the mode-quadrature proposal distribution, parameter samples are drawn with
 infl = 1.5  # Inflation factor
 key, subkey = jax.random.split(key)
 draws = random.multivariate_normal(
-    subkey, mean=params, cov=infl*quad, shape=(n_iter,))
+    subkey, mean=theta_mode, cov=infl*theta_quad, shape=(n_iter,))
 
 logpost = jax.jit(bm_model.loglik_exact)
 
 # Importance sampling with mode-quadrature proposal and target proposal (BM log-likelihood)
 logq_x = jsp.stats.multivariate_normal.logpdf(
-    draws, mean=params, cov=infl*quad)
+    draws, mean=theta_mode, cov=infl*theta_quad)
 # logp_x = jnp.array([bm_loglik(y_meas, dt, draws[i,:]) for i in range(n_iter)])
 logp_x = jax.vmap(
     fun=logpost,
@@ -348,14 +351,13 @@ logp_x = jax.vmap(
 )(y_meas, draws)
 
 # Get the likelihood ratio and normalize
-logwts = (logp_x - logq_x)
-wts = jnp.exp(logwts - jnp.max(logwts))
-wts = wts / jnp.sum(wts)
+logw = logp_x - logq_x
+prob = pf.utils.logw_to_prob(logw)
 
 # importance sample
 key, subkey = jax.random.split(key)
 imp_index = jax.random.choice(
-    subkey, a=n_iter, p=wts, shape=(n_iter,), replace=True)
+    subkey, a=n_iter, p=prob, shape=(n_iter,), replace=True)
 theta_imp = draws[imp_index, :]
 ```
 
