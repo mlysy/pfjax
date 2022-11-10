@@ -19,7 +19,7 @@ def particle_smooth(key, logw, x_particles, ancestors):
         ancestors: JAX integer array of shape `(n_obs-1, n_particles)` where each element gives the index of the particle's ancestor at the previous time point.
 
     Returns:
-        An `ndarray` with leading dimension `n_obs` sampled from `p(x_{0:T} | y_{0:T}, theta)`.
+        JAX Array: An array with leading dimension `n_obs` sampled from `p(x_{0:T} | y_{0:T}, theta)`.
     """
     n_particles = logw.size
     n_obs = x_particles.shape[0]

@@ -35,9 +35,10 @@ class BaseModel(object):
     def step_sample(self, key, x_prev, y_curr, theta):
         r"""
         Sample from default proposal distribution
-        ```
-        q(x_curr | x_prev, y_curr, theta) = p(x_curr | x_prev, theta)
-        ```
+
+        ::
+
+            q(x_curr | x_prev, y_curr, theta) = p(x_curr | x_prev, theta)
 
         Args:
             key: PRNG key.
@@ -56,9 +57,10 @@ class BaseModel(object):
     def step_lpdf(self, x_curr, x_prev, y_curr, theta):
         r"""
         Calculate log-density of the default proposal distribution
-        ```
-        q(x_curr | x_prev, y_curr, theta) = p(x_curr | x_prev, theta)
-        ```
+
+        ::
+
+            q(x_curr | x_prev, y_curr, theta) = p(x_curr | x_prev, theta)
 
         Args:
             x_curr: State variable at current time `t`.
@@ -77,9 +79,10 @@ class BaseModel(object):
     def init_sample(self, key, y_init, theta):
         r"""
         Sample from default initial proposal distribution
-        ```
-        q(x_init | y_init, theta) = p(x_init | theta)
-        ```
+
+        ::
+
+            q(x_init | y_init, theta) = p(x_init | theta)
 
         Args:
             key: PRNG key.
@@ -97,9 +100,10 @@ class BaseModel(object):
     def init_lpdf(self, x_init, y_init, theta):
         r"""
         Calculate log-density of the default proposal distribution
-        ```
-        q(x_curr | x_prev, y_curr, theta) = p(x_curr | x_prev, theta)
-        ```
+
+        ::
+
+            q(x_curr | x_prev, y_curr, theta) = p(x_curr | x_prev, theta)
 
         Args:
             x_init: State variable at initial time `t = 0`.
@@ -119,13 +123,16 @@ class BaseModel(object):
         Particle filter update.
 
         Returns a draw from proposal distribution
-        ```
-        x_curr ~ q(x_curr) = q(x_curr | x_prev, y_curr, theta)
-        ```
+
+        ::
+
+            x_curr ~ q(x_curr) = q(x_curr | x_prev, y_curr, theta)
+
         and the log weight
-        ```
-        logw = log p(y_curr | x_curr, theta) + log p(x_curr | x_prev, theta) - log q(x_curr)
-        ```
+
+        ::
+
+            logw = log p(y_curr | x_curr, theta) + log p(x_curr | x_prev, theta) - log q(x_curr)
 
         Args:
             key: PRNG key.
@@ -134,8 +141,10 @@ class BaseModel(object):
             theta: Parameter value.
 
         Returns:
-            - x_curr: A sample from the proposal distribution at current time `t`.
-            - logw: The log-weight of `x_curr`.
+            Tuple:
+
+            - **x_curr** - A sample from the proposal distribution at current time `t`.
+            - **logw** - The log-weight of `x_curr`.
         """
 
         if self._bootstrap:
@@ -157,13 +166,16 @@ class BaseModel(object):
         Initial step of particle filter.
 
         Returns a draw from the proposal distribution
-        ```
-        x_init ~ q(x_init) = q(x_init | y_init, theta)
-        ```
+
+        ::
+
+            x_init ~ q(x_init) = q(x_init | y_init, theta)
+
         and calculates the log weight
-        ```
-        logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
-        ```
+
+        ::
+
+            logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
 
         Args:
             key: PRNG key.
@@ -171,8 +183,10 @@ class BaseModel(object):
             theta: Parameter value.
 
         Returns:
-            - x_init: A sample from the proposal distribution at initial tme `t = 0`.
-            - logw: The log-weight of `x_init`.
+            Tuple:
+
+            - **x_init** - A sample from the proposal distribution at initial tme `t = 0`.
+            - **logw** - The log-weight of `x_init`.
         """
         if self._bootstrap:
             x_curr = self.prior_sample(key=key, theta=theta)

@@ -79,7 +79,12 @@ html_css_files = [
 
 autoapi_dirs = ["../src"]  # location to parse for API reference
 
-autoapi_ignore = ["*/deprecated/*"]
+autoapi_ignore = [
+    "*/deprecated/*",
+    "*/experimental/*",
+    "*/test/*",
+    "*/__metadata__.py"
+]
 
 autoapi_options = [
     "members",
