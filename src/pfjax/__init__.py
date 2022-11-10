@@ -1,6 +1,7 @@
 from .simulate import simulate
 from .loglik_full import loglik_full
-from .particle_filter import particle_filter, particle_filter_rb
+from .particle_filter import particle_filter
+from .particle_filter import particle_filter_rb
 from .particle_smooth import particle_smooth
 from .models.base_model import BaseModel
 

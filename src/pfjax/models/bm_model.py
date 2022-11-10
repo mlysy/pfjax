@@ -6,24 +6,24 @@ from .base_model import BaseModel
 
 
 class BMModel(BaseModel):
-    def __init__(self, dt, unconstrained_theta=False):
-        r"""
-        Brownian motion state space model.
+    r"""
+    Brownian motion state space model.
 
-        The model is:
+    The model is:
 
-        ```
+    ::
+
         x_0 ~ pi(x_0) \propto 1
-        x_t ~ N(x_{t-1} + mu * dt, sigma * sqrt(dt))
-        y_t ~ N(x_t, tau)
-        ```
+        x_t ~ N(x_{t-1} + mu dt, sigma^2 dt)
+        y_t ~ N(x_t, tau^2)
 
-        The parameter values are `theta = (mu, sigma, tau)` and the measurement and state dimensions are `n_meas = 1` and `n_state = 1`.
 
-        Args:
-            dt: Interobservation time.
-            unconstrained_theta: Whether or not to use the unconstrained parameter scale `theta = (mu, log sigma, log tau)`.
-        """
+    Args:
+        dt: Interobservation time.
+        unconstrained_theta: Whether or not to use the regular parameters scale `theta = (mu, sigma, tau)` or the unconstrained scale `theta = (mu, log(sigma), log(tau))`.
+    """
+
+    def __init__(self, dt, unconstrained_theta=False):
         super().__init__(bootstrap=True)
         self._dt = dt
         self._unconstrained_theta = unconstrained_theta

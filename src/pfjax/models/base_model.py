@@ -23,15 +23,13 @@ class BaseModel(object):
     - `pf_step()` and `pf_init()` could be computed more efficiently for bootstrap sampling.  Perhaps this could be specified with an argument `bootstrap` to the constructor.  
 
     - In general, nothing is stopping the user from creating e.g., `pf_step()` which is inconsistent with `step_sample()`, etc.
+
+    Args:
+        bootstrap: Boolean for whether or not to create a bootstrap particle filter.
+
     """
 
     def __init__(self, bootstrap):
-        """
-        Class constructor.
-
-        Args:
-            bootstrap: Boolean for whether or not to create a bootstrap particle filter.
-        """
         self._bootstrap = bootstrap
 
     def step_sample(self, key, x_prev, y_curr, theta):

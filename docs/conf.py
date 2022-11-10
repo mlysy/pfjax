@@ -78,7 +78,18 @@ html_css_files = [
 # --- Options for autoapi ------------------------------------------------------
 
 autoapi_dirs = ["../src"]  # location to parse for API reference
+
 autoapi_ignore = ["*/deprecated/*"]
+
+autoapi_options = [
+    "members",
+    "undoc-members",
+    # "private-members",
+    "show-inheritance",
+    "show-module-summary",
+    "special-members",
+    "imported-members"
+]
 
 # -- Options for myst-nb -----------------------------------------------------
 

@@ -15,11 +15,14 @@ class AdaptiveMWG:
 
     **Notes:**
 
-    Design heavily inspired by [BlackJAX](https://blackjax-devs.github.io/blackjax/index.html).  Perhaps to be fully integrated with it some day.
+    Design heavily inspired by |BlackJAX|_.  Perhaps to be fully integrated with it some day.
 
     Args:
         adapt_max: Scalar or vector of maximum adaptation amounts.
         adapt_rate: Scalar or vector of adaptation rates.
+
+    .. _BlackJAX: https://blackjax-devs.github.io/blackjax/index.html
+    .. |BlackJAX| replace:: **BlackJAX**
     """
 
     def __init__(self, adapt_max=.01, adapt_rate=.5):
@@ -33,7 +36,7 @@ class AdaptiveMWG:
         Update random walk standard deviations.
 
         Args:
-            pars: Adaptation parameters.  A dictionary with elements
+            pars: Adaptation parameters.  A dictionary with elements:
 
                 - `rw_sd`: Vector of standard deviations for the random walk proposal on each component of `position`.
                 - `n_iter`: Number of MWG iterations (cycles) so far.
@@ -42,7 +45,7 @@ class AdaptiveMWG:
             accept: Boolean vector indicating whether or not the latest proposal was accepted.
 
         Returns:
-            Dictionary with elements
+            Dictionary:
 
             - **rw_sd** - Vector of updated random walk standard deviations.
             - **n_iter** - Updated number of iterations, i.e., ``n_iter += 1``.
@@ -68,12 +71,13 @@ class AdaptiveMWG:
         Args:
             rw_sd: A vector of initial standard deviations for the componentwise random walk proposal.
 
-        Returns:
-            A dictionary with elements
+        Returns: 
 
-                - `rw_sd`: The vector of  standard deviations for the componentwise random walk proposal.
-                - `n_iter`: The number of MWG steps taken so far, which is zero.
-                - `n_accept`: The number of draws of each component accepted so far, which is ``jnp.zeros_like(rw_sd)``.
+            Dictionary:
+
+            - **rw_sd** - The vector of  standard deviations for the componentwise random walk proposal.
+            - **n_iter** - The number of MWG steps taken so far, which is zero.
+            - **n_accept** - The number of draws of each component accepted so far, which is ``jnp.zeros_like(rw_sd)``.
         """
         return {
             "rw_sd": rw_sd,
@@ -92,8 +96,9 @@ class AdaptiveMWG:
             rw_sd: Vector of standard deviations for the componentwise random walk proposal.
             order: Optional vector of integers between 0 and ``position.size`` indicating the order in which to update the components of `position`.  Can use this to keep certain components fixed, randomize update order, etc.
 
-        Returns:
-            Tuple with elements
+        Returns: 
+
+            Tuple:
 
             - **position** - The updated position.
             - **accept** - Boolean vector of length ``position.size`` indicating whether or not each proposal was accepted.

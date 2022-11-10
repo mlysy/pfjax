@@ -1,42 +1,3 @@
-"""
-Prokaryotic auto-regulatory gene network Model.
-
-The base model involves differential equations of the chemical reactions:
-
-```
-DNA + P2 --> DNA_P2
-DNA_P2   --> DNA + P2
-DNA      --> DNA + RNA
-RNA      --> RNA + P
-P + P    --> P2
-P2       --> P + P
-RNA      --> 0
-P        --> 0
-```
-These equations are associated with a parameter in `theta = (theta0, ..., theta7)`.
-The model is approximated by a SDE described in Golightly & Wilkinson (2005). 
-A particular restriction on the chemical reactions is by the conservation law which implies that `DNA + DNA_P2 = K`.
-Thus the SDE model can be described in terms of `x_t = (RNA, P, P2, DNA)`. 
-
-Then assuming a standard form of the SDE, the base model can be written as
-```
-x_mt = x_{m, t-1} + mu_mt dt/m + Sigma_mt^{1/2} dt/m
-y_t ~ N( exp(x_{m,mt}), diag(tau^2) )
-```
-
-Ito's Lemma is applied to transform the base model on the log-scale to allow for unconstrained variables
-```
-logx_mt = log(x_mt)
-```
-so `mu_mt` and `Sigma_mt` are transformed accordingly. 
-
-- Model parameters: `theta = (theta0, ... theta7, tau0, ... tau3)`.
-- Global constants: `dt` and `n_res`, i.e., `m`.
-- State dimensions: `n_state = (n_res, 4)`.
-- Measurement dimensions: `n_meas = 4`.
-
-"""
-
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
@@ -48,17 +9,57 @@ from pfjax import sde as sde
 
 
 class PGNETModel(sde.SDEModel):
+    r"""
+    Prokaryotic auto-regulatory gene network Model.
+
+    The base model involves differential equations of the chemical reactions:
+
+    ::
+
+        DNA + P2 --> DNA_P2
+        DNA_P2   --> DNA + P2
+        DNA      --> DNA + RNA
+        RNA      --> RNA + P
+        P + P    --> P2
+        P2       --> P + P
+        RNA      --> 0
+        P        --> 0
+
+
+    These equations are associated with a parameter in `theta = (theta0, ..., theta7)`.
+    The model is approximated by a SDE described in Golightly & Wilkinson (2005). 
+    A particular restriction on the chemical reactions is by the conservation law which implies that `DNA + DNA_P2 = K`.
+    Thus the SDE model can be described in terms of `x_t = (RNA, P, P2, DNA)`. 
+
+    Then assuming a standard form of the SDE, the base model can be written as
+
+    ::
+
+        x_mt = x_{m, t-1} + mu_mt dt/m + Sigma_mt^{1/2} dt/m
+        y_t ~ N( exp(x_{m,mt}), diag(tau^2) )
+
+
+    Ito's Lemma is applied to transform the base model on the log-scale to allow for unconstrained variables
+
+    ::
+
+        logx_mt = log(x_mt)
+
+    so `mu_mt` and `Sigma_mt` are transformed accordingly. 
+
+    - Model parameters: `theta = (theta0, ... theta7, tau0, ... tau3)`.
+    - Global constants: `dt` and `n_res`, i.e., `m`.
+    - State dimensions: `n_state = (n_res, 4)`.
+    - Measurement dimensions: `n_meas = 4`.
+
+
+    Args:
+        dt: SDE interobservation time.
+        n_res: SDE resolution number.  There are `n_res` latent variables per observation, equally spaced with interobservation time `dt/n_res`.
+        bootstrap (bool): Flag indicating whether to use a Bootstrap particle filter or a bridge filter.
+    """
 
     def __init__(self, dt, n_res, bootstrap=True):
-        r"""
-        Class constructor for the PGNET model.
-
-        Args:
-            dt: SDE interobservation time.
-            n_res: SDE resolution number.  There are `n_res` latent variables per observation, equally spaced with interobservation time `dt/n_res`.
-            bootstrap (bool): Flag indicating whether to use a Bootstrap particle filter or a bridge filter.
-
-        """
         # creates "private" variables self._dt and self._n_res
         super().__init__(dt, n_res, diff_diag=False)
         self._n_state = (self._n_res, 4)
