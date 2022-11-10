@@ -64,7 +64,3 @@ make html
 # clean build incl. repeating cached computations
 make clean html
 ```
-
-## Reference docs
-
-More examples and further documentation can be found here:

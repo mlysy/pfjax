@@ -35,6 +35,8 @@
 	
 - [x] Similarly MCMC algorithms will be in the `mcmc` module. 
 
+	Also, interface via `AdaptiveMWG` class is totally different than the previous functional approach.
+
 - [x] Removed `proj_data()`.  This is now contained in a separate package `kanikadchopra/projplot`.
 
 ## Backward-Compatible Changes

@@ -7,6 +7,12 @@
 	
 - [ ] Display of return values (colons are problematic).
 
+	**Update:** Have done some of this but not all.
+	
+- [ ] Display classes correctly.
+
+	Currently arguments to `__init__()` method are not being displayed.  Also, private members/methods are being displayed.  Finally, it seems the module heading is also problematic.
+
 - [x] Where to put "non-exported" notebooks?  Natural place is e.g., `docs/devel`, but `myst-nb` renders all notebooks in `docs` and its subfolders.
 
 	They are now in `docs/notebooks/internal`.  Skip rendering by adding to `exclude_patterns` in `conf.py`.

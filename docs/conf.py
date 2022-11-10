@@ -101,6 +101,8 @@ myst_enable_extensions = [
 
 myst_title_to_header = True
 
+myst_heading_anchors = 3
+
 # convert latexdefs.tex to mathjax format
 mathjax3_config = {'tex': {'macros': {}}}
 with open('notebooks/latexdefs.tex', 'r') as f:
