@@ -143,7 +143,7 @@ class PGNETModel(sde.SDEModel):
             x_curr: State variable at current time `t`.
             theta: Parameter value.
 
-        Returns
+        Returns:
             The log-density of `p(y_curr | x_curr, theta)`.
         """
         tau = theta[8:12]
@@ -171,17 +171,18 @@ class PGNETModel(sde.SDEModel):
         Particle filter calculation for `x_init`.
 
         Samples from an importance sampling proposal distribution
-        ```
-        x_init ~ q(x_init) = q(x_init | y_init, theta)
-        ```
+
+        ::
+
+            x_init ~ q(x_init) = q(x_init | y_init, theta)
+
         and calculates the log weight
-        ```
-        logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
-        ```
 
-        **FIXME:** Explain what the proposal is and why it gives `logw = 0`.
+        ::
 
-        In fact, if you think about it hard enough then it's not actually a perfect proposal...
+            logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
+
+        **FIXME:** Explain what the proposal is and why it gives `logw = CONST`.
 
         Args:
             y_init: Measurement variable at initial time `t = 0`.
@@ -189,6 +190,9 @@ class PGNETModel(sde.SDEModel):
             key: PRNG key.
 
         Returns:
+
+            Tuple:
+
             - x_init: A sample from the proposal distribution for `x_init`.
             - logw: The log-weight of `x_init`.
         """
@@ -219,7 +223,7 @@ class PGNETModel(sde.SDEModel):
 
     def pf_step(self, key, x_prev, y_curr, theta):
         """
-        Choose between bootstrap filter and bridge proposal.
+        Get particles at subsequent steps.
 
         Args:
             x_prev: State variable at previous time `t-1`.
@@ -228,6 +232,9 @@ class PGNETModel(sde.SDEModel):
             key: PRNG key.
 
         Returns:
+
+            Tuple:
+
             - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
             - logw: The log-weight of `x_curr`.
         """

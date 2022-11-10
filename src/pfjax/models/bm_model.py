@@ -116,17 +116,24 @@ class BMModel(BaseModel):
         Get particles for initial state `x_init = x_state[0]`. 
 
         Samples from an importance sampling proposal distribution
-        ```
-        x_init ~ q(x_init) = q(x_init | y_init, theta)
-        ```
+
+        ::
+
+            x_init ~ q(x_init) = q(x_init | y_init, theta)
+
         and calculates the log weight
-        ```
-        logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
-        ```
+
+        ::
+
+            logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
+
         In this case we have an exact proposal 
-        ```
-        q(x_init) = p(x_init | y_init, theta)   <=>   x_init ~ N(y_init, tau)
-        ```
+
+        ::
+
+                  q(x_init) = p(x_init | y_init, theta)   
+            <=>   x_init ~ N(y_init, tau)
+
         Moreover, due to symmetry of arguments we have `q(x_init) = p(y_init | x_init, theta)`, and since `p(x_init | theta) \propto 1` we have `logw = 0`.
 
         Args:
@@ -135,8 +142,11 @@ class BMModel(BaseModel):
             theta: Parameter value.
 
         Returns:
-            - x_init: A sample from the proposal distribution for `x_init`.
-            - logw: The log-weight of `x_init`.
+
+            Tuple:
+
+            - **x_init** - A sample from the proposal distribution for `x_init`.
+            - **logw** - The log-weight of `x_init`.
         """
         return self.meas_sample(key, y_init, theta), jnp.zeros(())
 
@@ -151,6 +161,8 @@ class BMModel(BaseModel):
             theta: Parameter value.
 
         Returns:
+            float:
+
             The marginal loglikelihood `log p(y_{1:N} | theta, y_0)`.
         """
         if self._unconstrained_theta:
