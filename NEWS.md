@@ -20,6 +20,8 @@
 
 - [x] `full_loglik{_for}()` -> `loglik_full{_for}()`. 
 
+- [x] `SDEModel.bridge_prop()` -> `SDEModel.bridge_step()`.
+
 ### Other
 
 - [x] Moved testing functions to the following locations:
