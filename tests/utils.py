@@ -1033,7 +1033,7 @@ def test_sde_state_sample_for(self):
     x_prev = self.x_init
     x_prev = x_prev + random.normal(subkey, x_prev.shape)
     # simulate state using for-loop
-    x_state1 = model.state_sample_for(key, x_prev, theta)
+    x_state1 = model._state_sample_for(key, x_prev, theta)
     # simulate state using lax.scan
     x_state2 = model.state_sample(key, x_prev, theta)
     self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
@@ -1056,12 +1056,12 @@ def test_sde_state_lpdf_for(self):
     # simulate state using lax.scan
     x_curr = model.state_sample(key, x_prev, theta)
     # lpdf using for
-    lp1 = model.state_lpdf_for(x_curr, x_prev, theta)
+    lp1 = model._state_lpdf_for(x_curr, x_prev, theta)
     lp2 = model.state_lpdf(x_curr, x_prev, theta)
     self.assertAlmostEqual(rel_err(lp1, lp2), 0.0)
 
 
-def test_sde_bridge_prop_for(self):
+def test_sde_bridge_step_for(self):
     key = self.key
     theta = self.theta
     x_init = self.x_init
@@ -1077,7 +1077,7 @@ def test_sde_bridge_prop_for(self):
     y_curr = jnp.exp(x_prev[-1]) + \
         theta[6:8] * random.normal(subkey, (x_prev.shape[1],))
     # bridge proposal using lax.scan
-    x_curr1, logw1 = model.bridge_prop(
+    x_curr1, logw1 = model.bridge_step(
         key=key,
         x_prev=x_prev,
         y_curr=y_curr,
@@ -1087,7 +1087,7 @@ def test_sde_bridge_prop_for(self):
         Omega=jnp.eye(2)
     )
     # bridge proposal using for
-    x_curr2, logw2 = model.bridge_prop_for(
+    x_curr2, logw2 = model._bridge_step_for(
         key=key,
         x_prev=x_prev,
         y_curr=y_curr,
