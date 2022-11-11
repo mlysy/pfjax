@@ -11,7 +11,7 @@ kernelspec:
   name: python3
 ---
 
-# Introduction to PFJAX, Part I: State-Space Models
+# Introduction to PFJAX
 
 **Martin Lysy -- University of Waterloo**
 
@@ -44,11 +44,11 @@ but this integral is typically intractable.  The state-of-the-art for approximat
 
 Using **PFJAX** typically involves two steps:
 
-1.  Specifying the model-specific components of the estimation procedure, e.g., the state-space model itself, and optional proposal functions $q(\xx_0 \mid \tth)$ and $r(\xx_{t} \mid \xx_{t-1}, \tth)$.  For more information on the later, please see [Part II](gradient_comparisons.md) of this tutorial.
+1.  Specifying the model-specific components of the estimation procedure, e.g., the state-space model itself, and optional proposal functions (more on these [below](sec:pftheo)).
 
-2.  Selecting among various particle filtering algorithms, depending on e.g., the model and the type of inference to be conducted (more on this in [Part II](gradient_comparisons.md)).
+2.  Selecting among various particle filtering algorithms, depending on e.g., the model and the type of inference to be conducted (more on this in the [Gradient Comparisons](gradient_comparisons.md) notebook).
 
-This tutorial focus on step 1.  Specifically, we'll show how to use **PFJAX** to:
+This tutorial will focus on step 1.  Specifically, we'll show how to use **PFJAX** to:
 
 - Create a state-space model class inheriting from `pfjax.BaseModel`.
 
@@ -101,17 +101,90 @@ E[y_t \mid \tth] & = \tilde \mu t, \\
 \end{aligned}
 $$
 
-where $\tilde \mu = \mu \dt$, $\tilde \sigma^2 = \sigma^2 \dt$, and $\delta_{st}$ is the indicator function.  These formulas provide an analytic expression for $\Ell(\tth) = p(\yy_{0:T} \mid \tth)$, which we can use to benchmark our calculations.
+where $\tilde \mu = \mu \dt$, $\tilde \sigma^2 = \sigma^2 \dt$, and $\delta_{st}$ is the indicator function.  These formulas provide an analytic expression for $\ell(\tth) = \log p(\yy_{0:T} \mid \tth)$, which we can use to benchmark our calculations.
 
 +++
 
+(sec:pftheo)=
 ## Particle Filter Approximation of the Marginal Loglikelihood
 
-Using the particle filters provided by **PFJAX** requires at minimum that a class defining the state-space model be provided.  This can be done by deriving from a base class `pfjax.BaseModel` as done in the example code below.  
+The basic particle filter provided by **PFJAX** is the auxiliary particle filter described in {cite:t}`poyiadjis.etal11` Algorithm 1 and provided below.
 
-- The methods `{prior/state/meas}_{lpdf/sample}()` and their argument inputs and outputs must be as below for the machinery of **PFJAX** to operate correctly. 
-- In this case we can directly compare the particle filter loglikelihood approximation $\hat \ell(\tth)$ to the true loglikelihood $\ell(\tth)$ defined the formulas above, so we'll also add a method `exact_lpdf()` defining $\ell(\tth)$ to the derived class below.
-- **PFJAX** models may optionally define methods `{init/step}_{lpdf/sample}()` as proposal distributions $q(\xx_0 \mid \tth)$ and $q(\xx_{t} \mid \xx_{t-1}, \tth)$, respectively.  A common choice for these is the so-called **Bootstrap filter**, where 
+--- 
+
+(sec:bpf)=
+### Auxiliary Particle Filter
+
+**Inputs:** 
+
+- Parameters and measurement variables $\tth$ and $\yy_{0:T}$.
+
+- Number of particles $N$.
+
+- Initial and subsequent proposal distributions $q(\xx_0 \mid \yy_0, \tth)$ and $r(\xx_t \mid \xx_{t-1}, \yy_t, \tth)$.
+
+- Auxiliary distribution $s(\yy_t \mid \xx_{t-1}, \tth)$.
+
+**Outputs:** 
+
+- Particle filter approximation $\hat \ell(\tth \mid \yy_{0:T})$ to the marginal loglikelihood $\ell(\tth)$.
+
+**Algorithm:**
+
+- $\xx_0^{(1:N)} \iid q(\xx_0 \mid \yy_0, \tth)$
+    
+- $w_0^{(1:N)} \gets \frac{g(\yy_0 \mid \xx_0^{(1:N)}) \cdot \pi(\xx_0^{(1:N)} \mid \tth)}{q(\xx_0^{(1:N)} \mid \yy_0, \tth)}$
+    
+-  $\hat{\Ell}_0 \gets \sum_{i=1}^N w_0^{(i)}$
+
+- $W_0^{(1:N)} = w_0^{(1:N)}/ \hat{\Ell}_0$
+    
+-  For $t=1,\ldots,T$:
+
+    -  $\tilde{\xx}_{t-1}^{(1:N)} \gets \operatorname{\texttt{resample}}(\xx_{t-1}^{(1:N)}, W_{t-1}^{(1:N)})$
+    
+    - $\xx_t^{(1:N)} \ind r(\xx_t \mid \tilde{\xx}_{t-1}^{(1:N)}, \yy_t, \tth)$
+    
+    - $w_t^{(1:N)} \gets \frac{g(\yy_t \mid \xx_t^{(1:N)} \mid \tth) \cdot f(\xx_t^{(1:N)} \mid \tilde{\xx}_{t-1}^{(1:N)})}{r(\xx_t \mid \tilde{\xx}_{t-1}^{(1:N)}, \yy_t, \tth)}$
+    
+    - $\hat{\Ell}_t \gets \sum_{i=1}^N w_t^{(i)}$
+    
+    - $W_t^{(1:N)} = w_t^{(1:N)}/ \hat{\Ell}_t$
+
+- $\hat \ell(\tth \mid \yy_{0:T}) = \sum_{t=0}^T \log \hat{\Ell}_t$
+
+---
+
+In the [auxiliary particle filter algorithm](sec:bpf), the notation $\xx_t^{(1:N)}$ stands for $\xx_t^{(1)}, \ldots, \xx_t^{(N)}$, i.e., is over the vector of $N$ particles.  Similarly, operations of the form $\xx_t^{(1:N)} \gets F(\xx_{t-1}^{(1:N)})$ are vectorized over the $N$ particles, i.e., correspond to the for-loop 
+
+- For $i=1,\ldots,N$:
+
+    - $\xx_t^{(i)} \gets F(\xx_{t-1}^{(i)})$
+
+The $\operatorname{\texttt{resample}}()$ function takes a weighted set of particles $(\xx^{(1:N)}, W^{(1:N)})$ and attempts to convert it to an unweighted sample $\tilde{\xx}^{(1:N)}$ from the same underlying distribution.  The simplest way to do this is via **multinomial sampling**, i.e., sampling with replacement from $(\xx^{(1:N)}, W^{(1:N)})$.  Other resamplers are discussed in the [Gradient Comparisons](gradient_comparisons.md) notebook.
+
+<!-- However, this resampling function is not differentiable with respect to $\tth$ with parameter-dependent particles $(\xx^{(1:N)}(\tth), W^{(1:N)}(\tth))$.  Therefore, **PFJAX** offers several types of differentiable resamplers:
+
+- The **multivariate normal resampler**, which calculates the (weighted) mean and variance of the particles at each time $t$ and samples from the multivariate normal with these parameters.  This method is very fast but biased, especially if the particles are representing a multimodal distribution $p(\xx_t \mid \yy_{0:t}, \tth)$.
+
+- The **Gaussian copula resampler**, which is similar to the multivariate normal (MVN) resampler but with the margins of the distribution estimated via the piecewise linear empirical CDF of {cite:t}`malik.pitt11`.  This method is less biased than the (MVN) resampler, but is significantly slower to compute due to the need for sorting the marginal distribution of the particles at each step.
+
+- The **optimal transport resampler** of {cite:t}`corenflos.etal21`.  This is asymptotically unbiased in the number of particles $N$, but computation of the transport function scales as $\bO(N^2)$.
+ -->
+Using the particle filters provided by **PFJAX** requires at minimum that a class defining the state-space model be provided.  This can be done by deriving from a base class `pfjax.BaseModel`.  One may additionally provide the proposal and auxiliary distributions.  The optimal and default values of these are provided in the table below.
+
+|   Distribution                         |   Optimal Value                        |   Default Value        |
+| -------------------------------------- | -------------------------------------- | ---------------------- |
+| $q(\xx_0 \mid \yy_0, \tth)$            | $p(\xx_0 \mid \yy_0, \tth)$            | $\pi(\xx_0 \mid \tth)$ |
+| $r(\xx_t \mid \xx_{t-1}, \yy_t, \tth)$ | $p(\xx_t \mid \xx_{t-1}, \yy_t, \tth)$ | $f(\xx_t \mid \xx_{t-1}, \tth$ |
+| $s(\yy_t \mid \xx_{t-1}, \tth)$        | $p(\yy_t \mid \xx_{t-1}, \tth)$        | $1$
+
+The default values define the so-called **Bootstrap particle filter** {cite:p}`gordon.etal93`, which is implemented in the example of the `BMModel` class below.
+
+- The methods `BMModel.{prior/state/meas}_{lpdf/sample}()` and their argument inputs and outputs must be as below for the machinery of **PFJAX** to operate correctly. 
+- In this case we can directly compare the particle filter loglikelihood approximation $\hat \ell(\tth)$ to the true loglikelihood $\ell(\tth)$ defined the formulas above, so we'll also add a method `BMModel.exact_lpdf()` defining $\ell(\tth)$ to the derived class below.
+
+<!-- - **PFJAX** models may optionally define methods `{init/step}_{lpdf/sample}()` as proposal distributions $q(\xx_0 \mid \tth)$ and $q(\xx_{t} \mid \xx_{t-1}, \tth)$, respectively.  A common choice for these is the so-called **Bootstrap filter**, where 
 
     $$
     \begin{aligned}
@@ -120,7 +193,7 @@ Using the particle filters provided by **PFJAX** requires at minimum that a clas
     \end{aligned}
     $$
     
-    For computational efficiency this must be be explicitly specified to `pfjax.BaseModel` as we have done below.
+    For computational efficiency this must be be explicitly specified to `pfjax.BaseModel` as we have done below. -->
 
 ```{code-cell} ipython3
 class BMModel(pf.BaseModel):
@@ -246,7 +319,7 @@ sns.relplot(
 
 For this we will use the basic particle filter provided by `pfjax.particle_filter()`.  We'll also compare the particle filter approximation $\hat{\ell}(\tth)$ to the exact loglikelihood $\ell(\tth)$ using "projection plots", i.e., we'll plot the one-dimensional marginal loglikelihood in each of the parameters $\tth = (\mu, \sigma, \tau)$ with the other two parameters fixed at their simulated values.  
 
-- Projection plots are obtained with the help of the **projplot** package.
+- Projection plots are obtained with the help of the [**projplot**](https://projplot.readthedocs.io/) package.
 - Projection plots involve a fairly large number of evaluations of $\hat{\ell}(\tth)$, which itself involes $\bO(TN)$ evaluations of the state-space model functions $f(\xx_t \mid \xx_{t-1}, \tth)$ and $g(\yy_t \mid \xx_t, \tth)$.  We will therefore employ the JIT compilation engine offered by **JAX** to massively speed up function evaluations.
 - We'll first create helper functions to evaluate the loglikelihoods which vectorize over multiple parameter values at once.  In particular, this allows us to easily specify a different PRNG key for each evaluation of $\hat{\ell}(\tth)$.
 

@@ -11,7 +11,7 @@ kernelspec:
   name: python3
 ---
 
-# Introduction to **PFJAX**, Part II: Gradient and Hessian Computations
+# Gradient and Hessian Computations
 
 **Martin Lysy -- University of Waterloo**
 
@@ -21,11 +21,11 @@ kernelspec:
 
 ## Summary
 
-In [Part I](pfjax.md) of this tutorial, we saw how to set up a model class for state-space models and how to use **PFJAX** to evaluate the marginal loglikelihood $\ell(\tth) = \log p(\yy_{0:T} \mid \tth)$.  For parameter inference with state-space models, particle filters are useful not only for estimating $\ell(\tth)$, but also its gradient and hessian functions, $\nabla \ell(\tth) = \frac{\partial}{\partial \tth} \ell(\tth)$ and $\nabla^2 \ell(\tth) = \frac{\partial^2}{\partial \tth \partial \tth'} \ell(\tth)$.
+In the [Introduction](pfjax.md) tutorial, we saw how to set up a model class for state-space models and how to use **PFJAX** to estimate the marginal loglikelihood $\ell(\tth) = \log p(\yy_{0:T} \mid \tth)$.  For parameter inference with state-space models, particle filters are useful not only for estimating $\ell(\tth)$, but also its gradient and hessian functions, $\nabla \ell(\tth) = \frac{\partial}{\partial \tth} \ell(\tth)$ and $\nabla^2 \ell(\tth) = \frac{\partial^2}{\partial \tth \partial \tth'} \ell(\tth)$.
 
-Part II of this tutorial compares the speed and accuracy of various particle filter algorithms for the latter.  We summarize these algorithms here, with [additional details](sec:pfdesc) provided below.  Let $N$ denote the number of particles and $T$ denote the number of observations.  The particle filter based gradient and hessian algorithms to be compared here are:
+This tutorial compares the speed and accuracy of various particle filter algorithms for the latter.  Let $N$ denote the number of particles and $T$ denote the number of observations.  The particle filter based gradient and hessian algorithms to be compared here are:
 
-1.  Automatic differentiation through the "basic" particle filter loglikelihood, i.e., the algorithm described in Section 4.1 of {cite:t}`doucet.johansen09` with multinomial resampler `pfjax.particle_resamplers.resample_multinomial()`.  This algorithm scales as $\bO(NT)$ but is known to produce biased results {cite:p}`corenflos.etal21`.  
+1.  Automatic differentiation through the "basic" particle filter loglikelihood described in the [Introduction](pfjax.md), i.e., with the $\operatorname{\texttt{resample}}()$ function given by the multinomial resampler `pfjax.particle_resamplers.resample_multinomial()`.  This algorithm scales as $\bO(NT)$ but is known to produce biased results {cite:p}`corenflos.etal21`.  
 
 2.  A modified version of the basic particle filter {cite:p}`cappe.moulines05` of which the bi-product are estimates of $\nabla \ell(\tth)$ and $\nabla^2 \ell(\tth)$.  This algorithm is unbiased and scales as $\bO(NT)$, but the variance of the estimates scales as $\bO(T^2/N)$ {cite:p}`poyiadjis.etal11`.  In other words, the number of particles $N$ must increase at least quadratically with the number of observations $T$ to keep the variance of the gradient and hessian estimators bounded.
 
@@ -33,7 +33,7 @@ Part II of this tutorial compares the speed and accuracy of various particle fil
 
 ### Benchmark Model
 
-We'll be using a Bootstrap filter for the Brownian motion with drift model defined in [Part I](pfjax.md):
+We'll be using a Bootstrap filter for the Brownian motion with drift model defined in the [Introduction](pfjax.md):
 
 $$
 \begin{aligned}
@@ -43,14 +43,16 @@ y_t & \sim \N(x_t, \tau^2),
 \end{aligned}
 $$
 
-where the model parameters are $\tth = (\mu, \sigma, \tau)$.  The details of setting up the appropriate model class are provided in [Part I](pfjax.md).  Here we'll use the version of this model provided with **PFJAX**: `pfjax.models.BMModel`.
+where the model parameters are $\tth = (\mu, \sigma, \tau)$.  The details of setting up the appropriate model class are provided in the [Introduction](pfjax.md).  Here we'll use the version of this model provided with **PFJAX**: `pfjax.models.BMModel`.
 
 ### Methods to be Added to the Comparisons
 
-4.  Automatic differentiation through a particle filter with multivariate normal resampling scheme `pfjax.particle_resamplers.resample_mvn()`.  This method is extremely fast and accurate as long as $p(\xx_{t} \mid \yy_{0:t-1}, \tth)$ is well-approximated by a multivariate normal.  It should probably be included for comparison, though since $p(\xx_{t} \mid \yy_{0:t-1}, \tth)$ is exactly Gaussian here its results are likely to be overly optimistic.
+4.  Automatic differentiation through a particle filter with multivariate normal resampling scheme `pfjax.particle_resamplers.resample_mvn()`.  This resampler calculates the (weighted) mean and variance of the particles at each time $t$ and samples from the multivariate normal with these parameters.  This method is extremely fast and accurate as long as $p(\xx_{t} \mid \yy_{0:t-1}, \tth)$ is well-approximated by a multivariate normal.  It is biased, however, especially when $p(\xx_t \mid \yy_{0:t}, \tth)$ is multimodal.  The MVN resampler should probably be included for comparison, though since $p(\xx_{t} \mid \yy_{0:t-1}, \tth)$ is exactly Gaussian here its results are likely to be overly optimistic.
 
 5.  Automatic differentiation through a particle filter with optimal transport resampling scheme `pfjax.particle_resamples.resample_ot()` proposed by {cite:t}`corenflos.etal21`.  This method is unbiased (at least for large $N$) and its computations scale as $\bO(N^2 T)$.  However, the underlying optimal transport algorithm as implemented by the [**ott-jax**](https://ott-jax.readthedocs.io/en/latest/) package requires careful tuning to be of comparable speed to any of the algorithms 1-3 above.  
 
+<!-- 6. Automatic differentiation through a Gaussian copula resampler `pfjax.particle_resamplers.resample_gc()`.  This resampler is similar to the multivariate normal (MVN) resampler but with the margins of the distribution estimated via the piecewise linear empirical CDF of {cite:t}`malik.pitt11`.  This method is less biased than the (MVN) resampler, but is considerably slower to compute due to the need for sorting the marginal distribution of the particles at each step.
+ -->
 <!-- In this module we demontrate how to maximize the marginal likelihood for the state-space model,
 
 $$
@@ -145,7 +147,7 @@ sns.relplot(
 
 ## Loglikelihood Comparisons
 
-Before checking derivatives, let's start by comparing the speed and accuracy of the underlying particle filters, namely, the $\bO(NT)$ complexity algorithm of `pfjax.particle_filter()` and the $\bO(N^2T)$ algorithm of `pfjax.particle_filter_rb()`.  Accuracy is assessed visually using projection plots as described in [Part I](pfjax.md).
+Before checking derivatives, let's start by comparing the speed and accuracy of the underlying particle filters, namely, the $\bO(NT)$ complexity algorithm of `pfjax.particle_filter()` and the $\bO(N^2T)$ algorithm of `pfjax.particle_filter_rb()`.  Accuracy is assessed visually using projection plots as described in the [Introduction](pfjax.md).
 
 Note that both `bm_loglik_basic()` and `bm_loglik_rb()` below are internally vectorized over multiple values of $\tth$, with each given a separate random seed.
 
@@ -565,90 +567,3 @@ g.set_titles(col_template="{col_name}")
 **Conclusions**:
 
 - In this case the Rao-Blackwellized filter is the clear winner, in terms of accuracy and precision.
-
-+++
-
-(sec:pfdesc)=
-## Particle Filtering Algorithms
-
-Particle filter is a technique for estimating the parameters $\tth$ of a state-space model
-
-$$
-\begin{aligned}
-\xx_0 & \sim \pi(\xx_0 \mid \tth) \\
-\xx_t & \sim f(\xx_t \mid \xx_{t-1}, \tth) \\
-\yy_t & \sim g(\yy_t \mid \xx_t, \tth).
-\end{aligned}
-$$
-
-In order to do this, the user must provide:
-
-1.  The number of particles $N$.
-2.  A proposal distribution for the initial state, $q(\xx_0 \mid \yy_0, \tth)$.
-3.  A proposal distribution for the subsequent states, $r(\xx_t \mid \xx_{t-1}, \yy_t, \tth)$.
-
-A simple choice for the proposal distributions are the forward distributions
-
-$$
-\begin{aligned}
-q(\xx_0 \mid \yy_0, \tth) & = \pi(\xx_0, \tth), \\
-r(\xx_t \mid \xx_{t-1}, \yy_t, \tth) & = f(\xx_t \mid \xx_{t-1}, \tth).
-\end{aligned}
-$$
-
-This is called a **bootstrap** particle filter {cite:p}`gordon.etal93`.
-
-The basic particle filter (e.g., {cite:t}`doucet.johansen09`, Section 4.1) then proceeds as follows to obtain an estimate $\hat \ell(\tth \mid \yy_{0:T})$ of the marginal loglikelihood
-
-$$
-\ell(\tth \mid \yy_{0:T}) = \log \int \pi(\xx_0 \mid \yy_0) \times \prod_{t=1}^T f(\xx_{t} \mid \xx_{t-1}, \tth) \times g(\yy_t \mid \xx_t, \tth) \ud \xx_{0:T}.
-$$
-
---- 
-
-(sec:bpf)=
-### Algorithm: Basic Particle Filter
-
-**Inputs:** $\tth$, $\yy_{0:T}$
-
-**Outputs:** $\hat \ell(\tth \mid \yy_{0:T})$
-
-- $\xx_0^{(1:N)} \iid q(\xx_0 \mid \yy_0, \tth)$
-    
-- $w_0^{(1:N)} \gets \frac{g(\yy_0 \mid \xx_0^{(1:N)}) \cdot \pi(\xx_0^{(1:N)} \mid \tth)}{q(\xx_0^{(1:N)} \mid \yy_0, \tth)}$
-    
--  $\hat{\Ell}_0 \gets \sum_{i=1}^N w_0^{(i)}$
-
-- $W_0^{(1:N)} = w_0^{(1:N)}/ \hat{\Ell}_0$
-    
--  For $t=1,\ldots,T$:
-
-    -  $\tilde{\xx}_{t-1}^{(1:N)} \gets \operatorname{\texttt{resample}}(\xx_{t-1}^{(1:N)}, W_{t-1}^{(1:N)})$
-    
-    - $\xx_t^{(1:N)} \ind r(\xx_t \mid \tilde{\xx}_{t-1}^{(1:N)}, \yy_t, \tth)$
-    
-    - $w_t^{(1:N)} \gets \frac{g(\yy_t \mid \xx_t^{(1:N)} \mid \tth) \cdot f(\xx_t^{(1:N)} \mid \tilde{\xx}_{t-1}^{(1:N)})}{r(\xx_t \mid \tilde{\xx}_{t-1}^{(1:N)}, \yy_t, \tth)}$
-    
-    - $\hat{\Ell}_t \gets \sum_{i=1}^N w_t^{(i)}$
-    
-    - $W_t^{(1:N)} = w_t^{(1:N)}/ \hat{\Ell}_t$
-
-- $\hat \ell(\tth \mid \yy_{0:T}) = \sum_{t=0}^T \log \hat{\Ell}_t$
-
----
-
-### Particle Resampling
-
-In the [basic particle filter algorithm](sec:bpf), the notation $\xx_t^{(1:N)}$ stands for $\xx_t^{(1)}, \ldots, \xx_t^{(N)}$, i.e., is over the vector of $N$ particles.  Similarly, operations of the form $\xx_t^{(1:N)} \gets F(\xx_{t-1}^{(1:N)})$ are vectorized over the $N$ particles, i.e., correspond to the for-loop 
-
-- For $i=1,\ldots,N$:
-
-    - $\xx_t^{(i)} \gets F(\xx_{t-1}^{(i)})$
-    
-The $\operatorname{\texttt{resample}}()$ function takes a weighted set of particles $(\xx^{(1:N)}, W^{(1:N)})$ and attempts to convert it to an unweighted sample $\tilde{\xx}^{(1:N)}$ from the same underlying distribution.  The simplest way to do this is via **multinomial sampling**, i.e., sampling with replacement from $(\xx^{(1:N)}, W^{(1:N)})$.  However, this resampling function is not differentiable with respect to $\tth$ with parameter-dependent particles $(\xx^{(1:N)}(\tth), W^{(1:N)}(\tth))$.  Therefore, **PFJAX** offers several types of differentiable resamplers:
-
-- The **multivariate normal resampler**, which calculates the (weighted) mean and variance of the particles at each time $t$ and samples from the multivariate normal with these parameters.  This method is very fast but biased, especially if the particles are representing a multimodal distribution $p(\xx_t \mid \yy_{0:t}, \tth)$.
-
-- The **Gaussian copula resampler**, which is similar to the multivariate normal (MVN) resampler but with the margins of the distribution estimated via the piecewise linear empirical CDF of {cite:t}`malik.pitt11`.  This method is less biased than the (MVN) resampler, but is significantly slower to compute due to the need for sorting the marginal distribution of the particles at each step.
-
-- The **optimal transport resampler** of {cite:t}`corenflos.etal21`.  This is asymptotically unbiased in the number of particles $N$, but computation of the transport function scales as $\bO(N^2)$.
