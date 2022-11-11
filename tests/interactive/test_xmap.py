@@ -2,13 +2,15 @@
 # https://jax.readthedocs.io/en/latest/notebooks/xmap_tutorial.html
 
 from typing import Any, Callable
+import jax
 from jax.scipy.special import logsumexp
 from jax.nn import one_hot, relu
 from jax import lax
 import jax.numpy as jnp
-import os
-
 # Use 8 CPU devices
+# need to do this before doing anything with jax:
+# https://github.com/google/jax/issues/6887
+import os
 os.environ["XLA_FLAGS"] = '--xla_force_host_platform_device_count=8'
 
 

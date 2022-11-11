@@ -1,42 +1,3 @@
-"""
-Prokaryotic auto-regulatory gene network Model.
-
-The base model involves differential equations of the chemical reactions:
-
-```
-DNA + P2 --> DNA_P2
-DNA_P2   --> DNA + P2
-DNA      --> DNA + RNA
-RNA      --> RNA + P
-P + P    --> P2
-P2       --> P + P
-RNA      --> 0
-P        --> 0
-```
-These equations are associated with a parameter in `theta = (theta0, ..., theta7)`.
-The model is approximated by a SDE described in Golightly & Wilkinson (2005). 
-A particular restriction on the chemical reactions is by the conservation law which implies that `DNA + DNA_P2 = K`.
-Thus the SDE model can be described in terms of `x_t = (RNA, P, P2, DNA)`. 
-
-Then assuming a standard form of the SDE, the base model can be written as
-```
-x_mt = x_{m, t-1} + mu_mt dt/m + Sigma_mt^{1/2} dt/m
-y_t ~ N( exp(x_{m,mt}), diag(tau^2) )
-```
-
-Ito's Lemma is applied to transform the base model on the log-scale to allow for unconstrained variables
-```
-logx_mt = log(x_mt)
-```
-so `mu_mt` and `Sigma_mt` are transformed accordingly. 
-
-- Model parameters: `theta = (theta0, ... theta7, tau0, ... tau3)`.
-- Global constants: `dt` and `n_res`, i.e., `m`.
-- State dimensions: `n_state = (n_res, 4)`.
-- Measurement dimensions: `n_meas = 4`.
-
-"""
-
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
@@ -48,17 +9,57 @@ from pfjax import sde as sde
 
 
 class PGNETModel(sde.SDEModel):
+    r"""
+    Prokaryotic auto-regulatory gene network Model.
+
+    The base model involves differential equations of the chemical reactions:
+
+    ::
+
+        DNA + P2 --> DNA_P2
+        DNA_P2   --> DNA + P2
+        DNA      --> DNA + RNA
+        RNA      --> RNA + P
+        P + P    --> P2
+        P2       --> P + P
+        RNA      --> 0
+        P        --> 0
+
+
+    These equations are associated with a parameter in `theta = (theta0, ..., theta7)`.
+    The model is approximated by a SDE described in Golightly & Wilkinson (2005). 
+    A particular restriction on the chemical reactions is by the conservation law which implies that `DNA + DNA_P2 = K`.
+    Thus the SDE model can be described in terms of `x_t = (RNA, P, P2, DNA)`. 
+
+    Then assuming a standard form of the SDE, the base model can be written as
+
+    ::
+
+        x_mt = x_{m, t-1} + mu_mt dt/m + Sigma_mt^{1/2} dt/m
+        y_t ~ N( exp(x_{m,mt}), diag(tau^2) )
+
+
+    Ito's Lemma is applied to transform the base model on the log-scale to allow for unconstrained variables
+
+    ::
+
+        logx_mt = log(x_mt)
+
+    so `mu_mt` and `Sigma_mt` are transformed accordingly. 
+
+    - Model parameters: `theta = (theta0, ... theta7, tau0, ... tau3)`.
+    - Global constants: `dt` and `n_res`, i.e., `m`.
+    - State dimensions: `n_state = (n_res, 4)`.
+    - Measurement dimensions: `n_meas = 4`.
+
+
+    Args:
+        dt: SDE interobservation time.
+        n_res: SDE resolution number.  There are `n_res` latent variables per observation, equally spaced with interobservation time `dt/n_res`.
+        bootstrap (bool): Flag indicating whether to use a Bootstrap particle filter or a bridge filter.
+    """
 
     def __init__(self, dt, n_res, bootstrap=True):
-        r"""
-        Class constructor for the PGNET model.
-
-        Args:
-            dt: SDE interobservation time.
-            n_res: SDE resolution number.  There are `n_res` latent variables per observation, equally spaced with interobservation time `dt/n_res`.
-            bootstrap (bool): Flag indicating whether to use a Bootstrap particle filter or a bridge filter.
-
-        """
         # creates "private" variables self._dt and self._n_res
         super().__init__(dt, n_res, diff_diag=False)
         self._n_state = (self._n_res, 4)
@@ -93,10 +94,10 @@ class PGNETModel(sde.SDEModel):
         sigma34 = A
         sigma44 = A
 
-        Sigma = jnp.array([[sigma11, 0, 0, 0],
-                           [0, sigma22, sigma23, 0],
-                           [0, sigma23, sigma33, sigma34],
-                           [0, 0, sigma34, sigma44]])
+        Sigma = jnp.array([[sigma11, 0., 0., 0.],
+                           [0., sigma22, sigma23, 0.],
+                           [0., sigma23, sigma33, sigma34],
+                           [0., 0, sigma34, sigma44]])
 
         return Sigma
 
@@ -142,7 +143,7 @@ class PGNETModel(sde.SDEModel):
             x_curr: State variable at current time `t`.
             theta: Parameter value.
 
-        Returns
+        Returns:
             The log-density of `p(y_curr | x_curr, theta)`.
         """
         tau = theta[8:12]
@@ -170,17 +171,18 @@ class PGNETModel(sde.SDEModel):
         Particle filter calculation for `x_init`.
 
         Samples from an importance sampling proposal distribution
-        ```
-        x_init ~ q(x_init) = q(x_init | y_init, theta)
-        ```
+
+        ::
+
+            x_init ~ q(x_init) = q(x_init | y_init, theta)
+
         and calculates the log weight
-        ```
-        logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
-        ```
 
-        **FIXME:** Explain what the proposal is and why it gives `logw = 0`.
+        ::
 
-        In fact, if you think about it hard enough then it's not actually a perfect proposal...
+            logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
+
+        **FIXME:** Explain what the proposal is and why it gives `logw = CONST`.
 
         Args:
             y_init: Measurement variable at initial time `t = 0`.
@@ -188,6 +190,9 @@ class PGNETModel(sde.SDEModel):
             key: PRNG key.
 
         Returns:
+
+            Tuple:
+
             - x_init: A sample from the proposal distribution for `x_init`.
             - logw: The log-weight of `x_init`.
         """
@@ -218,7 +223,7 @@ class PGNETModel(sde.SDEModel):
 
     def pf_step(self, key, x_prev, y_curr, theta):
         """
-        Choose between bootstrap filter and bridge proposal.
+        Get particles at subsequent steps.
 
         Args:
             x_prev: State variable at previous time `t-1`.
@@ -227,6 +232,9 @@ class PGNETModel(sde.SDEModel):
             key: PRNG key.
 
         Returns:
+
+            Tuple:
+
             - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
             - logw: The log-weight of `x_curr`.
         """
@@ -235,7 +243,7 @@ class PGNETModel(sde.SDEModel):
         else:
             omega = (theta[8:12] / y_curr)**2
             x_curr, logw = self.bridge_prop(
-                key, x_prev, y_curr, theta, 
+                key, x_prev, y_curr, theta,
                 jnp.log(y_curr), jnp.eye(4), jnp.diag(omega)
             )
         return x_curr, logw

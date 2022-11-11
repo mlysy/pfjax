@@ -1,69 +1,10 @@
-"""
-Simulate trajectories from a state space model.
-
-The API requires the user to define a model class with the following methods:
-
-- `state_sample()`
-- `meas_sample()`
-
-The provided function is:
-
-- `simulate()`
-"""
-
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
+import jax.tree_util as jtu
 from jax import random
 from jax import lax
-
-
-def simulate_for(model, key, n_obs, x_init, theta):
-    """
-    Simulate data from the state-space model.
-
-    **FIXME:** This is the testing version which uses a for-loop.  This should be put in a separate class in a `test` subfolder.
-
-    Args:
-        model: Object specifying the state-space model.
-        key: PRNG key.
-        n_obs: Number of observations to generate.
-        x_init: Initial state value at time `t = 0`.
-        theta: Parameter value.
-
-    Returns:
-        y_meas: The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
-        x_state: The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
-    """
-    x_state = []
-    y_meas = []
-    # initial observation
-    key, subkey = random.split(key)
-    x_state.append(x_init)
-    y_meas.append(model.meas_sample(subkey, x_init, theta))
-    # subsequent observations
-    for t in range(1, n_obs):
-        key, *subkeys = random.split(key, num=3)
-        x_state.append(model.state_sample(subkeys[0], x_state[t-1], theta))
-        y_meas.append(model.meas_sample(subkeys[1], x_state[t], theta))
-    return jnp.array(y_meas), jnp.array(x_state)
-    # y_meas = jnp.zeros((n_obs, ) + model.n_meas)
-    # x_state = jnp.zeros((n_obs, ) + model.n_state)
-    # x_state = x_state.at[0].set(x_init)
-    # # initial observation
-    # key, subkey = random.split(key)
-    # y_meas = y_meas.at[0].set(model.meas_sample(subkey, x_init, theta))
-    # for t in range(1, n_obs):
-    #     key, *subkeys = random.split(key, num=3)
-    #     x_state = x_state.at[t].set(
-    #         model.state_sample(subkeys[0], x_state[t-1], theta)
-    #     )
-    #     y_meas = y_meas.at[t].set(
-    #         model.meas_sample(subkeys[1], x_state[t], theta)
-    #     )
-    # return y_meas, x_state
-
-# @partial(jax.jit, static_argnums=0)
+from pfjax.utils import *
 
 
 def simulate(model, key, n_obs, x_init, theta):
@@ -71,15 +12,22 @@ def simulate(model, key, n_obs, x_init, theta):
     Simulate data from the state-space model.
 
     Args:
-        model: Object specifying the state-space model.
+        model: Object specifying the state-space model having the following methods.
+
+            - `state_sim : (key, x_prev, theta) -> x_curr`: Sample from the state model.
+            - `meas_sim : (key, x_curr, theta) -> y_curr`: Sample from the measurement model.
+
         key: PRNG key.
         n_obs: Number of observations to generate.
         x_init: Initial state value at time `t = 0`.
         theta: Parameter value.
 
     Returns:
-        y_meas: The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
-        x_state: The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
+        Tuple: 
+
+        - **y_meas** - The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
+
+        - **x_state** - The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
     """
     # lax.scan setup
     # scan function
@@ -97,10 +45,12 @@ def simulate(model, key, n_obs, x_init, theta):
         "key": key
     }
     # scan itself
-    last, full = lax.scan(fun, init, jnp.arange(1, n_obs))
+    last, full = lax.scan(fun, init, jnp.arange(n_obs-1))
     # append initial values
-    x_state = jnp.append(jnp.expand_dims(init["x_state"], axis=0),
-                         full["x_state"], axis=0)
-    y_meas = jnp.append(jnp.expand_dims(init["y_meas"], axis=0),
-                        full["y_meas"], axis=0)
+    x_state = tree_append_first(full["x_state"], first=init["x_state"])
+    y_meas = tree_append_first(full["y_meas"], first=init["y_meas"])
+    # x_state = jnp.append(jnp.expand_dims(init["x_state"], axis=0),
+    #                      full["x_state"], axis=0)
+    # y_meas = jnp.append(jnp.expand_dims(init["y_meas"], axis=0),
+    #                     full["y_meas"], axis=0)
     return y_meas, x_state

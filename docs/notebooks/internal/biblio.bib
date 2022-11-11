@@ -1,0 +1,52 @@
+@incollection{doucet_johansen09,
+	address = {Cambridge},
+	title = {A tutorial on particle filtering and smoothing: {Fifteen} years later.},
+	booktitle = {Handbook of {Nonlinear} {Filtering}},
+	publisher = {Cambridge University Press},
+	author = {Doucet, Arnaud and Johansen, Adam M.},
+	editor = {Crisan, D. and Rozovsky, B.},
+	year = {2009}
+}
+
+
+@article{poyiadjis_etal11,
+	title = {Particle approximations of the score and observed information matrix in state space models with application to parameter estimation},
+	volume = {98},
+	issn = {0006-3444, 1464-3510},
+	url = {https://academic.oup.com/biomet/article-lookup/doi/10.1093/biomet/asq062},
+	doi = {10.1093/biomet/asq062},
+	abstract = {Particle methods are popular computational tools for Bayesian inference in nonlinear nonGaussian state space models. For this class of models, we present two particle algorithms to compute the score vector and observed information matrix recursively. The first algorithm is implemented with computational complexity O(N ) and the second with complexity O(N 2), where N is the number of particles. Although cheaper, the performance of the O(N ) method degrades quickly, as it relies on the approximation of a sequence of probability distributions whose dimension increases linearly with time. In particular, even under strong mixing assumptions, the variance of the estimates computed with the O(N ) method increases at least quadratically in time. The more expensive O(N 2) method relies on a nonstandard particle implementation and does not suffer from this rapid degradation. It is shown how both methods can be used to perform batch and recursive parameter estimation.},
+	language = {en},
+	number = {1},
+	urldate = {2022-03-03},
+	journal = {Biometrika},
+	author = {Poyiadjis, G. and Doucet, A. and Singh, S. S.},
+	year = {2011},
+	pages = {65--80}
+}
+
+
+@inproceedings{cappe_moulines05,
+	title = {On the use of particle filtering for maximum likelihood parameter estimation},
+	abstract = {Particle ﬁltering – perhaps more properly named Sequential Monte Carlo – approaches have a strong potential for signal and image processing applications. A problem of great practical signiﬁcance in this ﬁeld, which remains largely unsolved as of today, is the estimation of ﬁxed model parameters based on the output of sequential simulations.},
+	booktitle = {13th European Signal Processing Conference},
+	author = {Cappé, Olivier and Moulines, Eric},
+	year = {2005},
+	pages = {1--4}
+}
+
+
+@inproceedings{corenflos_etal21,
+	series = {Proceedings of machine learning research},
+	title = {Differentiable particle filtering via entropy-regularized optimal transport},
+	volume = {139},
+	url = {https://proceedings.mlr.press/v139/corenflos21a.html},
+	abstract = {Particle Filtering (PF) methods are an established class of procedures for performing inference in non-linear state-space models. Resampling is a key ingredient of PF necessary to obtain low variance likelihood and states estimates. However, traditional resampling methods result in PF-based loss functions being non-differentiable with respect to model and PF parameters. In a variational inference context, resampling also yields high variance gradient estimates of the PF-based evidence lower bound. By leveraging optimal transport ideas, we introduce a principled differentiable particle filter and provide convergence results. We demonstrate this novel method on a variety of applications.},
+	booktitle = {Proceedings of the 38th international conference on machine learning},
+	publisher = {PMLR},
+	author = {Corenflos, Adrien and Thornton, James and Deligiannidis, George and Doucet, Arnaud},
+	editor = {Meila, Marina and Zhang, Tong},
+	month = jul,
+	year = {2021},
+	pages = {2100--2111}
+}
