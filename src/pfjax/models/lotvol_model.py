@@ -8,7 +8,7 @@ from pfjax import sde as sde
 # --- helper functions ---------------------------------------------------------
 
 
-def lotvol_drift(x, dt, theta):
+def _lotvol_drift(x, dt, theta):
     r"""
     Calculates the SDE drift function.
     """
@@ -93,18 +93,11 @@ class LotVolModel(sde.SDEModel):
         """
         return theta[4:6]
 
-    def state_lpdf_for(self, x_curr, x_prev, theta):
+    def _state_lpdf_for(self, x_curr, x_prev, theta):
         r"""
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
 
         For-loop version for testing.
-
-        Args:
-            x_curr: State variable at current time `t`.
-            x_prev: State variable at previous time `t-1`.
-            theta: Parameter value.
-        Returns:
-            The log-density of `p(x_curr | x_prev, theta)`.
         """
         dt_res = self._dt/self._n_res
         x0 = jnp.append(jnp.expand_dims(
@@ -115,24 +108,16 @@ class LotVolModel(sde.SDEModel):
         for t in range(self._n_res):
             lp = lp + jnp.sum(jsp.stats.norm.logpdf(
                 x1[t],
-                loc=lotvol_drift(x0[t], dt_res, theta),
+                loc=_lotvol_drift(x0[t], dt_res, theta),
                 scale=sigma
             ))
         return lp
 
-    def state_sample_for(self, key, x_prev, theta):
+    def _state_sample_for(self, key, x_prev, theta):
         r"""
         Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
 
         For-loop version for testing.
-
-        Args:
-            key: PRNG key.
-            x_prev: State variable at previous time `t-1`.
-            theta: Parameter value.
-
-        Returns:
-            Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
         dt_res = self._dt/self._n_res
         sigma = theta[4:6] * jnp.sqrt(dt_res)
@@ -140,7 +125,7 @@ class LotVolModel(sde.SDEModel):
         x_state = x_prev[self._n_res-1]
         for t in range(self._n_res):
             key, subkey = random.split(key)
-            x_state = lotvol_drift(x_state, dt_res, theta) + \
+            x_state = _lotvol_drift(x_state, dt_res, theta) + \
                 random.normal(subkey, (self._n_state[1],)) * sigma
             x_curr = x_curr.at[t].set(x_state)
         return x_curr

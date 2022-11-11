@@ -402,8 +402,10 @@ class SDEModel(object):
             theta: Parameter value.
 
         Returns:
-            - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
-            - logw: The log-weight of `x_curr`.
+            Tuple:
+
+            - **x_curr** - Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
+            - **logw** - The log-weight of `x_curr`.
         """
         # lax.scan setup
         def scan_fun(carry, n):
@@ -414,18 +416,6 @@ class SDEModel(object):
                 x=x, theta=theta, n=n,
                 Y=Y, A=A, Omega=Omega
             )
-            # k = self._n_res - n
-            # dt_res = self._dt / self._n_res
-            # dr = self.drift(x, theta) * dt_res
-            # df = self.diff_full(x, theta) * dt_res
-            # mu_bridge, Sigma_bridge = mb.mvn_bridge_mv(
-            #     mu_W=x + dr,
-            #     Sigma_W=df,
-            #     mu_Y=jnp.matmul(A, x + k*dr),
-            #     AS_W=jnp.matmul(A, df),
-            #     Sigma_Y=k * jnp.linalg.multi_dot([A, df, A.T]) + Omega,
-            #     Y=Y
-            # )
             # bridge proposal
             key, subkey = random.split(key)
             x_prop = random.multivariate_normal(key,
