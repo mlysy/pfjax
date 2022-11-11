@@ -7,8 +7,10 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
 import jax.tree_util as jtu
-from ..utils import *
-from ..loglik_full import loglik_full
+import jax.lax as lax
+from pfjax.particle_resamplers import resample_multinomial
+from pfjax.utils import *
+from pfjax.loglik_full import loglik_full
 
 # --- non-exported functions for testing ---------------------------------------
 
@@ -162,6 +164,286 @@ def particle_filter_for(model, key, y_meas, theta, n_particles):
     }
 
 
+def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
+                           resampler=resample_multinomial,
+                           score=True, fisher=False, history=False):
+    r"""
+    Rao-Blackwellized particle filter.
+
+    This is the for-loop version used only for testing.
+
+    Args:
+        model: Object specifying the state-space model having the following methods:
+            - `pf_init()`.
+            - Either `pf_prop()` or `pf_step()`.
+            - `state_lpdf()`.
+            - `meas_lpdf()`.
+            - `prop_lpdf()`.
+            - Optionally `pf_aux()`.
+        key: PRNG key.
+        y_meas: JAX array with leading dimension `n_obs` containing the measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
+        theta: Parameter value.
+        n_particles: Number of particles.
+        resampler: Function used at step `t` to obtain sample of particles from `p(x_{t} | y_{0:t}, theta)` out of a sample of particles from `p(x_{t-1} | y_{0:t-1}, theta)`.   The argument signature is `resampler(x_particles, logw, key)`, and the return value is a dictionary with mandatory element `x_particles`  and optional elements that get carried to the next step `t+1` via `lax.scan()`.
+        score: Whether or not to return an estimate of the score function at `theta`.
+        fisher: Whether or not to return an estimate of the Fisher information at `theta`.  If `True` returns score as well.
+        history: Whether to output the history of the filter or only the last step.
+
+    Returns:
+        A dictionary with elements:
+            - `x_particles`: JAX array containing the state variable particles at the last time point (leading dimension `n_particles`) or at all time points (leading dimensions `(n_obs, n_particles)` if `history=True`.
+            - `logw_bar`: JAX array containing unnormalized log weights at the last time point (dimensions `n_particles`) or at all time points (dimensions (n_obs, n_particles)`) if `history=True`.
+            - `loglik`: The particle filter loglikelihood evaluated at `theta`.
+            - `score`: Optional 1D JAX array of size `n_theta = length(theta)` containing the estimated score at `theta`.
+            - `fisher`: Optional JAX array of shape `(n_theta, n_theta)` containing the estimated observed fisher information at `theta`.
+            - `resample_out`: If `history=True`, a dictionary of additional outputs from `resampler` function.  The leading dimension of each element of the dictionary has leading dimension `n_obs-1`, since these additional outputs do not apply to the first time point `t=0`.
+    """
+    n_obs = y_meas.shape[0]
+    has_acc = score or fisher
+
+    def pf_prop(x_curr, x_prev, y_curr):
+        """
+        Calculate log-density of the proposal distribution `x_curr ~ q(x_t | x_t-1, y_t, theta)`.
+        """
+        return model.step_lpdf(x_curr=x_curr, x_prev=x_prev, y_curr=y_curr,
+                               theta=theta)
+
+    def pf_step(key, x_prev, y_curr):
+        """
+        Sample from the proposal distribution `x_curr ~ q(x_t | x_t-1, y_t, theta)`.
+
+        If `model.pf_prop()` is missing, use `model.pf_step()` instead.  However, in this case discards the log-weight for the proposal as it is not used in this particle filter.
+        """
+        if callable(getattr(model, "pf_prop", None)):
+            x_curr = model.pf_prop(key=key, x_prev=x_prev, y_curr=y_curr,
+                                   theta=theta)
+        else:
+            x_curr, _ = model.pf_step(key=key, x_prev=x_prev, y_curr=y_curr,
+                                      theta=theta)
+        return x_curr
+
+    def pf_init(key):
+        return model.pf_init(key=key, y_init=y_meas[0], theta=theta)
+
+    def pf_aux(logw_prev, x_prev, y_curr):
+        """
+        Add the log-density for auxillary sampling `logw_aux` to the log-weights from the previous step `logw_prev`.
+
+        The auxillary log-density is given by model.pf_aux(). If this method is missing, `logw_aux` is set to 0.
+        """
+        if callable(getattr(model, "pf_aux", None)):
+            logw_aux = model.pf_aux(
+                x_prev=x_prev,
+                y_curr=y_curr,
+                theta=theta
+            )
+            return logw_aux + logw_prev
+        else:
+            return logw_prev
+
+    def pf_bar_for(x_prev, x_curr, y_curr, acc_prev, logw_aux):
+        """
+        Update calculations relating to logw_bar.
+
+        This is the for-loop version, which does both loops inside the helper function.
+
+        Returns:
+            Dictionary with elements:
+            - logw_bar: rao-blackwellized weights.
+            - alpha: optional current value of alpha.
+            - beta: optional current value of beta.
+        """
+        n_theta = theta.size
+        # grad and hess functions
+        grad_meas = jax.grad(model.meas_lpdf, argnums=2)
+        grad_state = jax.grad(model.state_lpdf, argnums=2)
+        hess_meas = jax.jacfwd(jax.jacrev(model.meas_lpdf, argnums=2),
+                               argnums=2)
+        hess_state = jax.jacfwd(jax.jacrev(model.state_lpdf, argnums=2),
+                                argnums=2)
+        # storage
+        logw_bar = jnp.zeros(n_particles)
+        _logw_targ = jnp.zeros(n_particles)
+        _logw_prop = jnp.zeros(n_particles)
+        alpha_curr = jnp.zeros((n_particles, n_theta))
+        _alpha_full = jnp.zeros((n_particles, n_theta))
+        beta_curr = jnp.zeros((n_particles, n_theta, n_theta))
+        _beta_full = jnp.zeros((n_particles, n_theta, n_theta))
+        for i in jnp.arange(x_curr.shape[0]):
+            for j in jnp.arange(x_prev.shape[0]):
+                _logw_targ = _logw_targ.at[j].set(
+                    model.state_lpdf(
+                        x_prev=x_prev[j],
+                        x_curr=x_curr[i],
+                        theta=theta
+                    ) + acc_prev["logw_bar"][j]
+                )
+                # id_print(x_prev[j])
+                # id_print(acc_prev["logw_bar"][j])
+                # id_print(_logw_targ[j])
+                _logw_prop = _logw_prop.at[j].set(
+                    model.step_lpdf(
+                        x_prev=x_prev[j],
+                        x_curr=x_curr[i],
+                        y_curr=y_curr,
+                        theta=theta
+                    ) + logw_aux[j]
+                )
+                if has_acc:
+                    _alpha_full = _alpha_full.at[j].set(
+                        grad_meas(y_curr, x_curr[i], theta) +
+                        grad_state(x_curr[i], x_prev[j], theta) +
+                        acc_prev["alpha"][j]
+                    )
+                    # id_print(_alpha_full[j])
+                    if fisher:
+                        _beta_full = _beta_full.at[j].set(
+                            jnp.outer(_alpha_full[j], _alpha_full[j]) +
+                            hess_meas(y_curr, x_curr[i], theta) +
+                            hess_state(x_curr[i], x_prev[j], theta) +
+                            acc_prev["beta"][j]
+                        )
+            logw_tilde = jsp.special.logsumexp(_logw_targ) + \
+                model.meas_lpdf(
+                y_curr=y_curr,
+                x_curr=x_curr[i],
+                theta=theta
+            )
+            logw_bar = logw_bar.at[i].set(
+                logw_tilde - jsp.special.logsumexp(_logw_prop)
+            )
+            if has_acc:
+                alpha_curr = alpha_curr.at[i].set(
+                    tree_mean(_alpha_full, _logw_targ)
+                )
+                if fisher:
+                    beta_curr = beta_curr.at[i].set(
+                        tree_mean(_beta_full, _logw_targ) -
+                        jnp.outer(alpha_curr[i], alpha_curr[i])
+                    )
+        acc_curr = {"logw_bar": logw_bar}
+        if has_acc:
+            acc_curr["alpha"] = alpha_curr
+            if fisher:
+                acc_curr["beta"] = beta_curr
+        return acc_curr
+
+    # lax.scan stepping function
+    def filter_step(carry, t):
+        # 1. sample particles from previous time point
+        key, subkey = random.split(carry["key"])
+        # augment previous weights with auxiliary weights
+        logw_aux = jax.vmap(
+            pf_aux,
+            in_axes=(0, 0, None)
+        )(carry["logw_bar"], carry["x_particles"], y_meas[t])
+        # resampled particles
+        resample_out = resampler(
+            key=subkey,
+            x_particles_prev=carry["x_particles"],
+            logw=logw_aux
+        )
+        # 2. sample particles for current timepoint
+        key, *subkeys = random.split(key, num=n_particles+1)
+        x_particles = jax.vmap(
+            pf_step,
+            in_axes=(0, 0, None)
+        )(jnp.array(subkeys), resample_out["x_particles"], y_meas[t])
+        # 3. compute all double summations
+        acc_prev = {"logw_bar": carry["logw_bar"]}
+        if has_acc:
+            acc_prev["alpha"] = carry["alpha"]
+            if fisher:
+                acc_prev["beta"] = carry["beta"]
+        acc_curr = pf_bar_for(
+            x_prev=carry["x_particles"],
+            x_curr=x_particles,
+            y_curr=y_meas[t],
+            acc_prev=acc_prev,
+            logw_aux=logw_aux
+        )
+        # output
+        res_carry = {
+            "x_particles": x_particles,
+            "loglik": carry["loglik"] +
+            jsp.special.logsumexp(acc_curr["logw_bar"]),
+            "key": key
+            # "resample_out": rm_keys(resample_out, "x_particles")
+        }
+        res_carry.update(acc_curr)
+        if history:
+            res_stack = {k: res_carry[k]
+                         for k in ["x_particles", "logw_bar"]}
+            if set(["x_particles"]) < resample_out.keys():
+                res_stack["resample_out"] = rm_keys(
+                    x=resample_out,
+                    keys="x_particles"
+                )
+        else:
+            res_stack = None
+        return res_carry, res_stack
+
+    # lax.scan initial value
+    key, *subkeys = random.split(key, num=n_particles+1)
+    # initial particles and weights
+    x_particles, logw = jax.vmap(
+        pf_init
+    )(jnp.array(subkeys))
+    # # dummy initialization for resampler
+    # init_res = resampler(key, x_particles, logw)
+    # init_res = tree_zeros(rm_keys(init_res, ["x_particles"]))
+    filter_init = {
+        "x_particles": x_particles,
+        "loglik": jsp.special.logsumexp(logw),
+        "logw_bar": logw,
+        "key": key
+        # "resample_out": init_res
+    }
+    if has_acc:
+        # dummy initialization for derivatives
+        filter_init["alpha"] = jnp.zeros((n_particles, theta.size))
+        if fisher:
+            filter_init["beta"] = jnp.zeros(
+                (n_particles, theta.size, theta.size)
+            )
+
+    # lax.scan itself
+    last, full = lax.scan(filter_step, filter_init, jnp.arange(1, n_obs))
+
+    # format output
+    if history:
+        # append initial values of x_particles and logw
+        full["x_particles"] = jnp.concatenate([
+            filter_init["x_particles"][None], full["x_particles"]
+        ])
+        full["logw_bar"] = jnp.concatenate([
+            filter_init["logw_bar"][None], full["logw_bar"]
+        ])
+    else:
+        full = last
+    # calculate loglikelihood
+    full["loglik"] = last["loglik"] - n_obs * jnp.log(n_particles)
+    if has_acc:
+        # logw_bar = last["logw_bar"]
+        if not fisher:
+            # calculate score only
+            full["score"] = tree_mean(last["alpha"], last["logw_bar"])
+        else:
+            # calculate score and fisher information
+            prob = lwgt_to_prob(last["logw_bar"])
+            alpha = last["alpha"]
+            beta = last["beta"]
+            alpha, gamma = jax.vmap(
+                lambda p, a, b: (p * a, p * (jnp.outer(a, a) + b))
+            )(prob, alpha, beta)
+            alpha = jnp.sum(alpha, axis=0)
+            hess = jnp.sum(gamma, axis=0) - jnp.outer(alpha, alpha)
+            full["score"] = alpha
+            full["fisher"] = hess
+
+    return full
+
+
 def loglik_full_for(model, y_meas, x_state, theta):
     """
     Calculate the joint loglikelihood `p(y_{0:T} | x_{0:T}, theta) * p(x_{0:T} | theta)`.
@@ -311,6 +593,23 @@ def particle_smooth_for(key, logw, x_particles, ancestors, n_sample=1):
         i_part = ancestors[i_obs, i_part]
         x_state = x_state.at[i_obs].set(x_particles[i_obs, i_part, ...])
     return x_state
+
+
+def particle_loglik(logw):
+    r"""
+    Calculate particle filter marginal loglikelihood.
+
+    Args:
+        logw: An `ndarray` of shape `(n_obs, n_particles)` giving the unnormalized log-weights of each particle at each time point.
+
+    Returns:
+        Particle filter approximation of
+        ```
+        log p(y_meas | theta) = log int p(y_meas | x_state, theta) * p(x_state | theta) dx_state
+        ```
+    """
+    n_particles = logw.shape[1]
+    return jnp.sum(jsp.special.logsumexp(logw, axis=1) - jnp.log(n_particles))
 
 
 def particle_ancestor(x_particles, ancestors, id_particle_last):

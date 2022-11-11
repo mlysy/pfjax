@@ -14,8 +14,10 @@ The provided function is:
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
+import jax.tree_util as jtu
 from jax import random
 from jax import lax
+from pfjax.utils import *
 
 
 def simulate(model, key, n_obs, x_init, theta):
@@ -30,8 +32,9 @@ def simulate(model, key, n_obs, x_init, theta):
         theta: Parameter value.
 
     Returns:
-        y_meas: The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
-        x_state: The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
+        (tuple):
+        - **y_meas**: The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
+        - **x_state**: The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
     """
     # lax.scan setup
     # scan function
@@ -49,10 +52,12 @@ def simulate(model, key, n_obs, x_init, theta):
         "key": key
     }
     # scan itself
-    last, full = lax.scan(fun, init, jnp.arange(1, n_obs))
+    last, full = lax.scan(fun, init, jnp.arange(n_obs-1))
     # append initial values
-    x_state = jnp.append(jnp.expand_dims(init["x_state"], axis=0),
-                         full["x_state"], axis=0)
-    y_meas = jnp.append(jnp.expand_dims(init["y_meas"], axis=0),
-                        full["y_meas"], axis=0)
+    x_state = tree_append_first(full["x_state"], first=init["x_state"])
+    y_meas = tree_append_first(full["y_meas"], first=init["y_meas"])
+    # x_state = jnp.append(jnp.expand_dims(init["x_state"], axis=0),
+    #                      full["x_state"], axis=0)
+    # y_meas = jnp.append(jnp.expand_dims(init["y_meas"], axis=0),
+    #                     full["y_meas"], axis=0)
     return y_meas, x_state

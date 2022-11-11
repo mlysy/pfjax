@@ -1,3 +1,3 @@
-from .bm_model import *
-from .lotvol_model import *
-from .pgnet_model import *
+from .bm_model import BMModel
+from .lotvol_model import LotVolModel
+from .pgnet_model import PGNETModel

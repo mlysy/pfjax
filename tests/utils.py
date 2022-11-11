@@ -1,15 +1,24 @@
 import unittest
+import itertools
+import pandas as pd
 # import numpy as np
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
+import jax.tree_util as jtu
 import jax.random as random
 import pfjax as pf
+# import pfjax.experimental.particle_filter as pfex
 import pfjax.mcmc as mcmc
-import pfjax.models
+import pfjax.models as models
+import pfjax.utils as utils
 import lotvol_model as lv
-import pfjax.models.pgnet_model as pg
-from pfjax.tests.utils import *
+# import pfjax.models.pgnet_model as pg
+import pfjax.particle_resamplers as resamplers
+import pfjax.test.utils as test
+
+
+# --- general-purpose utilities ------------------------------------------------
 
 
 def rel_err(X1, X2):
@@ -29,6 +38,25 @@ def var_sim(key, size):
     """
     Z = random.normal(key, (size, size))
     return jnp.matmul(Z.T, Z)
+
+
+# def expand_grid(**kwargs):
+#     """
+#     JAX equivalent of expand_grid in R.
+
+#     Unlike R, leftmost vectors are changing fastest.
+#     """
+#     keys = list(kwargs)
+#     out = jnp.meshgrid(*[kwargs[k] for k in keys])
+#     return {keys[i]: jnp.ravel(out[i]) for i in jnp.arange(len(out))}
+
+def expand_grid(**kwargs):
+    """
+    Create a dataframe from every combination of given values.
+    """
+    rows = itertools.product(*kwargs.values())
+    return pd.DataFrame.from_records(rows, columns=kwargs.keys())
+
 
 # --- model-based setup methods ------------------------------------------------
 
@@ -50,7 +78,7 @@ def bm_setup(self):
     # particle filter specification
     self.n_particles = 3
     # model specification
-    self.Model = pf.models.BMModel
+    self.Model = models.BMModel
 
 
 def lv_setup(self):
@@ -77,13 +105,13 @@ def lv_setup(self):
     self.x_init = jnp.block([[jnp.zeros((n_res-1, 2))],
                              [jnp.log(jnp.array([5., 3.]))]])
     self.n_particles = 25
-    self.Model = pf.models.LotVolModel
+    self.Model = models.LotVolModel
     self.Model2 = lv.LotVolModel
 
 
 def pg_setup(self):
     """
-    Creates input arguments to tests for LotVolModel.
+    Creates input arguments to tests for PGNETModel.
     """
     self.key = random.PRNGKey(0)
     # parameter values
@@ -98,8 +126,8 @@ def pg_setup(self):
     self.x_init = jnp.block([[jnp.zeros((n_res-1, 4))],
                              [jnp.log(jnp.array([8., 8., 8., 5.]))]])
     self.n_particles = 2
-    self.Model = pg.PGNETModel
-    self.Model2 = pg.PGNETModel
+    self.Model = models.PGNETModel
+    self.Model2 = models.PGNETModel
 
 
 def fact_setup(self):
@@ -141,9 +169,12 @@ def fact_setup(self):
     ])
 
 
-# --- for vs vmap/scan tests ---------------------------------------------------
+# --- simulate test functions --------------------------------------------------
 
-def test_for_simulate(self):
+def test_simulate_for(self):
+    """
+    Check that for-loop and vmap/scan/etc give the same results.
+    """
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -153,7 +184,7 @@ def test_for_simulate(self):
     n_particles = self.n_particles
     model = self.Model(**model_args)
     # simulate with for-loop
-    y_meas1, x_state1 = simulate_for(
+    y_meas1, x_state1 = test.simulate_for(
         model, key, n_obs, x_init, theta)
     # simulate without for-loop
     y_meas2, x_state2 = pf.simulate(model, key, n_obs, x_init, theta)
@@ -161,7 +192,10 @@ def test_for_simulate(self):
     self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
 
 
-def test_for_particle_filter(self):
+def test_simulate_jit(self):
+    """
+    Check that jitted and unjitted code give the same results.
+    """
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -170,24 +204,34 @@ def test_for_particle_filter(self):
     n_obs = self.n_obs
     n_particles = self.n_particles
     model = self.Model(**model_args)
-    # simulate without for-loop
-    key, subkey = random.split(key)
-    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
-    # particle filter specification
-    key, subkey = random.split(key)
-    # pf with for-loop
-    pf_out1 = particle_filter_for(model, subkey,
-                                  y_meas, theta, n_particles)
-    # pf without for-loop
-    pf_out2 = pf.particle_filter(
-        model, subkey, y_meas, theta, n_particles)
-    for k in pf_out1.keys():
-        with self.subTest(k=k):
-            self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+
+    # objective function for gradient
+    def obj_fun(model, key, n_obs, x_init, theta):
+        out = pf.simulate(model, key, n_obs, x_init, theta)
+        return jtu.tree_reduce(lambda x, y: x + jnp.sum(y),
+                               out,
+                               jnp.array(0.0))
+
+    # simulate without jit
+    y_meas1, x_state1 = pf.simulate(model, key, n_obs, x_init, theta)
+    # simulate with jit
+    simulate_jit = jax.jit(pf.simulate, static_argnums=(0, 2))
+    y_meas2, x_state2 = simulate_jit(model, key, n_obs, x_init, theta)
+    self.assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
+    self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
+    # grad without jit
+    grad1 = jax.grad(obj_fun, argnums=4)(
+        model, key, n_obs, x_init, theta)
+    # grad with jit
+    grad2 = jax.jit(jax.grad(obj_fun, argnums=4), static_argnums=(0, 2))(
+        model, key, n_obs, x_init, theta)
+    self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
 
 
-def test_for_resample_mvn(self):
-    """ particle filter with mvn resampling function test """
+def test_simulate_models(self):
+    """
+    Check that equivalent model definitions give the same results.
+    """
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -195,86 +239,20 @@ def test_for_resample_mvn(self):
     model_args = self.model_args
     n_obs = self.n_obs
     n_particles = self.n_particles
-    model = self.Model(**model_args)
-    # simulate without for-loop
-    key, subkey = random.split(key)
-    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
-    # generate initial particles:
-    key, *subkeys = random.split(key, num=n_particles+1)
-    x_particles, logw = jax.vmap(
-        lambda k: model.pf_init(k, y_meas[0], theta))(jnp.array(subkeys))
-    # x_particles = jnp.expand_dims(x_particles, 1)
-    new_particles_for = resample_mvn_for(
-        subkey,
-        x_particles,
-        logw)
-    new_particles = pf.resample_mvn(
-        subkey,
-        x_particles,
-        logw)
-    for k in new_particles.keys():
-        with self.subTest(k=k):
-            self.assertAlmostEqual(
-                rel_err(new_particles[k], new_particles_for[k]), 0.0)
-
-
-def test_shape_resample_mvn(self):
-    """ particle filter with mvn resampling function test """
-    # un-self setUp members
-    key = self.key
-    key, subkey = random.split(key)
-    n_particles = 25
-    logw = jnp.zeros(n_particles)
-    particles = jax.random.normal(subkey, shape=(n_particles, 5, 2, 2))
-    new_particles_for = resample_mvn_for(
-        subkey,
-        particles,
-        logw)
-    new_particles = pf.resample_mvn(
-        subkey,
-        particles,
-        logw)
-    for k in new_particles.keys():
-        with self.subTest(k=k):
-            self.assertAlmostEqual(
-                new_particles[k].shape, new_particles_for[k].shape)
-
-
-def test_for_particle_smooth(self):
-    # un-self setUp members
-    key = self.key
-    theta = self.theta
-    x_init = self.x_init
-    model_args = self.model_args
-    n_obs = self.n_obs
-    n_particles = self.n_particles
-    model = self.Model(**model_args)
-    # simulate without for-loop
-    key, subkey = random.split(key)
-    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
-    # pf without for-loop
-    key, subkey = random.split(key)
-    pf_out = pf.particle_filter(
-        model, subkey, y_meas, theta, n_particles)
-    # pf_smooth with for-loop
-    key, subkey = random.split(key)
-    x_state1 = particle_smooth_for(
-        key=subkey,
-        logw=pf_out["logw"][n_obs-1],
-        x_particles=pf_out["x_particles"],
-        ancestors=pf_out["ancestors"]
-    )
-    # pf_smooth without for-loop
-    x_state2 = pf.particle_smooth(
-        key=subkey,
-        logw=pf_out["logw"][n_obs-1],
-        x_particles=pf_out["x_particles"],
-        ancestors=pf_out["ancestors"]
-    )
+    model1 = self.Model(**model_args)
+    model2 = self.Model2(**model_args)
+    # simulate with non-inherited class
+    y_meas1, x_state1 = pf.simulate(model1, key, n_obs, x_init, theta)
+    # simulate with inherited class
+    y_meas2, x_state2 = pf.simulate(model2, key, n_obs, x_init, theta)
+    self.assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
     self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
 
 
-def test_for_loglik_full(self):
+# --- loglik_full test functions -----------------------------------------------
+
+
+def test_loglik_full_for(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -286,215 +264,15 @@ def test_for_loglik_full(self):
     # simulate without for-loop
     y_meas, x_state = pf.simulate(model, key, n_obs, x_init, theta)
     # joint loglikelihood with for-loop
-    loglik1 = loglik_full_for(model,
-                              y_meas, x_state, theta)
+    loglik1 = test.loglik_full_for(model,
+                                   y_meas, x_state, theta)
     # joint loglikelihood with vmap
     loglik2 = pf.loglik_full(model,
                              y_meas, x_state, theta)
     self.assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
 
 
-def test_for_param_mwg_update(self):
-    # un-self setUp members
-    key = self.key
-    theta = self.theta
-    x_init = self.x_init
-    model_args = self.model_args
-    n_obs = self.n_obs
-    n_particles = self.n_particles
-    model = self.Model(**model_args)
-    # simulate without for-loop
-    key, subkey = random.split(key)
-    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
-    # mwg setup
-    prior = mcmc.NormalDiagPrior(loc=theta, scale=jnp.abs(theta))
-    rw_sd = jnp.array([.1] * theta.size)
-    # with default order
-    theta_order = jnp.arange(theta.size)
-    key, subkey = random.split(key)
-    mwg_out1 = param_mwg_update_for(model, prior, subkey, theta,
-                                    x_state, y_meas, rw_sd, theta_order)
-    mwg_out2 = mcmc.param_mwg_update(model, prior, subkey, theta,
-                                     x_state, y_meas, rw_sd, theta_order)
-    for i in range(2):
-        with self.subTest(i=i):
-            self.assertAlmostEqual(rel_err(mwg_out1[i], mwg_out2[i]), 0.0)
-    # with non-default order
-    key, subkey = random.split(key)
-    n_updates = 10
-    theta_order = random.choice(
-        subkey, jnp.arange(theta.size), shape=(n_updates,))
-    key, subkey = random.split(key)
-    mwg_out1 = param_mwg_update_for(model, prior, subkey, theta,
-                                    x_state, y_meas, rw_sd, theta_order)
-    mwg_out2 = mcmc.param_mwg_update(model, prior, subkey, theta,
-                                     x_state, y_meas, rw_sd, theta_order)
-    for i in range(2):
-        with self.subTest(i=i):
-            self.assertAlmostEqual(rel_err(mwg_out1[i], mwg_out2[i]), 0.0)
-
-# --- jit vs unjit tests -------------------------------------------------------
-
-
-def test_jit_simulate(self):
-    # un-self setUp members
-    key = self.key
-    theta = self.theta
-    x_init = self.x_init
-    model_args = self.model_args
-    n_obs = self.n_obs
-    n_particles = self.n_particles
-    model = self.Model(**model_args)
-    # simulate without jit
-    y_meas1, x_state1 = pf.simulate(model, key, n_obs, x_init, theta)
-    # simulate with jit
-    simulate_jit = jax.jit(pf.simulate, static_argnums=(0, 2))
-    y_meas2, x_state2 = simulate_jit(model, key, n_obs, x_init, theta)
-    self.assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
-    self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
-    # objective function for gradient
-    def obj_fun(model, key, n_obs, x_init, theta): return jnp.mean(
-        pf.simulate(model, key, n_obs, x_init, theta)[0])
-    # grad without jit
-    grad1 = jax.grad(obj_fun, argnums=4)(
-        model, key, n_obs, x_init, theta)
-    # grad with jit
-    grad2 = jax.jit(jax.grad(obj_fun, argnums=4), static_argnums=(0, 2))(
-        model, key, n_obs, x_init, theta)
-    self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
-
-
-def test_jit_particle_filter(self):
-    # un-self setUp members
-    key = self.key
-    theta = self.theta
-    x_init = self.x_init
-    model_args = self.model_args
-    n_obs = self.n_obs
-    n_particles = self.n_particles
-    model = self.Model(**model_args)
-    # simulate data
-    key, subkey = random.split(key)
-    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
-    # particle filter specification
-    key, subkey = random.split(key)
-    # pf without jit
-    pf_out1 = pf.particle_filter(
-        model, subkey, y_meas, theta, n_particles)
-    # pf with jit
-    pf_out2 = jax.jit(pf.particle_filter, static_argnums=(0, 4))(
-        model, subkey, y_meas, theta, n_particles)
-    for k in pf_out1.keys():
-        with self.subTest(k=k):
-            self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
-
-    # objective function for gradient
-    def obj_fun(model, key, y_meas, theta, n_particles):
-        return pf.particle_loglik(pf.particle_filter(
-            model, key, y_meas, theta, n_particles)["logw"])
-    # grad without jit
-    grad1 = jax.grad(obj_fun, argnums=3)(
-        model, key, y_meas, theta, n_particles)
-    # grad with jit
-    grad2 = jax.jit(jax.grad(obj_fun, argnums=3), static_argnums=(0, 4))(
-        model, key, y_meas, theta, n_particles)
-    self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
-
-
-def test_jit_resample_mvn(self):
-    # un-self setUp members
-    key = self.key
-    theta = self.theta
-    x_init = self.x_init
-    model_args = self.model_args
-    n_obs = self.n_obs
-    n_particles = self.n_particles
-    model = self.Model(**model_args)
-    # simulate data
-    key, subkey = random.split(key)
-    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
-    # particle filter specification
-    key, subkey = random.split(key)
-    # pf without jit
-    pf_out1 = pf.particle_filter(
-        model, subkey, y_meas, theta, n_particles,
-        resampler=pf.resample_mvn)
-    # pf with jit
-    pf_out2 = jax.jit(pf.particle_filter, static_argnums=(0, 4, 5))(
-        model, subkey, y_meas, theta, n_particles,
-        resampler=pf.resample_mvn)
-    for k in pf_out1.keys():
-        with self.subTest(k=k):
-            self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
-    # objective function for gradient
-
-    def obj_fun(model, key, y_meas, theta, n_particles):
-        return pf.particle_loglik(pf.particle_filter(
-            model, key, y_meas, theta, n_particles,
-            resampler=pf.resample_mvn)["logw"])
-
-    # grad without jit
-    grad1 = jax.grad(obj_fun, argnums=3)(
-        model, key, y_meas, theta, n_particles)
-    # grad with jit
-    grad2 = jax.jit(jax.grad(obj_fun, argnums=3), static_argnums=(0, 4))(
-        model, key, y_meas, theta, n_particles)
-    self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
-
-
-def test_jit_particle_smooth(self):
-    # un-self setUp members
-    key = self.key
-    theta = self.theta
-    x_init = self.x_init
-    model_args = self.model_args
-    n_obs = self.n_obs
-    n_particles = self.n_particles
-    model = self.Model(**model_args)
-    # simulate data
-    key, subkey = random.split(key)
-    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
-    # particle filter specification
-    key, subkey = random.split(key)
-    # pf without jit
-    pf_out = pf.particle_filter(
-        model, subkey, y_meas, theta, n_particles)
-    # pf_smooth without jit
-    key, subkey = random.split(key)
-    x_state1 = pf.particle_smooth(
-        key=subkey,
-        logw=pf_out["logw"][n_obs-1],
-        x_particles=pf_out["x_particles"],
-        ancestors=pf_out["ancestors"]
-    )
-    # pf_smooth with jit
-    x_state2 = jax.jit(pf.particle_smooth)(
-        key=subkey,
-        logw=pf_out["logw"][n_obs-1],
-        x_particles=pf_out["x_particles"],
-        ancestors=pf_out["ancestors"]
-    )
-    self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
-
-    # objective function for gradient
-    def obj_fun(model, key, y_meas, theta, n_particles):
-        pf_out = pf.particle_filter(model, key, y_meas, theta, n_particles)
-        return jnp.sum(pf.particle_smooth(
-            key=subkey,
-            logw=pf_out["logw"][n_obs-1],
-            x_particles=pf_out["x_particles"],
-            ancestors=pf_out["ancestors"]
-        ))
-    # grad without jit
-    grad1 = jax.grad(obj_fun, argnums=3)(
-        model, key, y_meas, theta, n_particles)
-    # grad with jit
-    grad2 = jax.jit(jax.grad(obj_fun, argnums=3), static_argnums=(0, 4))(
-        model, key, y_meas, theta, n_particles)
-    self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
-
-
-def test_jit_loglik_full(self):
+def test_loglik_full_jit(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -525,7 +303,441 @@ def test_jit_loglik_full(self):
             self.assertAlmostEqual(rel_err(grad1[i], grad2[i]), 0.0)
 
 
-def test_jit_param_mwg_update(self):
+def test_loglik_full_models(self):
+    # un-self setUp members
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model1 = self.Model(**model_args)
+    model2 = self.Model2(**model_args)
+    # simulate with inherited class
+    y_meas, x_state = pf.simulate(model2, key, n_obs, x_init, theta)
+    # joint loglikelihood with non-inherited class
+    loglik1 = pf.loglik_full(model1,
+                             y_meas, x_state, theta)
+    # joint loglikelihood with inherited class
+    loglik2 = pf.loglik_full(model2,
+                             y_meas, x_state, theta)
+    self.assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
+
+
+# --- particle_filter test functions -------------------------------------------
+
+
+def test_particle_filter_for(self):
+    # un-self setUp members
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model = self.Model(**model_args)
+    # define test cases
+    test_cases = expand_grid(
+        history=jnp.array([False, True])
+    )
+    n_cases = test_cases.shape[0]
+    # simulate data
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
+    # old pf with for-loop
+    key, subkey = random.split(key)
+    pf_out1 = test.particle_filter_for(model, subkey,
+                                       y_meas, theta, n_particles)
+    for i in range(n_cases):
+        case = test_cases.iloc[i]
+        with self.subTest(case=case):
+            # new pf
+            pf_out2 = pf.particle_filter(
+                model, subkey, y_meas, theta, n_particles,
+                score=False, fisher=False, **case)
+            # check outputs
+            if case["history"]:
+                max_diff = {k: rel_err(pf_out1[k], pf_out2[k])
+                            for k in ["x_particles", "logw"]}
+                max_diff["ancestors"] = rel_err(
+                    X1=pf_out1["ancestors"],
+                    X2=pf_out2["resample_out"]["ancestors"]
+                )
+            else:
+                max_diff = {k: rel_err(pf_out1[k][n_obs-1],  pf_out2[k])
+                            for k in ["x_particles", "logw"]}
+                max_diff["loglik"] = rel_err(
+                    X1=test.particle_loglik(pf_out1["logw"]),
+                    X2=pf_out2["loglik"]
+                )
+            for k in max_diff.keys():
+                with self.subTest(out=k):
+                    self.assertAlmostEqual(max_diff[k], 0.0)
+
+
+def test_particle_filter_deriv(self):
+    """
+    Check that online and brute-force score and hessian calculations give the same results.
+    """
+    # un-self setUp members
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model = self.Model(**model_args)
+
+    def accumulate_deriv(x_prev, x_curr, y_curr, theta):
+        r"""
+        Accumulator for both score and hessian.
+        """
+        grad_meas = jax.grad(model.meas_lpdf, argnums=2)
+        grad_state = jax.grad(model.state_lpdf, argnums=2)
+        hess_meas = jax.jacfwd(jax.jacrev(model.meas_lpdf, argnums=2),
+                               argnums=2)
+        hess_state = jax.jacfwd(jax.jacrev(model.state_lpdf, argnums=2),
+                                argnums=2)
+        alpha = grad_meas(y_curr, x_curr, theta) + \
+            grad_state(x_curr, x_prev, theta)
+        beta = hess_meas(y_curr, x_curr, theta) + \
+            hess_state(x_curr, x_prev, theta)
+        return (alpha, beta)
+
+    # define test cases
+    test_cases = expand_grid(
+        history=jnp.array([False, True]),
+        score=jnp.array([False, True]),
+        fisher=jnp.array([False, True])
+    )
+    n_cases = test_cases.shape[0]
+    # simulate data
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
+    # pf with history, no derivatives
+    key, subkey = random.split(key)
+    pf_out1 = pf.particle_filter(
+        model, subkey, y_meas, theta, n_particles,
+        score=False, fisher=False, history=True)
+    for i in range(n_cases):
+        case = test_cases.iloc[i]
+        with self.subTest(case=case):
+            # pf various history/derivatives
+            pf_out2 = pf.particle_filter(
+                model, subkey, y_meas, theta, n_particles, **case
+            )
+            # check outputs
+            if case["history"]:
+                max_diff = {k: rel_err(pf_out1[k],  pf_out2[k])
+                            for k in ["x_particles", "logw"]}
+                max_diff["ancestors"] = rel_err(
+                    X1=pf_out1["resample_out"]["ancestors"],
+                    X2=pf_out2["resample_out"]["ancestors"]
+                )
+            else:
+                max_diff = {k: rel_err(pf_out1[k][n_obs-1],  pf_out2[k])
+                            for k in ["x_particles", "logw"]}
+            max_diff["loglik"] = rel_err(
+                X1=pf_out1["loglik"],
+                X2=pf_out2["loglik"]
+            )
+            if case["score"] or case["fisher"]:
+                # score and hess using smoothing accumulator
+                x_particles = pf_out1["x_particles"]
+                ancestors = pf_out1["resample_out"]["ancestors"]
+                logw = pf_out1["logw"][n_obs-1]
+                alpha, beta = test.accumulate_smooth(
+                    logw=logw,
+                    x_particles=x_particles,
+                    ancestors=ancestors,
+                    y_meas=y_meas,
+                    theta=theta,
+                    accumulator=accumulate_deriv,
+                    mean=False
+                )
+                prob = utils.lwgt_to_prob(logw)
+                _score = jax.vmap(jnp.multiply)(prob, alpha)
+                _hess = jax.vmap(
+                    lambda p, a, b: p * (jnp.outer(a, a) + b)
+                )(prob, alpha, beta)
+                _score, _hess = jtu.tree_map(
+                    lambda x: jnp.sum(x, axis=0), (_score, _hess))
+                max_diff["score"] = rel_err(_score, pf_out2["score"])
+                if case["fisher"]:
+                    max_diff["fisher"] = rel_err(
+                        _hess - jnp.outer(_score, _score),
+                        pf_out2["fisher"]
+                    )
+            for k in max_diff.keys():
+                with self.subTest(out=k):
+                    self.assertAlmostEqual(max_diff[k], 0.0)
+
+
+# --- particle_filter_rb test functions ----------------------------------------
+
+
+def test_particle_filter_rb_for(self):
+    # un-self setUp members
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model = self.Model(**model_args)
+    # define test cases
+    test_cases = expand_grid(
+        history=jnp.array([False]),  # save time by skipping True
+        score=jnp.array([False, True]),
+        fisher=jnp.array([False, True])
+    )
+    n_cases = test_cases.shape[0]
+    # simulate data
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
+    for i in range(n_cases):
+        case = test_cases.iloc[i]
+        with self.subTest(case=case):
+            key, subkey = random.split(key)
+            # rb filter for-loop
+            pf_out1 = pf.particle_filter_rb(
+                model, subkey, y_meas, theta, n_particles, **case
+            )
+            # rb filter vmap
+            pf_out2 = test.particle_filter_rb_for(
+                model, subkey, y_meas, theta, n_particles, **case
+            )
+            max_diff = jtu.tree_map(rel_err, pf_out1, pf_out2)
+            for k in max_diff.keys():
+                with self.subTest(out=k):
+                    self.assertAlmostEqual(max_diff[k], 0.0)
+
+
+def test_particle_filter_rb_history(self):
+    """
+    Check whether with or without history gives the same results.
+    """
+    # un-self setUp members
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model = self.Model(**model_args)
+    # define test cases
+    test_cases = expand_grid(
+        score=jnp.array([False, True]),
+        fisher=jnp.array([False, True])
+    )
+    n_cases = test_cases.shape[0]
+    # simulate data
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
+    for i in range(n_cases):
+        case = test_cases.iloc[i]
+        with self.subTest(case=case):
+            key, subkey = random.split(key)
+            # rb filter no history
+            pf_out1 = pf.particle_filter_rb(
+                model, subkey, y_meas, theta, n_particles,
+                history=False, **case
+            )
+            # rb filter history
+            pf_out2 = test.particle_filter_rb_for(
+                model, subkey, y_meas, theta, n_particles,
+                history=True, **case
+            )
+            # check outputs
+            keys = ["loglik"]
+            keys = keys + ["score"] \
+                if case["score"] or case["fisher"] else keys
+            keys = keys + ["fisher"] if case["fisher"] else keys
+            max_diff = {k: rel_err(pf_out1[k], pf_out2[k]) for k in keys}
+            for k in max_diff.keys():
+                with self.subTest(out=k):
+                    self.assertAlmostEqual(max_diff[k], 0.0)
+
+
+def test_particle_filter_rb_deriv(self):
+    # un-self setUp members
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model = self.Model(**model_args)
+
+    # gradient and hessian functions
+    def grad_step(x_curr, x_prev, y_curr,
+                  logw_prev, logw_aux, alpha_prev, beta_prev):
+        """
+        Update logw_targ, alpha, and beta.
+        """
+        logw_targ = model.meas_lpdf(
+            y_curr=y_curr,
+            x_curr=x_curr,
+            theta=theta
+        ) + model.state_lpdf(
+            x_curr=x_curr,
+            x_prev=x_prev,
+            theta=theta
+        ) + logw_prev
+        logw_prop = model.step_lpdf(
+            x_curr=x_curr,
+            x_prev=x_prev,
+            y_curr=y_curr,
+            theta=theta
+        ) + logw_aux
+        alpha = grad_state(x_curr, x_prev, theta) + \
+            grad_meas(y_curr, x_curr, theta) + \
+            alpha_prev
+        beta = jnp.outer(alpha, alpha) + \
+            hess_meas(y_curr, x_curr, theta) + \
+            hess_state(x_curr, x_prev, theta) + \
+            beta_prev
+        return {
+            "logw_targ": logw_targ,
+            "logw_prop": logw_prop,
+            "alpha": alpha,
+            "beta": beta
+        }
+    grad_meas = jax.grad(model.meas_lpdf, argnums=2)
+    grad_state = jax.grad(model.state_lpdf, argnums=2)
+    hess_meas = jax.jacfwd(jax.jacrev(model.meas_lpdf, argnums=2),
+                           argnums=2)
+    hess_state = jax.jacfwd(jax.jacrev(model.state_lpdf, argnums=2),
+                            argnums=2)
+
+    # define test cases
+    test_cases = expand_grid(
+        history=jnp.array([False, True]),
+        score=jnp.array([False, True]),
+        fisher=jnp.array([False, True])
+    )
+    n_cases = test_cases.shape[0]
+    # simulate data
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
+    # pf with history, no derivatives
+    key, subkey = random.split(key)
+    pf_out1 = pf.particle_filter_rb(
+        model, subkey, y_meas, theta, n_particles,
+        score=False, fisher=False, history=True
+    )
+    # brute-force derivative calculation
+    # initialize
+    n_theta = theta.size
+    logw_prev = pf_out1["logw_bar"][0]
+    alpha_prev = jnp.zeros((n_particles, n_theta))
+    beta_prev = jnp.zeros((n_particles, n_theta, n_theta))
+    loglik2 = jsp.special.logsumexp(logw_prev)
+    # update for every observation
+    for i_curr in range(1, n_obs):
+        x_prev = pf_out1["x_particles"][i_curr-1]
+        x_curr = pf_out1["x_particles"][i_curr]
+        y_curr = y_meas[i_curr]
+        logw_aux = logw_prev
+        # manual update calculation
+        grad_full = jax.vmap(
+            jax.vmap(
+                grad_step,
+                in_axes=(None, 0, None, 0, 0, 0, 0)
+            ),
+            in_axes=(0, None, None, None, None, None, None)
+        )(x_curr, x_prev, y_curr, logw_prev, logw_aux,
+          alpha_prev, beta_prev)
+        logw_curr = jax.vmap(
+            lambda ltarg, lprop:
+            jsp.special.logsumexp(ltarg) - jsp.special.logsumexp(lprop)
+        )(grad_full["logw_targ"], grad_full["logw_prop"])
+        loglik2 = loglik2 + jsp.special.logsumexp(logw_curr)
+        alpha_curr = jax.vmap(
+            pf.utils.tree_mean
+        )(grad_full["alpha"], grad_full["logw_targ"])
+        beta_curr = jax.vmap(
+            pf.utils.tree_mean
+        )(grad_full["beta"], grad_full["logw_targ"]) - \
+            jax.vmap(
+            jnp.outer
+        )(alpha_curr, alpha_curr)
+        # set prev to curr
+        logw_prev = logw_curr
+        alpha_prev = alpha_curr
+        beta_prev = beta_curr
+    # finalize calculations
+    loglik2 = loglik2 - n_obs * jnp.log(n_particles)
+    gamma_curr = jax.vmap(
+        lambda a, b: jnp.outer(a, a) + b
+    )(alpha_curr, beta_curr)
+    score2 = pf.utils.tree_mean(alpha_curr, logw_curr)
+    fisher2 = pf.utils.tree_mean(gamma_curr, logw_curr) - \
+        jnp.outer(score2, score2)
+    for i in range(n_cases):
+        case = test_cases.iloc[i]
+        with self.subTest(case=case):
+            # pf various history/derivatives
+            pf_out2 = pf.particle_filter_rb(
+                model, subkey, y_meas, theta, n_particles, **case
+            )
+            # check outputs
+            max_diff = {"loglik": rel_err(pf_out2["loglik"], loglik2)}
+            if case["score"] or case["fisher"]:
+                max_diff["score"] = rel_err(pf_out2["score"], score2)
+            if case["fisher"]:
+                max_diff["fisher"] = rel_err(pf_out2["fisher"], fisher2)
+            for k in max_diff.keys():
+                with self.subTest(out=k):
+                    self.assertAlmostEqual(max_diff[k], 0.0)
+
+
+# --- param_mwg_update test functions ------------------------------------------
+
+
+def test_param_mwg_update_for(self):
+    # un-self setUp members
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model = self.Model(**model_args)
+    # simulate without for-loop
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
+    # mwg setup
+    prior = mcmc.NormalDiagPrior(loc=theta, scale=jnp.abs(theta))
+    rw_sd = jnp.array([.1] * theta.size)
+    # with default order
+    theta_order = jnp.arange(theta.size)
+    key, subkey = random.split(key)
+    mwg_out1 = test.param_mwg_update_for(model, prior, subkey, theta,
+                                         x_state, y_meas, rw_sd,
+                                         theta_order)
+    mwg_out2 = mcmc.param_mwg_update(model, prior, subkey, theta,
+                                     x_state, y_meas, rw_sd, theta_order)
+    for i in range(2):
+        with self.subTest(i=i):
+            self.assertAlmostEqual(rel_err(mwg_out1[i], mwg_out2[i]), 0.0)
+    # with non-default order
+    key, subkey = random.split(key)
+    n_updates = 10
+    theta_order = random.choice(
+        subkey, jnp.arange(theta.size), shape=(n_updates,))
+    key, subkey = random.split(key)
+    mwg_out1 = test.param_mwg_update_for(model, prior, subkey, theta,
+                                         x_state, y_meas, rw_sd,
+                                         theta_order)
+    mwg_out2 = mcmc.param_mwg_update(model, prior, subkey, theta,
+                                     x_state, y_meas, rw_sd, theta_order)
+    for i in range(2):
+        with self.subTest(i=i):
+            self.assertAlmostEqual(rel_err(mwg_out1[i], mwg_out2[i]), 0.0)
+
+
+def test_param_mwg_update_jit(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -575,7 +787,93 @@ def test_jit_param_mwg_update(self):
             self.assertAlmostEqual(rel_err(grad1[i], grad2[i]), 0.0)
 
 
-def test_models_simulate(self):
+# --- resample_mvn test functions ----------------------------------------------
+
+
+def test_resample_mvn_for(self):
+    # un-self setUp members
+    key = self.key
+    n_particles = 25
+    # define test cases
+    test_cases = expand_grid(
+        shape=[(), (1,), (1, 2), (2, 3, 4)]
+    )
+    n_cases = test_cases.shape[0]
+    # log-weights
+    key, subkey = random.split(key)
+    logw = random.normal(subkey, (n_particles,))
+    for i in range(n_cases):
+        case = test_cases.iloc[i]
+        with self.subTest(case=case):
+            x_particles = jax.random.normal(
+                key=subkey,
+                shape=(n_particles,) + case["shape"]
+            )
+            # for-loop version
+            new_particles1 = test.resample_mvn_for(
+                key=subkey,
+                x_particles_prev=x_particles,
+                logw=logw
+            )
+            # vmap version
+            new_particles2 = resamplers.resample_mvn(
+                key=subkey,
+                x_particles_prev=x_particles,
+                logw=logw
+            )
+            for k in new_particles1.keys():
+                with self.subTest(k=k):
+                    self.assertAlmostEqual(
+                        rel_err(new_particles1[k], new_particles2[k]), 0.0)
+
+
+def test_resample_mvn_shape(self):
+    """
+    Check that shaped and flat particles give the same results.
+    """
+    # un-self setUp members
+    key = self.key
+    n_particles = 25
+    # define test cases
+    test_cases = expand_grid(
+        shape=[(), (1,), (1, 2), (2, 3, 4)]
+    )
+    n_cases = test_cases.shape[0]
+    # log-weights
+    key, subkey = random.split(key)
+    logw = random.normal(subkey, (n_particles,))
+    for i in range(n_cases):
+        case = test_cases.iloc[i]
+        with self.subTest(case=case):
+            # original shape
+            x_particles1 = jax.random.normal(
+                key=subkey,
+                shape=(n_particles,) + case["shape"]
+            )
+            new_particles1 = test.resample_mvn_for(
+                key=subkey,
+                x_particles_prev=x_particles1,
+                logw=logw
+            )
+            # flattened shape
+            dim2 = jnp.zeros(case["shape"]).size
+            dim2 = (dim2,) if dim2 > 0 else ()
+            x_particles2 = jax.random.normal(
+                key=subkey,
+                shape=(n_particles,) + dim2
+            )
+            new_particles2 = resamplers.resample_mvn(
+                key=subkey,
+                x_particles_prev=x_particles2,
+                logw=logw
+            )
+            for k in ["mvn_mean", "mvn_cov"]:
+                with self.subTest(k=k):
+                    self.assertAlmostEqual(
+                        rel_err(new_particles1[k], new_particles2[k]), 0.0)
+
+
+def test_resample_mvn_jit(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -583,63 +881,143 @@ def test_models_simulate(self):
     model_args = self.model_args
     n_obs = self.n_obs
     n_particles = self.n_particles
-    model1 = self.Model(**model_args)
-    model2 = self.Model2(**model_args)
-    # simulate with non-inherited class
-    y_meas1, x_state1 = pf.simulate(model1, key, n_obs, x_init, theta)
-    # simulate with inherited class
-    y_meas2, x_state2 = pf.simulate(model2, key, n_obs, x_init, theta)
-    self.assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
-    self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
+    model = self.Model(**model_args)
 
+    # objective function for gradient
+    def obj_fun(model, key, y_meas, theta, n_particles):
+        out = pf.particle_filter(
+            model, key, y_meas, theta, n_particles,
+            resampler=resamplers.resample_mvn
+        )
+        return jtu.tree_reduce(lambda x, y: x + jnp.sum(y),
+                               pf.utils.rm_keys(out, "key"),
+                               jnp.array(0.0))
 
-def test_models_loglik_full(self):
-    # un-self setUp members
-    key = self.key
-    theta = self.theta
-    x_init = self.x_init
-    model_args = self.model_args
-    n_obs = self.n_obs
-    n_particles = self.n_particles
-    model1 = self.Model(**model_args)
-    model2 = self.Model2(**model_args)
-    # simulate with inherited class
-    y_meas, x_state = pf.simulate(model2, key, n_obs, x_init, theta)
-    # joint loglikelihood with non-inherited class
-    loglik1 = pf.loglik_full(model1,
-                             y_meas, x_state, theta)
-    # joint loglikelihood with inherited class
-    loglik2 = pf.loglik_full(model2,
-                             y_meas, x_state, theta)
-    self.assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
-
-
-def test_models_particle_filter(self):
-    # un-self setUp members
-    key = self.key
-    theta = self.theta
-    x_init = self.x_init
-    model_args = self.model_args
-    n_obs = self.n_obs
-    n_particles = self.n_particles
-    model1 = self.Model(**model_args)
-    model2 = self.Model2(**model_args)
-    # simulate with inherited class
-    y_meas, x_state = pf.simulate(model2, key, n_obs, x_init, theta)
+    # simulate data
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
     # particle filter specification
     key, subkey = random.split(key)
-    # pf with non-inherited class
+    # pf without jit
     pf_out1 = pf.particle_filter(
-        model1, subkey, y_meas, theta, n_particles)
-    # pf with inherited class
-    pf_out2 = pf.particle_filter(
-        model2, subkey, y_meas, theta, n_particles)
+        model, subkey, y_meas, theta, n_particles,
+        resampler=resamplers.resample_mvn
+    )
+    # pf with jit
+    pf_out2 = jax.jit(pf.particle_filter, static_argnums=(0, 4, 5))(
+        model, subkey, y_meas, theta, n_particles,
+        resampler=resamplers.resample_mvn
+    )
     for k in pf_out1.keys():
         with self.subTest(k=k):
             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+    # grad without jit
+    grad1 = jax.grad(obj_fun, argnums=3)(
+        model, key, y_meas, theta, n_particles)
+    # grad with jit
+    grad2 = jax.jit(jax.grad(obj_fun, argnums=3), static_argnums=(0, 4))(
+        model, key, y_meas, theta, n_particles)
+    self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
 
 
-def test_for_sde_state_sample(self):
+# --- particle_smooth test functions -------------------------------------------
+
+
+def test_particle_smooth_for(self):
+    # un-self setUp members
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model = self.Model(**model_args)
+    # simulate without for-loop
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
+    # pf without for-loop
+    key, subkey = random.split(key)
+    pf_out = pf.particle_filter(
+        model, subkey, y_meas, theta, n_particles,
+        history=True)
+    # pf_smooth with for-loop
+    key, subkey = random.split(key)
+    x_state1 = test.particle_smooth_for(
+        key=subkey,
+        logw=pf_out["logw"][n_obs-1],
+        x_particles=pf_out["x_particles"],
+        ancestors=pf_out["resample_out"]["ancestors"]
+    )
+    # pf_smooth without for-loop
+    x_state2 = pf.particle_smooth(
+        key=subkey,
+        logw=pf_out["logw"][n_obs-1],
+        x_particles=pf_out["x_particles"],
+        ancestors=pf_out["resample_out"]["ancestors"]
+    )
+    self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
+
+
+def test_particle_smooth_jit(self):
+    # un-self setUp members
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model = self.Model(**model_args)
+
+    # objective function for gradient
+    def obj_fun(model, key, y_meas, theta, n_particles):
+        pf_out = pf.particle_filter(
+            model, key, y_meas, theta, n_particles,
+            history=True
+        )
+        return jnp.sum(pf.particle_smooth(
+            key=subkey,
+            logw=pf_out["logw"][n_obs-1],
+            x_particles=pf_out["x_particles"],
+            ancestors=pf_out["resample_out"]["ancestors"]
+        ))
+
+    # simulate data
+    key, subkey = random.split(key)
+    y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
+    # particle filter specification
+    key, subkey = random.split(key)
+    # pf without jit
+    pf_out = pf.particle_filter(
+        model, subkey, y_meas, theta, n_particles,
+        history=True)
+    # pf_smooth without jit
+    key, subkey = random.split(key)
+    x_state1 = pf.particle_smooth(
+        key=subkey,
+        logw=pf_out["logw"][n_obs-1],
+        x_particles=pf_out["x_particles"],
+        ancestors=pf_out["resample_out"]["ancestors"]
+    )
+    # pf_smooth with jit
+    x_state2 = jax.jit(pf.particle_smooth)(
+        key=subkey,
+        logw=pf_out["logw"][n_obs-1],
+        x_particles=pf_out["x_particles"],
+        ancestors=pf_out["resample_out"]["ancestors"]
+    )
+    self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
+    # grad without jit
+    grad1 = jax.grad(obj_fun, argnums=3)(
+        model, key, y_meas, theta, n_particles)
+    # grad with jit
+    grad2 = jax.jit(jax.grad(obj_fun, argnums=3), static_argnums=(0, 4))(
+        model, key, y_meas, theta, n_particles)
+    self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
+
+
+# --- sde test functions -------------------------------------------------------
+
+def test_sde_state_sample_for(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -660,7 +1038,7 @@ def test_for_sde_state_sample(self):
     self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
 
 
-def test_for_sde_state_lpdf(self):
+def test_sde_state_lpdf_for(self):
     # un-self setUp members
     key = self.key
     theta = self.theta
@@ -680,3 +1058,129 @@ def test_for_sde_state_lpdf(self):
     lp1 = model.state_lpdf_for(x_curr, x_prev, theta)
     lp2 = model.state_lpdf(x_curr, x_prev, theta)
     self.assertAlmostEqual(rel_err(lp1, lp2), 0.0)
+
+
+def test_sde_bridge_prop_for(self):
+    key = self.key
+    theta = self.theta
+    x_init = self.x_init
+    model_args = self.model_args
+    n_res = model_args["n_res"]
+    n_obs = self.n_obs
+    n_particles = self.n_particles
+    model = self.Model(**model_args)
+    # generate previous timepoint
+    key, subkey = random.split(key)
+    x_prev = jnp.block([[jnp.zeros((n_res-1, 2))],
+                        [jnp.log(jnp.array([5., 3.]))]])
+    y_curr = jnp.exp(x_prev[-1]) + \
+        theta[6:8] * random.normal(subkey, (x_prev.shape[1],))
+    # bridge proposal using lax.scan
+    x_curr1, logw1 = model.bridge_prop(
+        key=key,
+        x_prev=x_prev,
+        y_curr=y_curr,
+        theta=theta,
+        Y=jnp.log(y_curr),
+        A=jnp.eye(2),
+        Omega=jnp.eye(2)
+    )
+    # bridge proposal using for
+    x_curr2, logw2 = model.bridge_prop_for(
+        key=key,
+        x_prev=x_prev,
+        y_curr=y_curr,
+        theta=theta,
+        Y=jnp.log(y_curr),
+        A=jnp.eye(2),
+        Omega=jnp.eye(2)
+    )
+    self.assertAlmostEqual(rel_err(x_curr1, x_curr2), 0.0)
+    self.assertAlmostEqual(rel_err(logw1, logw2), 0.0)
+
+
+# def test_for_particle_filter(self):
+#     # un-self setUp members
+#     key = self.key
+#     theta = self.theta
+#     x_init = self.x_init
+#     model_args = self.model_args
+#     n_obs = self.n_obs
+#     n_particles = self.n_particles
+#     model = self.Model(**model_args)
+#     # simulate without for-loop
+#     key, subkey = random.split(key)
+#     y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
+#     # particle filter specification
+#     key, subkey = random.split(key)
+#     # pf with for-loop
+#     pf_out1 = test.particle_filter_for(model, subkey,
+#                                        y_meas, theta, n_particles)
+#     # pf without for-loop
+#     pf_out2 = pf.particle_filter(
+#         model, subkey, y_meas, theta, n_particles)
+#     for k in pf_out1.keys():
+#         with self.subTest(k=k):
+#             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+
+
+# def test_jit_particle_filter(self):
+#     # un-self setUp members
+#     key = self.key
+#     theta = self.theta
+#     x_init = self.x_init
+#     model_args = self.model_args
+#     n_obs = self.n_obs
+#     n_particles = self.n_particles
+#     model = self.Model(**model_args)
+#     # simulate data
+#     key, subkey = random.split(key)
+#     y_meas, x_state = pf.simulate(model, subkey, n_obs, x_init, theta)
+#     # particle filter specification
+#     key, subkey = random.split(key)
+#     # pf without jit
+#     pf_out1 = pf.particle_filter(
+#         model, subkey, y_meas, theta, n_particles)
+#     # pf with jit
+#     pf_out2 = jax.jit(pf.particle_filter, static_argnums=(0, 4))(
+#         model, subkey, y_meas, theta, n_particles)
+#     for k in pf_out1.keys():
+#         with self.subTest(k=k):
+#             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+
+#     # objective function for gradient
+#     def obj_fun(model, key, y_meas, theta, n_particles):
+#         return pf.particle_loglik(pf.particle_filter(
+#             model, key, y_meas, theta, n_particles)["logw"])
+#     # grad without jit
+#     grad1 = jax.grad(obj_fun, argnums=3)(
+#         model, key, y_meas, theta, n_particles)
+#     # grad with jit
+#     grad2 = jax.jit(jax.grad(obj_fun, argnums=3), static_argnums=(0, 4))(
+#         model, key, y_meas, theta, n_particles)
+#     self.assertAlmostEqual(rel_err(grad1, grad2), 0.0)
+
+
+# def test_models_particle_filter(self):
+#     # un-self setUp members
+#     key = self.key
+#     theta = self.theta
+#     x_init = self.x_init
+#     model_args = self.model_args
+#     n_obs = self.n_obs
+#     n_particles = self.n_particles
+#     model1 = self.Model(**model_args)
+#     model2 = self.Model2(**model_args)
+#     # simulate with inherited class
+#     y_meas, x_state = pf.simulate(model2, key, n_obs, x_init, theta)
+#     # particle filter specification
+#     key, subkey = random.split(key)
+#     # pf with non-inherited class
+#     pf_out1 = pf.particle_filter(
+#         model1, subkey, y_meas, theta, n_particles)
+#     # pf with inherited class
+#     pf_out2 = pf.particle_filter(
+#         model2, subkey, y_meas, theta, n_particles)
+#     for k in pf_out1.keys():
+#         with self.subTest(k=k):
+#             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)

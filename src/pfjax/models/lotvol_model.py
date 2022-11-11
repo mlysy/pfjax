@@ -18,6 +18,7 @@ y_t ~ N( exp(x_{m,mt}), diag(tau_H^2, tau_L^2) )
 - Measurement dimensions: `n_meas = 2`.
 
 **Notes:**
+
 - The measurement `y_t` corresponds to `x_t = (x_{m,(t-1)m+1}, ..., x_{m,tm})`, i.e., aligns with the last element of `x_t`.
 - The prior is such that `p(x_0 | y_0, theta)` is given by:
 

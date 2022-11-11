@@ -1,0 +1,5 @@
+jax
+jaxlib
+ott-jax
+optax
+sphinx_rtd_theme

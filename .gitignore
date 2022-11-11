@@ -4,6 +4,6 @@ __pycache__
 dist
 build
 pfjax.egg-info
-examples/*.Rmd
-examples/*.html
+docs/notebooks/internal/*.Rmd
+docs/notebooks/internal/*.html
 .tox

@@ -65,3 +65,38 @@ def tree_zeros(tree):
     Fill pytree with zeros.
     """
     return jtu.tree_map(lambda x: jnp.zeros_like(x), tree)
+
+
+def tree_remove_last(x):
+    """
+    Remove last element of each leaf of pytree.
+    """
+    return jtu.tree_map(lambda _x: _x[:-1], x)
+
+
+def tree_remove_first(x):
+    """
+    Remove first element of each leaf of pytree.
+    """
+    return jtu.tree_map(lambda _x: _x[1:], x)
+
+
+def tree_keep_last(x):
+    """
+    Keep only last element of each leaft of pytree.
+    """
+    return jtu.tree_map(lambda _x: _x[-1], x)
+
+
+def tree_append_first(x, first):
+    """
+    Append `first` to start of each leaf of `x` along 1st dimension.
+    """
+    return jtu.tree_map(lambda x0, _x: jnp.concatenate([x0[None], _x]), first, x)
+
+
+def tree_append_last(x, last):
+    """
+    Append `last` to end of each leaf of `x` along 1st dimension.
+    """
+    return jtu.tree_map(lambda xl, _x: jnp.concatenate([_x, xl[None]]), last, x)
