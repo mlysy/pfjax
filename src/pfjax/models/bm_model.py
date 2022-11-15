@@ -6,25 +6,33 @@ from .base_model import BaseModel
 
 
 class BMModel(BaseModel):
-    def __init__(self, dt):
-        """
-        Brownian motion state space model.
+    r"""
+    Brownian motion state space model.
 
-        The model is:
+    The model is:
 
-        ```
+    ::
+
         x_0 ~ pi(x_0) \propto 1
-        x_t ~ N(x_{t-1} + mu * dt, sigma * sqrt(dt))
-        y_t ~ N(x_t, tau)
-        ```
+        x_t ~ N(x_{t-1} + mu dt, sigma^2 dt)
+        y_t ~ N(x_t, tau^2)
 
-        The parameter values are `theta = (mu, sigma, tau)` and the measurement and state dimensions are `n_meas = 1` and `n_state = 1`.
 
-        Args:
-            dt: Interobservation time.
-        """
+    Args:
+        dt: Interobservation time.
+        unconstrained_theta: Whether or not to use the regular parameters scale `theta = (mu, sigma, tau)` or the unconstrained scale `theta = (mu, log(sigma), log(tau))`.
+    """
+
+    def __init__(self, dt, unconstrained_theta=False):
         super().__init__(bootstrap=True)
         self._dt = dt
+        self._unconstrained_theta = unconstrained_theta
+
+    def _constrain_theta(self, theta):
+        r"""
+        Convert `theta` to the constrained scale.
+        """
+        return jnp.array([theta[0], jnp.exp(theta[1]), jnp.exp(theta[2])])
 
     def state_lpdf(self, x_curr, x_prev, theta):
         r"""
@@ -38,6 +46,8 @@ class BMModel(BaseModel):
         Returns:
             The log-density of `p(x_curr | x_prev, theta)`.
         """
+        if self._unconstrained_theta:
+            theta = self._constrain_theta(theta)
         mu = theta[0]
         sigma = theta[1]
         return jnp.squeeze(
@@ -57,6 +67,8 @@ class BMModel(BaseModel):
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
+        if self._unconstrained_theta:
+            theta = self._constrain_theta(theta)
         mu = theta[0]
         sigma = theta[1]
         x_mean = x_prev + mu * self._dt
@@ -75,6 +87,8 @@ class BMModel(BaseModel):
         Returns:
             The log-density of `p(y_curr | x_curr, theta)`.
         """
+        if self._unconstrained_theta:
+            theta = self._constrain_theta(theta)
         tau = theta[2]
         return jnp.squeeze(
             jsp.stats.norm.logpdf(y_curr, loc=x_curr, scale=tau)
@@ -92,6 +106,8 @@ class BMModel(BaseModel):
         Returns:
             Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
         """
+        if self._unconstrained_theta:
+            theta = self._constrain_theta(theta)
         tau = theta[2]
         return x_curr + tau * random.normal(key=key)
 
@@ -100,17 +116,24 @@ class BMModel(BaseModel):
         Get particles for initial state `x_init = x_state[0]`. 
 
         Samples from an importance sampling proposal distribution
-        ```
-        x_init ~ q(x_init) = q(x_init | y_init, theta)
-        ```
+
+        ::
+
+            x_init ~ q(x_init) = q(x_init | y_init, theta)
+
         and calculates the log weight
-        ```
-        logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
-        ```
+
+        ::
+
+            logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
+
         In this case we have an exact proposal 
-        ```
-        q(x_init) = p(x_init | y_init, theta)   <=>   x_init ~ N(y_init, tau)
-        ```
+
+        ::
+
+                  q(x_init) = p(x_init | y_init, theta)   
+            <=>   x_init ~ N(y_init, tau)
+
         Moreover, due to symmetry of arguments we have `q(x_init) = p(y_init | x_init, theta)`, and since `p(x_init | theta) \propto 1` we have `logw = 0`.
 
         Args:
@@ -119,8 +142,11 @@ class BMModel(BaseModel):
             theta: Parameter value.
 
         Returns:
-            - x_init: A sample from the proposal distribution for `x_init`.
-            - logw: The log-weight of `x_init`.
+
+            Tuple:
+
+            - **x_init** - A sample from the proposal distribution for `x_init`.
+            - **logw** - The log-weight of `x_init`.
         """
         return self.meas_sample(key, y_init, theta), jnp.zeros(())
 
@@ -135,8 +161,12 @@ class BMModel(BaseModel):
             theta: Parameter value.
 
         Returns:
+            float:
+
             The marginal loglikelihood `log p(y_{1:N} | theta, y_0)`.
         """
+        if self._unconstrained_theta:
+            theta = self._constrain_theta(theta)
         mu = theta[0]
         sigma2 = theta[1] * theta[1]
         tau2 = theta[2] * theta[2]
