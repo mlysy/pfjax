@@ -192,9 +192,9 @@ class BaseModel(object):
             x_curr = self.prior_sample(key=key, theta=theta)
             logw = self.meas_lpdf(y_curr=y_init, x_curr=x_curr, theta=theta)
         else:
-            x_curr = self.init_sample(key=key, theta=theta)
-            lp_prop = self.init_lpdf(x_curr=x_curr, theta=theta)
-            lp_targ = self.prior_lpdf(x_curr=x_curr, theta=theta) + \
+            x_curr = self.init_sample(key=key, y_init=y_init, theta=theta)
+            lp_prop = self.init_lpdf(x_init=x_curr, y_init=y_init, theta=theta)
+            lp_targ = self.prior_lpdf(x_init=x_curr, theta=theta) + \
                 self.meas_lpdf(y_curr=y_init, x_curr=x_curr, theta=theta)
             logw = lp_targ - lp_prop
         return x_curr, logw
