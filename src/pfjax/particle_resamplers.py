@@ -8,7 +8,7 @@ from jax import lax
 import ott
 from ott.geometry import pointcloud
 from ott.core import sinkhorn
-from .utils import lwgt_to_prob
+from .utils import logw_to_prob
 
 
 def resample_multinomial(key, x_particles_prev, logw):
@@ -27,7 +27,7 @@ def resample_multinomial(key, x_particles_prev, logw):
             - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.  These are sampled with replacement from `x_particles_prev` with probability vector `exp(logw) / sum(exp(logw))`.
             - `ancestors`: Vector of `n_particles` integers between 0 and `n_particles-1` giving the index of each element of `x_particles_prev` corresponding to the elements of `x_particles`.
     """
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
     n_particles = logw.size
     ancestors = random.choice(key,
                               a=jnp.arange(n_particles),
@@ -53,7 +53,7 @@ def resample_mvn(key, x_particles_prev, logw):
             - `mvn_mean`: Vector of length `n_state = prod(x_particles.shape[1:])` representing the mean of the MVN.
             - `mvn_cov`: Matrix of size `n_state x n_state` representing the covariance matrix of the MVN.
     """
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
     p_shape = x_particles_prev.shape
     n_particles = p_shape[0]
     # calculate weighted mean and variance
@@ -99,7 +99,7 @@ def resample_ot(key, x_particles_prev, logw,
             - `sink`: The output of the call to `ott.sinkhorn.sinkhorn()`.
     """
     sinkhorn_kwargs.update(jit=False)
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
     p_shape = x_particles_prev.shape
     n_particles = p_shape[0]
     x_particles = x_particles_prev.reshape((n_particles, -1))

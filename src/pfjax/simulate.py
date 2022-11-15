@@ -1,16 +1,3 @@
-"""
-Simulate trajectories from a state space model.
-
-The API requires the user to define a model class with the following methods:
-
-- `state_sample()`
-- `meas_sample()`
-
-The provided function is:
-
-- `simulate()`
-"""
-
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
@@ -25,16 +12,22 @@ def simulate(model, key, n_obs, x_init, theta):
     Simulate data from the state-space model.
 
     Args:
-        model: Object specifying the state-space model.
+        model: Object specifying the state-space model having the following methods.
+
+            - `state_sim : (key, x_prev, theta) -> x_curr`: Sample from the state model.
+            - `meas_sim : (key, x_curr, theta) -> y_curr`: Sample from the measurement model.
+
         key: PRNG key.
         n_obs: Number of observations to generate.
         x_init: Initial state value at time `t = 0`.
         theta: Parameter value.
 
     Returns:
-        (tuple):
-        - **y_meas**: The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
-        - **x_state**: The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
+        Tuple: 
+
+        - **y_meas** - The sequence of measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
+
+        - **x_state** - The sequence of state variables `x_state = (x_0, ..., x_T)`, where `T = n_obs-1`.
     """
     # lax.scan setup
     # scan function
