@@ -32,7 +32,7 @@ class BaseModel(object):
     def __init__(self, bootstrap):
         self._bootstrap = bootstrap
 
-    def step_sample(self, key, x_prev, y_curr, theta):
+    def step_sample(self, key, x_curr, x_prev, y_curr, theta):
         r"""
         Sample from default proposal distribution
 
@@ -151,7 +151,7 @@ class BaseModel(object):
             x_curr = self.state_sample(key=key, x_prev=x_prev, theta=theta)
             logw = self.meas_lpdf(y_curr=y_curr, x_curr=x_curr, theta=theta)
         else:
-            x_curr = self.step_sample(key=key, x_prev=x_prev,
+            x_curr = self.step_sample(key=key, x_curr = x_curr, x_prev=x_prev,
                                       y_curr=y_curr, theta=theta)
             lp_prop = self.step_lpdf(x_curr=x_curr,
                                      x_prev=x_prev, y_curr=y_curr, theta=theta)
