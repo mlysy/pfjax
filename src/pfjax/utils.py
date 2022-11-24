@@ -51,13 +51,6 @@ def interpolate_weights (weights):
     return pi
 
 
-# def sort_marginal (x, weights):
-#     r""" 
-#     Sort X and return corresponding w
-#     """
-#     sorted_x, sorted_w = jax.lax.sort_key_val(x, weights)
-#     return {"x": sorted_x, "w": sorted_w}
-
 def argsort_marginal (x, w):
     """ sort (x,w) based on x and return the indices of the sort """
     sort_indices = jnp.argsort(x)
