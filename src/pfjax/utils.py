@@ -8,6 +8,38 @@ import jax.scipy as jsp
 import jax.tree_util as jtu
 
 
+
+def diameter(x, y):
+    """
+    Helper function for scaling of particles used in optimal transport resampling
+    """
+    diameter_x = jnp.max(jnp.std(x, 1), -1)
+    diameter_y = jnp.max(jnp.std(y, 1), -1)
+    res = jnp.maximum(diameter_x, diameter_y)
+    return jnp.where(res == 0., 1., res)
+
+
+def scale_x (x):
+    """
+    Scale X as done in http://proceedings.mlr.press/v139/corenflos21a/corenflos21a.pdf.
+    
+    This replicated their code here: 
+    https://github.com/JTT94/filterflow/blob/master/filterflow/resampling/differentiable/regularized_transport/plan.py#L67
+    """
+    centered_x = x - jnp.mean(x, axis=1, keepdims=True)
+    diameter_value = diameter(x, x)
+    scale = jnp.reshape(diameter_value, [-1, 1, 1]) * jnp.sqrt(x.shape[1])
+    scaled_x = centered_x / scale
+    return scaled_x.reshape(x.shape)
+
+
+def ess (normalized_weights):
+    """ 
+    Calculate ffective sample size from normalized weights
+    """
+    return 1 / sum(normalized_weights ** 2)
+
+
 def continuous_cdf (xs, pi, u):
     """
     Return a sample from a continuous approximation of the ECDF of x.

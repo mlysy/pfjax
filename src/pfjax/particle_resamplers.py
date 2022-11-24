@@ -8,7 +8,7 @@ from jax import lax
 import ott
 from ott.geometry import pointcloud
 from ott.core import sinkhorn
-from .utils import lwgt_to_prob, weighted_corr, argsort_marginal, continuous_cdf, interpolate_weights, quantile_func
+from .utils import lwgt_to_prob, weighted_corr, argsort_marginal, continuous_cdf, interpolate_weights, quantile_func, scale_x
 
 
 def resample_continuous_bm (key, x_particles_prev, logw):
@@ -186,17 +186,25 @@ def resample_ot(key, x_particles_prev, logw,
     p_shape = x_particles_prev.shape
     n_particles = p_shape[0]
     x_particles = x_particles_prev.reshape((n_particles, -1))
-    geom = pointcloud.PointCloud(x=x_particles, y=x_particles,
+    scaled_particles = jax.lax.stop_gradient(scale_x(x_particles))
+    
+    geom = pointcloud.PointCloud(x=scaled_particles, 
+                                 y=scaled_particles,
                                  **pointcloud_kwargs)
     sink = sinkhorn.sinkhorn(geom,
-                             a=prob,
-                             b=jnp.ones(n_particles),
+                             a=jnp.ones(n_particles)/n_particles,
+                             b=prob,
                              **sinkhorn_kwargs)
-    x_particles = geom.apply_transport_from_potentials(
-        f=sink.f, g=sink.g, vec=x_particles.T
-    )
+    x_particles_new = sink.apply(x_particles.T)
+    
+    # condition for ESS resampling: 
+    # x_particles_new = lax.cond(neff(prob) <= _thresh, 
+    #                            true_fun = lambda x: jnp.reshape(x.T, newshape=p_shape), # resmaple
+    #                            false_fun = lambda x: x_particles_prev, # don't resample
+    #                            operand = x_particles_new) 
+    
     return {
-        "x_particles": jnp.reshape(x_particles.T, newshape=p_shape),
+        "x_particles": jnp.reshape(x_particles_new.T, newshape=p_shape), # x_particles_new,
         "geom": geom,
         "sink": sink
     }
