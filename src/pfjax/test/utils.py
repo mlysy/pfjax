@@ -32,7 +32,7 @@ def resample_multinomial_old(key, logw):
     """
     # wgt = jnp.exp(logw - jnp.max(logw))
     # prob = wgt / jnp.sum(wgt)
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
     n_particles = logw.size
     return random.choice(key,
                          a=jnp.arange(n_particles),
@@ -56,7 +56,7 @@ def resample_mvn_for(key, x_particles_prev, logw):
     """
     particle_shape = x_particles_prev.shape
     n_particles = particle_shape[0]
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
     flat = x_particles_prev.reshape((n_particles, -1))
     n_dim = flat.shape[1]
     mu = jnp.average(flat, axis=0, weights=prob)
@@ -430,7 +430,7 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
             full["score"] = tree_mean(last["alpha"], last["logw_bar"])
         else:
             # calculate score and fisher information
-            prob = lwgt_to_prob(last["logw_bar"])
+            prob = logw_to_prob(last["logw_bar"])
             alpha = last["alpha"]
             beta = last["beta"]
             alpha, gamma = jax.vmap(
@@ -439,7 +439,7 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
             alpha = jnp.sum(alpha, axis=0)
             hess = jnp.sum(gamma, axis=0) - jnp.outer(alpha, alpha)
             full["score"] = alpha
-            full["fisher"] = hess
+            full["fisher"] = -1. * hess
 
     return full
 
@@ -580,7 +580,7 @@ def particle_smooth_for(key, logw, x_particles, ancestors, n_sample=1):
     """
     # wgt = jnp.exp(logw - jnp.max(logw))
     # prob = wgt / jnp.sum(wgt)
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
     n_particles = logw.size
     n_obs = x_particles.shape[0]
     n_state = x_particles.shape[2:]

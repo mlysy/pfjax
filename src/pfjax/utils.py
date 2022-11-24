@@ -156,7 +156,7 @@ def tree_mean(tree, logw):
     r"""
     Weighted mean of each leaf of a pytree along leading dimension.
     """
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
     broad_mult = jtu.Partial(jax.vmap(jnp.multiply), prob)
     return jtu.tree_map(
         jtu.Partial(jnp.sum, axis=0),

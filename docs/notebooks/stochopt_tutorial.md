@@ -13,7 +13,7 @@ kernelspec:
 
 # Simulated Maximum Likelihood with PFJAX
 
-**Mohan Wu, Pranav Subramani, Martin Lysy -- University of Waterloo**
+**Pranav Subramani, Mohan Wu, Martin Lysy -- University of Waterloo**
 
 **September 13, 2022**
 
@@ -21,11 +21,11 @@ kernelspec:
 
 ## Summary
 
-In the [Introduction](pfjax.ipynb) to **PFJAX**, we saw how to set up a model class for a state-space model and how to use a particle filter to estimate its marginal loglikelihood $\ell(\tth) = \log p(\yy_{0:T} \mid \tth)$.  In this tutorial, we'll use **PFJAX** to approximate the maximum likelihood estimator $\hat \tth = \argmax_{\tth} \ell(\tth)$ and its variance $\var(\hat \tth)$.
+In the [Introduction](pfjax.md) to **PFJAX**, we saw how to set up a model class for a state-space model and how to use a particle filter to estimate its marginal loglikelihood $\ell(\tth) = \log p(\yy_{0:T} \mid \tth)$.  In this tutorial, we'll use **PFJAX** to approximate the maximum likelihood estimator $\hat \tth = \argmax_{\tth} \ell(\tth)$ and its variance $\var(\hat \tth)$.
 
 ### Benchmark Model
 
-We'll be using a Bootstrap filter for the Brownian motion with drift model defined in the [Introduction](pfjax.ipynb):
+We'll be using a Bootstrap filter for the Brownian motion with drift model defined in the [Introduction](pfjax.md):
 
 $$
 \begin{aligned}
@@ -35,7 +35,7 @@ y_t & \sim \N(x_t, \tau^2),
 \end{aligned}
 $$
 
-where the model parameters are $\tth = (\mu, \sigma, \tau)$.  The details of setting up the appropriate model class are provided in the [Introduction](pfjax.ipynb).  Here we'll use the version of this model provided with **PFJAX**: `pfjax.models.BMModel`.
+where the model parameters are $\tth = (\mu, \sigma, \tau)$.  The details of setting up the appropriate model class are provided in the [Introduction](pfjax.md).  Here we'll use the version of this model provided with **PFJAX**: `pfjax.models.BMModel`.
 
 ```{code-cell} ipython3
 # jax
@@ -238,7 +238,7 @@ def pf_varest(model, key, theta, y_meas, n_particles):
         score=True,
         fisher=True
     )
-    return jnp.linalg.inv(-1.0 * pf_out["fisher"])
+    return jnp.linalg.inv(pf_out["fisher"])
 
 # calculate the variance estimate
 n_particles = 100 # increase this a bit since the calculation only needs to be done once
@@ -258,9 +258,4 @@ Finally, we should check that the variance estimator is positive definite.
 
 ```{code-cell} ipython3
 np.linalg.eigvalsh(theta_ve)
-```
-
-## References
-
-```{bibliography} biblio.bib
 ```
