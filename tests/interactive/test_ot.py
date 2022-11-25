@@ -6,10 +6,14 @@ import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
+# import ott
+# from ott.geometry import pointcloud
+# from ott.core import sinkhorn
+# from ott.tools import transport
 import ott
 from ott.geometry import pointcloud
-from ott.core import sinkhorn
-from ott.tools import transport
+# from ott.problems.linear import linear_problem
+from ott.solvers.linear import sinkhorn
 import pfjax as pf
 # import pfjax.experimental.particle_filter as pfex
 from pfjax.particle_resamplers import resample_ot, resample_multinomial
@@ -227,12 +231,18 @@ jnp.array([sum(P1.T), a])
 # using ott-jax
 geom = pointcloud.PointCloud(u, v, epsilon=eps)
 out = sinkhorn.sinkhorn(geom, a, b)
-P = geom.transport_from_potentials(out.f, out.g)
-P2 = transport.solve(u, v, a=a, b=b, epsilon=eps, jit=False).matrix
+# problem = linear_problem.LinearProblem(geom, a, b)
+# solver = sinkhorn.Sinkhorn()
+# out = solver(problem)
+P = out.matrix
+# geom = pointcloud.PointCloud(u, v, epsilon=eps)
+# out = sinkhorn.sinkhorn(geom, a, b)
+# P = geom.transport_from_potentials(out.f, out.g)
+# P2 = transport.solve(u, v, a=a, b=b, epsilon=eps, jit=False).matrix
 
 # difference between methods
 jnp.abs(P1 - P) / (jnp.abs(P) + .1)
-jnp.abs(P2 - P) / (jnp.abs(P) + .1)
+# jnp.abs(P2 - P) / (jnp.abs(P) + .1)
 
 # now try applying transport to a vector
 tr = geom.apply_transport_from_potentials(
