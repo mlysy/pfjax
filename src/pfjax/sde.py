@@ -113,14 +113,14 @@ class SDEModel(object):
 
     This class sets up a PF model with methods `state_lpdf()`, `state_sim()`, and `pf_step()` automatically determined from user-specified SDE drift and diffusion functions.
 
-   For computational efficient, the user can also specify whether or not the diffusion is diagonal.  This will set up methods `euler_sim()` and `euler_lpdf()` supplied at instantiation time from either `euler_{sim/lpdf}_diag()` or `euler_{sim/lpdf}_var()`, with arguments identical to those of the free functions except `drift` and `diff`, which are supplied by `self.drift()` and `self.diff()`.
+   For computational efficiency, the user can also specify whether or not the diffusion is diagonal.  This will set up methods `euler_sim()` and `euler_lpdf()` supplied at instantiation time from either `euler_{sim/lpdf}_diag()` or `euler_{sim/lpdf}_var()`, with arguments identical to those of the free functions except `drift` and `diff`, which are supplied by `self.drift()` and `self.diff()`.
 
 
     For `pf_step()`, a bootstrap filter is assumed by default, for which the user needs to specify `meas_lpdf()`.
 
     **Notes:**
 
-    - Currently contains `state_sample_for()` and `state_lpdf_for()` for testing purposes.  May want to move these elsewhere at some point to obfuscate from users...
+    - Currently contains `_state_sample_for()` and `_state_lpdf_for()` for testing purposes.  May want to move these elsewhere at some point to obfuscate from users...
 
     - Should derive from `pf.BaseModel`.
     """
@@ -200,7 +200,7 @@ class SDEModel(object):
         """
         valid_x = jax.vmap(self.is_valid, in_axes=(0, None))(x, theta)
         nan_x = jnp.any(jnp.isnan(x), axis=1)
-        return jnp.alltrue(valid_x, where=~nan_x) and jnp.alltrue(~nan_x)
+        return jnp.alltrue(valid_x, where=~nan_x) & jnp.alltrue(~nan_x)
 
     def state_lpdf(self, x_curr, x_prev, theta):
         """
@@ -238,7 +238,7 @@ class SDEModel(object):
         #                x_curr, axis=0)
         # return self.euler_lpdf(x, self._dt/self._n_res, theta)
 
-    def state_lpdf_for(self, x_curr, x_prev, theta):
+    def _state_lpdf_for(self, x_curr, x_prev, theta):
         """
         Calculates the log-density of `p(x_curr | x_prev, theta)`.
         For-loop version for testing.
@@ -306,7 +306,7 @@ class SDEModel(object):
         #     theta=theta
         # )
 
-    def state_sample_for(self, key, x_prev, theta):
+    def _state_sample_for(self, key, x_prev, theta):
         """
         Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
         For-loop version for testing.
@@ -362,7 +362,24 @@ class SDEModel(object):
         # logw = self.meas_lpdf(y_curr, x_curr, theta)
         return x_curr, logw
 
-    def bridge_prop(self, key, x_prev, y_curr, theta, Y, A, Omega):
+    def _bridge_mv(self, x, theta, n, Y, A, Omega):
+        r"""
+        Mean and variance of bridge proposal specific for SDEs.
+        """
+        k = self._n_res - n
+        dt_res = self._dt / self._n_res
+        dr = self.drift(x, theta) * dt_res
+        df = self.diff_full(x, theta) * dt_res
+        return mb.mvn_bridge_mv(
+            mu_W=x + dr,
+            Sigma_W=df,
+            mu_Y=jnp.matmul(A, x + k*dr),
+            AS_W=jnp.matmul(A, df),
+            Sigma_Y=k * jnp.linalg.multi_dot([A, df, A.T]) + Omega,
+            Y=Y
+        )
+
+    def bridge_step(self, key, x_prev, y_curr, theta, Y, A, Omega):
         """
         Update particle and calculate log-weight for a particle filter with MVN bridge proposals.
 
@@ -385,25 +402,19 @@ class SDEModel(object):
             theta: Parameter value.
 
         Returns:
-            - x_curr: Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
-            - logw: The log-weight of `x_curr`.
+            Tuple:
+
+            - **x_curr** - Sample of the state variable at current time `t`: `x_curr ~ q(x_curr)`.
+            - **logw** - The log-weight of `x_curr`.
         """
         # lax.scan setup
         def scan_fun(carry, n):
             key = carry["key"]
             x = carry["x"]
             # calculate mean and variance of bridge proposal
-            k = self._n_res - n
-            dt_res = self._dt / self._n_res
-            dr = self.drift(x, theta) * dt_res
-            df = self.diff_full(x, theta) * dt_res
-            mu_bridge, Sigma_bridge = mb.mvn_bridge_mv(
-                mu_W=x + dr,
-                Sigma_W=df,
-                mu_Y=jnp.matmul(A, x + k*dr),
-                AS_W=jnp.matmul(A, df),
-                Sigma_Y=k * jnp.linalg.multi_dot([A, df, A.T]) + Omega,
-                Y=Y
+            mu_bridge, Sigma_bridge = self._bridge_mv(
+                x=x, theta=theta, n=n,
+                Y=Y, A=A, Omega=Omega
             )
             # bridge proposal
             key, subkey = random.split(key)
@@ -446,9 +457,9 @@ class SDEModel(object):
         )
         return x_prop, logw
 
-    def bridge_prop_for(self, key, x_prev, y_curr, theta, Y, A, Omega):
+    def _bridge_step_for(self, key, x_prev, y_curr, theta, Y, A, Omega):
         """
-        For-loop version of bridge_prop() for testing.
+        For-loop version of bridge_step() for testing.
         """
 
         dt_res = self._dt / self._n_res

@@ -5,10 +5,13 @@ import jax.tree_util as jtu
 from jax import random
 from jax import lax
 # from jax.experimental.host_callback import id_print
+# import ott
+# from ott.geometry import pointcloud
+# from ott.core import sinkhorn
 import ott
 from ott.geometry import pointcloud
-from ott.core import sinkhorn
-from .utils import lwgt_to_prob
+from ott.solvers.linear import sinkhorn
+from .utils import logw_to_prob
 
 
 def resample_multinomial(key, x_particles_prev, logw):
@@ -27,7 +30,7 @@ def resample_multinomial(key, x_particles_prev, logw):
             - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.  These are sampled with replacement from `x_particles_prev` with probability vector `exp(logw) / sum(exp(logw))`.
             - `ancestors`: Vector of `n_particles` integers between 0 and `n_particles-1` giving the index of each element of `x_particles_prev` corresponding to the elements of `x_particles`.
     """
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
     n_particles = logw.size
     ancestors = random.choice(key,
                               a=jnp.arange(n_particles),
@@ -53,7 +56,7 @@ def resample_mvn(key, x_particles_prev, logw):
             - `mvn_mean`: Vector of length `n_state = prod(x_particles.shape[1:])` representing the mean of the MVN.
             - `mvn_cov`: Matrix of size `n_state x n_state` representing the covariance matrix of the MVN.
     """
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
     p_shape = x_particles_prev.shape
     n_particles = p_shape[0]
     # calculate weighted mean and variance
@@ -83,23 +86,23 @@ def resample_ot(key, x_particles_prev, logw,
 
     **Notes:**
 
-    - Argument `jit` to `ott.sinkhorn.sinkhorn()` is ignored, i.e., always set to `False`.
+    - Argument `jit` to `ott.solvers.linear.sinkhorn.sinkhorn()` is ignored, i.e., always set to `False`.
 
     Args:
         key: PRNG key.
         x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
         logw: Vector of corresponding `n_particles` unnormalized log-weights.
         pointcloud_kwargs: Dictionary of additional arguments to `ott.pointcloud.PointCloud()`.
-        sinkhorn_kwargs: Dictionary of additional arguments to `ott.sinkhorn.sinkhorn()`.
+        sinkhorn_kwargs: Dictionary of additional arguments to `ott.solvers.linear.sinkhorn.sinkhorn()`.
 
     Returns:
         A dictionary with elements:
             - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.
             - `geom`: An `ott.Geometry` object.
-            - `sink`: The output of the call to `ott.sinkhorn.sinkhorn()`.
+            - `sink`: The output of the call to `ott.solvers.linear.sinkhorn.sinkhorn()`.
     """
     sinkhorn_kwargs.update(jit=False)
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
     p_shape = x_particles_prev.shape
     n_particles = p_shape[0]
     x_particles = x_particles_prev.reshape((n_particles, -1))

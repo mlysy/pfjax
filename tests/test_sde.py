@@ -45,7 +45,7 @@ class TestFor(unittest.TestCase):
 
     test_state_sample = utils.test_sde_state_sample_for
     test_state_lpdf = utils.test_sde_state_lpdf_for
-    test_bridge_prop = utils.test_sde_bridge_prop_for
+    test_bridge_step = utils.test_sde_bridge_step_for
 
 
 if __name__ == '__main__':

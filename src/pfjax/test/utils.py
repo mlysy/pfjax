@@ -12,7 +12,67 @@ from pfjax.particle_resamplers import resample_multinomial
 from pfjax.utils import *
 from pfjax.loglik_full import loglik_full
 
+
 # --- non-exported functions for testing ---------------------------------------
+
+def sinkhorn_test(a, b, u, v, eps, n_iter):
+    """
+    Sinkhorn algorithm as described in Corenflos et al (2021).
+
+    This is for testing purposes: it returns the whole OT matrix and doesn't leverage the fixed-point algorithm for gradients.
+
+    Args:
+        a: First probability vector of length `n`.
+        b: Second probability vector of length `n`.
+        u: First particle set with leading dimension `n`.
+        v: Second particle set with leading dimension `n`.
+        eps: Regularization parameter.
+        n_iter: Number of Sinkhorn iterations.
+
+    Returns:
+        A tuple with elements
+
+        - **f** - First potential vector of length `n`.
+        - **g** - Second potential vector of length `n`.
+        - **P** - Optimal transport matrix of size `n x n`.
+        - **C** - Distance matrix of size `n x n`.
+    """
+    n = a.size
+    # initialize potentials
+    f = jnp.zeros((n,))
+    g = jnp.zeros((n,))
+    # distance calculation
+    C = jax.vmap(
+        jax.vmap(lambda _u, _v: jnp.sum(jnp.square(_u - _v)),
+                 in_axes=(None, 0)),
+        in_axes=(0, None)
+    )(u, v)
+    CT = C.T
+
+    def Teps(a, f, c, eps):
+        """Sinkhorn dual transformation."""
+        return -eps * jsp.special.logsumexp(jnp.log(a) + (f - c)/eps)
+
+    def update(fg, t):
+        """Sinkhorn update step."""
+        f, g = fg
+        f = 0.5 * (f + jax.vmap(lambda c: Teps(b, g, c, eps))(C))
+        g = 0.5 * (g + jax.vmap(lambda c: Teps(a, f, c, eps))(CT))
+        return (f, g), None
+
+    # stepwise algorithm
+    fg, _ = jax.lax.scan(update, (f, g), jnp.arange(n_iter))
+    f, g = fg
+
+    # optimal transport matrix
+    P = jax.vmap(
+        jax.vmap(
+            lambda _a, _b, _f, _g, _c: _a*_b * jnp.exp((_f + _g - _c)/eps),
+            in_axes=(None, 0, None, 0, 0)
+        ),
+        in_axes=(0, None, 0, None, 0)
+    )(a, b, f, g, C)
+    return f, g, P, C
 
 
 def resample_multinomial_old(key, logw):
@@ -32,7 +92,7 @@ def resample_multinomial_old(key, logw):
     """
     # wgt = jnp.exp(logw - jnp.max(logw))
     # prob = wgt / jnp.sum(wgt)
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
     n_particles = logw.size
     return random.choice(key,
                          a=jnp.arange(n_particles),
@@ -56,7 +116,7 @@ def resample_mvn_for(key, x_particles_prev, logw):
     """
     particle_shape = x_particles_prev.shape
     n_particles = particle_shape[0]
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
     flat = x_particles_prev.reshape((n_particles, -1))
     n_dim = flat.shape[1]
     mu = jnp.average(flat, axis=0, weights=prob)
@@ -430,7 +490,7 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
             full["score"] = tree_mean(last["alpha"], last["logw_bar"])
         else:
             # calculate score and fisher information
-            prob = lwgt_to_prob(last["logw_bar"])
+            prob = logw_to_prob(last["logw_bar"])
             alpha = last["alpha"]
             beta = last["beta"]
             alpha, gamma = jax.vmap(
@@ -439,7 +499,7 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
             alpha = jnp.sum(alpha, axis=0)
             hess = jnp.sum(gamma, axis=0) - jnp.outer(alpha, alpha)
             full["score"] = alpha
-            full["fisher"] = hess
+            full["fisher"] = -1. * hess
 
     return full
 
@@ -580,7 +640,7 @@ def particle_smooth_for(key, logw, x_particles, ancestors, n_sample=1):
     """
     # wgt = jnp.exp(logw - jnp.max(logw))
     # prob = wgt / jnp.sum(wgt)
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
     n_particles = logw.size
     n_obs = x_particles.shape[0]
     n_state = x_particles.shape[2:]

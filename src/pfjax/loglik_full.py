@@ -1,16 +1,3 @@
-"""
-Complete data loglikelihood for a state space model.
-
-The API requires the user to define a model class with the following methods:
-
-- `state_lpdf()`
-- `meas_lpdf()`
-
-The provided function is:
-
-- `loglik_full()`
-"""
-
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
@@ -22,16 +9,23 @@ from pfjax.utils import *
 
 def loglik_full(model, y_meas, x_state, theta):
     """
-    Calculate the joint loglikelihood `p(y_{0:T} | x_{0:T}, theta) * p(x_{0:T} | theta)`.
+    Calculate the complete data loglikelihood for a state space model.
+
+    Calculates `p(y_{0:T} | x_{0:T}, theta) * p(x_{0:T} | theta)`.
 
     Args:
-        model: Object specifying the state-space model.
+        model: Object specifying the state-space model having the following methods:
+
+            - `state_lpdf : (x_curr, x_prev, theta) -> lpdf`: Calculates the log-density of the state model.
+
+            - `meas_lpdf : (y_curr, x_curr, theta) -> lpdf`: Calculates the log-density of the measurement model.
+
         y_meas: The sequence of `n_obs` measurement variables `y_meas = (y_0, ..., y_T)`, where `T = n_obs-1`.
         x_state: The sequence of `n_obs` state variables `x_state = (x_0, ..., x_T)`.
         theta: Parameter value.
 
     Returns:
-        The value of the loglikelihood.
+        The value of the complete data loglikelihood.
     """
     n_obs = y_meas.shape[0]
     # initial measurement

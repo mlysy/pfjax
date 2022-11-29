@@ -11,6 +11,7 @@ import pfjax as pf
 # import pfjax.experimental.particle_filter as pfex
 import pfjax.mcmc as mcmc
 import pfjax.models as models
+import pfjax.utils as utils
 import lotvol_model as lv
 # import pfjax.models.pgnet_model as pg
 import pfjax.particle_resamplers as resamplers
@@ -454,7 +455,7 @@ def test_particle_filter_deriv(self):
                     accumulator=accumulate_deriv,
                     mean=False
                 )
-                prob = pf.lwgt_to_prob(logw)
+                prob = utils.logw_to_prob(logw)
                 _score = jax.vmap(jnp.multiply)(prob, alpha)
                 _hess = jax.vmap(
                     lambda p, a, b: p * (jnp.outer(a, a) + b)
@@ -464,7 +465,7 @@ def test_particle_filter_deriv(self):
                 max_diff["score"] = rel_err(_score, pf_out2["score"])
                 if case["fisher"]:
                     max_diff["fisher"] = rel_err(
-                        _hess - jnp.outer(_score, _score),
+                        -1. * (_hess - jnp.outer(_score, _score)),
                         pf_out2["fisher"]
                     )
             for k in max_diff.keys():
@@ -498,11 +499,11 @@ def test_particle_filter_rb_for(self):
         case = test_cases.iloc[i]
         with self.subTest(case=case):
             key, subkey = random.split(key)
-            # rb filter for-loop
+            # rb filter vmap
             pf_out1 = pf.particle_filter_rb(
                 model, subkey, y_meas, theta, n_particles, **case
             )
-            # rb filter vmap
+            # rb filter for-loop
             pf_out2 = test.particle_filter_rb_for(
                 model, subkey, y_meas, theta, n_particles, **case
             )
@@ -543,7 +544,7 @@ def test_particle_filter_rb_history(self):
                 history=False, **case
             )
             # rb filter history
-            pf_out2 = test.particle_filter_rb_for(
+            pf_out2 = pf.particle_filter_rb(
                 model, subkey, y_meas, theta, n_particles,
                 history=True, **case
             )
@@ -673,6 +674,7 @@ def test_particle_filter_rb_deriv(self):
     score2 = pf.utils.tree_mean(alpha_curr, logw_curr)
     fisher2 = pf.utils.tree_mean(gamma_curr, logw_curr) - \
         jnp.outer(score2, score2)
+    fisher2 = -1. * fisher2
     for i in range(n_cases):
         case = test_cases.iloc[i]
         with self.subTest(case=case):
@@ -1031,7 +1033,7 @@ def test_sde_state_sample_for(self):
     x_prev = self.x_init
     x_prev = x_prev + random.normal(subkey, x_prev.shape)
     # simulate state using for-loop
-    x_state1 = model.state_sample_for(key, x_prev, theta)
+    x_state1 = model._state_sample_for(key, x_prev, theta)
     # simulate state using lax.scan
     x_state2 = model.state_sample(key, x_prev, theta)
     self.assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
@@ -1054,12 +1056,12 @@ def test_sde_state_lpdf_for(self):
     # simulate state using lax.scan
     x_curr = model.state_sample(key, x_prev, theta)
     # lpdf using for
-    lp1 = model.state_lpdf_for(x_curr, x_prev, theta)
+    lp1 = model._state_lpdf_for(x_curr, x_prev, theta)
     lp2 = model.state_lpdf(x_curr, x_prev, theta)
     self.assertAlmostEqual(rel_err(lp1, lp2), 0.0)
 
 
-def test_sde_bridge_prop_for(self):
+def test_sde_bridge_step_for(self):
     key = self.key
     theta = self.theta
     x_init = self.x_init
@@ -1075,7 +1077,7 @@ def test_sde_bridge_prop_for(self):
     y_curr = jnp.exp(x_prev[-1]) + \
         theta[6:8] * random.normal(subkey, (x_prev.shape[1],))
     # bridge proposal using lax.scan
-    x_curr1, logw1 = model.bridge_prop(
+    x_curr1, logw1 = model.bridge_step(
         key=key,
         x_prev=x_prev,
         y_curr=y_curr,
@@ -1085,7 +1087,7 @@ def test_sde_bridge_prop_for(self):
         Omega=jnp.eye(2)
     )
     # bridge proposal using for
-    x_curr2, logw2 = model.bridge_prop_for(
+    x_curr2, logw2 = model._bridge_step_for(
         key=key,
         x_prev=x_prev,
         y_curr=y_curr,
