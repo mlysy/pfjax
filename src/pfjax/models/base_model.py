@@ -189,8 +189,8 @@ class BaseModel(object):
             - **logw** - The log-weight of `x_init`.
         """
         if self._bootstrap:
-            x_curr = self.prior_sample(key=key, theta=theta)
-            logw = self.meas_lpdf(y_curr=y_init, x_curr=x_curr, theta=theta)
+            x_init = self.prior_sample(key=key, theta=theta)
+            logw = self.meas_lpdf(y_curr=y_init, x_curr=x_init, theta=theta)
         else:
             x_init = self.init_sample(key=key, y_init=y_init, theta=theta)
             lp_prop = self.init_lpdf(x_init=x_init, y_init=y_init, theta=theta)
