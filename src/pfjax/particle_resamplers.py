@@ -8,7 +8,7 @@ from jax import lax
 import ott
 from ott.geometry import pointcloud
 from ott.core import sinkhorn
-from .utils import lwgt_to_prob, weighted_corr, argsort_marginal, continuous_cdf, interpolate_weights, quantile_func, scale_x
+from .utils import logw_to_prob, weighted_corr, argsort_marginal, continuous_cdf, interpolate_weights, quantile_func, scale_x,  ess
 
 
 def resample_continuous_bm (key, x_particles_prev, logw):
@@ -17,7 +17,7 @@ def resample_continuous_bm (key, x_particles_prev, logw):
     """
     p_shape = x_particles_prev.shape
     n_particles = p_shape[0]
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
 
     sorted_marginals = jax.vmap(
         argsort_marginal,
@@ -60,7 +60,7 @@ def resample_gaussian_copula(key, x_particles_prev, logw):
     n_particles = p_shape[0]
     x_particles = x_particles_prev.reshape((n_particles, -1))
     d = x_particles.shape[-1]
-    prob = lwgt_to_prob(logw)
+    prob = logw_to_prob(logw)
     
     # sort marginals: 
     sorted_marginals = jax.vmap(
@@ -158,7 +158,8 @@ def resample_mvn(key, x_particles_prev, logw):
 
 def resample_ot(key, x_particles_prev, logw,
                 pointcloud_kwargs={},
-                sinkhorn_kwargs={}):
+                sinkhorn_kwargs={}, 
+                _thresh=1):
     r"""
     Particle resampler using optimal transport.
 
@@ -198,10 +199,10 @@ def resample_ot(key, x_particles_prev, logw,
     x_particles_new = sink.apply(x_particles.T)
     
     # condition for ESS resampling: 
-    # x_particles_new = lax.cond(neff(prob) <= _thresh, 
-    #                            true_fun = lambda x: jnp.reshape(x.T, newshape=p_shape), # resmaple
-    #                            false_fun = lambda x: x_particles_prev, # don't resample
-    #                            operand = x_particles_new) 
+    x_particles_new = lax.cond(ess(prob) <= _thresh, 
+                               true_fun = lambda x: jnp.reshape(x.T, newshape=p_shape), # resmaple
+                               false_fun = lambda x: x_particles_prev, # don't resample
+                               operand = x_particles_new) 
     
     return {
         "x_particles": jnp.reshape(x_particles_new.T, newshape=p_shape), # x_particles_new,

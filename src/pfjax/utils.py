@@ -119,13 +119,11 @@ def weighted_corr (X, weights):
 #     return sum(jnp.where(data <= x, x = weights, y=0))
 
 
-def lwgt_to_prob(logw):
+def logw_to_prob(logw):
     r"""
     Calculate normalized probabilities from unnormalized log weights.
-
     Args:
         logw: Vector of `n_particles` unnormalized log-weights.
-
     Returns:
         Vector of `n_particles` normalized weights that sum to 1.
     """
