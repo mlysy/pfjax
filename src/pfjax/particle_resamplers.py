@@ -6,8 +6,8 @@ from jax import random
 from jax import lax
 # from jax.experimental.host_callback import id_print
 import ott
+from ott.solvers.linear import sinkhorn
 from ott.geometry import pointcloud
-from ott.core import sinkhorn
 from .utils import logw_to_prob, weighted_corr, argsort_marginal, continuous_cdf, interpolate_weights, quantile_func, scale_x,  ess
 
 
