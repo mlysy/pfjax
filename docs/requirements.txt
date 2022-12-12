@@ -2,4 +2,11 @@ jax
 jaxlib
 ott-jax
 optax
+numpy
+pandas
+projplot
 sphinx_rtd_theme
+sphinx-autoapi
+sphinxcontrib-bibtex
+myst_nb
+jupytext

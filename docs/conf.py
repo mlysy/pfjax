@@ -13,9 +13,9 @@
 # import os
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
-# sys.path.insert(0, os.path.abspath(".."))
+# sys.path.insert(0, os.path.abspath('..'))
 # sys.path.append(os.path.abspath(
-#     os.path.join(__file__, "../../src")
+#     os.path.join(__file__, '../../src')
 # ))
 import re
 from pfjax import __version__, __author__
@@ -36,13 +36,13 @@ release = version
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    "myst_nb",
-    # "myst_parser",
-    "autoapi.extension",
-    "sphinx.ext.napoleon",
-    "sphinx.ext.viewcode",
-    "sphinx.ext.mathjax",
-    "sphinxcontrib.bibtex"
+    'myst_nb',
+    # 'myst_parser',
+    'autoapi.extension',
+    'sphinx.ext.napoleon',
+    'sphinx.ext.viewcode',
+    'sphinx.ext.mathjax',
+    'sphinxcontrib.bibtex'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -51,7 +51,13 @@ templates_path = ['_templates']
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'notebooks/internal']
+exclude_patterns = [
+    '_build',
+    'Thumbs.db',
+    '.DS_Store',
+    'notebooks/internal',
+    'TODO.md'
+]
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -62,7 +68,7 @@ html_theme = 'sphinx_rtd_theme'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
-# so a file named "default.css" will overwrite the builtin "default.css".
+# so a file named 'default.css' will overwrite the builtin 'default.css'.
 html_static_path = ['_static']
 
 
@@ -77,42 +83,42 @@ html_css_files = [
 
 # --- Options for autoapi ------------------------------------------------------
 
-autoapi_dirs = ["../src"]  # location to parse for API reference
+autoapi_dirs = ['../src']  # location to parse for API reference
 
 autoapi_ignore = [
-    "*/deprecated/*",
-    "*/pfjax/experimental/*",
-    "*/pfjax/test/*",
-    "*/pfjax/__metadata__.py"
+    '*/deprecated/*',
+    '*/pfjax/experimental/*',
+    '*/pfjax/test/*',
+    '*/pfjax/__metadata__.py'
 ]
 
 autoapi_options = [
-    "members",
-    "undoc-members",
-    # "private-members",
-    "show-inheritance",
-    "show-module-summary",
-    "special-members",
-    "imported-members"
+    'members',
+    'undoc-members',
+    # 'private-members',
+    'show-inheritance',
+    'show-module-summary',
+    'special-members',
+    'imported-members'
 ]
 
 # -- Options for myst-nb -----------------------------------------------------
 
 
 nb_custom_formats = {
-    ".md": ["jupytext.reads", {"fmt": "md"}]
+    '.md': ['jupytext.reads', {'fmt': 'md'}]
 }
 
-nb_execution_mode = "cache"
+nb_execution_mode = 'cache'
 
 nb_execution_timeout = -1
 
 myst_enable_extensions = [
-    "amsmath",
-    "colon_fence",
-    "deflist",
-    "dollarmath",
-    "html_image",
+    'amsmath',
+    'colon_fence',
+    'deflist',
+    'dollarmath',
+    'html_image',
 ]
 
 myst_title_to_header = True
@@ -128,15 +134,16 @@ with open('notebooks/latexdefs.tex', 'r') as f:
             r'\\(newcommand){\\(.*?)}(\[(\d)\])?{(.+)}', line)
         for macro in macros:
             if len(macro[2]) == 0:
-                mathjax3_config['tex']['macros'][macro[1]] = "{"+macro[4]+"}"
+                mathjax3_config['tex']['macros'][macro[1]] = '{'+macro[4]+'}'
             else:
                 mathjax3_config['tex']['macros'][macro[1]] = [
-                    "{"+macro[4]+"}", int(macro[3])]
+                    '{'+macro[4]+'}', int(macro[3])
+                ]
         # DeclarMathOperator macros
         macros = re.findall(r'\\(DeclareMathOperator\*?){\\(.*?)}{(.+)}', line)
         for macro in macros:
-            mathjax3_config['tex']['macros'][macro[1]
-                                             ] = "{\\operatorname{"+macro[2]+"}}"
+            mathjax3_config['tex']['macros'][macro[1]] = \
+                '{\\operatorname{'+macro[2]+'}}'
 
 # bibtex options
 bibtex_bibfiles = ['notebooks/biblio.bib']

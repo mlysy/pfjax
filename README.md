@@ -39,7 +39,7 @@ This is a work in progress!  Current modules include:
 
 - An example of parameter inference using [Markov chain Monte Carlo](docs/notebooks/mcmc_tutorial).
 
-- The API reference documentation.
+- The API [reference documentation](https://pfjax.readthedocs.io/).
 
 ## Developers
 
