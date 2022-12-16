@@ -6,6 +6,7 @@ import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.tree_util as jtu
+import jax.flatten_util as jfu
 
 
 def logw_to_prob(logw):
@@ -31,6 +32,32 @@ def rm_keys(x, keys):
 
 
 # --- tree helper functions ----------------------------------------------------
+
+def tree_array2d(x, shape0=None):
+    r"""
+    Convert a PyTree into a 2D JAX array.
+
+    Starts by converting each leaf array to a 2D JAX array with same leading dimension.  Then concatenates these arrays along `axis=1`.  Assumes the leading dimension of each leaf is the same.
+
+    **Notes:**
+
+    - This function returns a tuple containing a Callable, so can't be jitted directly.  Can however be called in jitted code so long as the output is a PyTree.
+
+    Args:
+        x: A Pytree.
+        shape0: Optional value of the leading dimension.  If `None` is deduced from `x`.
+
+    Returns:
+        tuple:
+        - **array2d** - A two dimensional JAX array.
+        - **unravel_fn** - A Callable to reconstruct the original PyTree.
+    """
+    if shape0 is None:
+        shape0 = jtu.tree_leaves(x)[0].shape[0]  # leading dimension
+    y, _unravel_fn = jfu.ravel_pytree(x)
+    y = jnp.reshape(y, (shape0, -1))
+    def unravel_fn(array2d): return _unravel_fn(jnp.ravel(array2d))
+    return y, unravel_fn
 
 
 def tree_add(tree1, tree2):
