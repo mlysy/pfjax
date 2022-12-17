@@ -78,6 +78,7 @@ def resample_mvn(key, x_particles_prev, logw):
 
 
 def resample_ot(key, x_particles_prev, logw,
+                scaled=True,
                 pointcloud_kwargs={},
                 sinkhorn_kwargs={}):
     r"""
@@ -89,12 +90,13 @@ def resample_ot(key, x_particles_prev, logw,
 
     - Argument `jit` to `ott.solvers.linear.sinkhorn.sinkhorn()` is ignored, i.e., always set to `False`.
 
-    - Can't seem to jit with all types of `scale_cost` passed directly to  `pointcloud.PointCloud()`; `float`s seem to work but not `jax.numpy.array(float)`.
+    - Both `sinkhorn_kwargs` and `pointcloud_kwargs` are shallow copied inside the function to impure function effects.
 
     Args:
         key: PRNG key.
         x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
         logw: Vector of corresponding `n_particles` unnormalized log-weights.
+        scaled: Whether or not to divide `x_particles_prev` by `sqrt(x_particles_prev.shape[1]) * max(std(x_particles_prev, axis=0))`, after reshaping `x_particles` into a 2D array with leading dimension of size `n_particles`.  Does this by setting `pointcloud_kwargs["scale_cost"]`, so any other value of this is overwritten.
         pointcloud_kwargs: Dictionary of additional arguments to `ott.pointcloud.PointCloud()`.
         sinkhorn_kwargs: Dictionary of additional arguments to `ott.solvers.linear.sinkhorn.sinkhorn()`.
 
@@ -103,6 +105,8 @@ def resample_ot(key, x_particles_prev, logw,
             - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.
             - `sink`: An object of type `ott.solvers.linear.sinkhorn.SinkhornOutput`, as returned by `ott.solvers.linear.sinkhorn.sinkhorn()`.
     """
+    sinkhorn_kwargs = sinkhorn_kwargs.copy()
+    pointcloud_kwargs = pointcloud_kwargs.copy()
     sinkhorn_kwargs.update(jit=False)
     prob = logw_to_prob(logw)
     # p_shape = x_particles_prev.shape
@@ -111,15 +115,17 @@ def resample_ot(key, x_particles_prev, logw,
     n_particles = logw.shape[0]
     x_particles, unravel_fn = tree_array2d(x_particles_prev,
                                            shape0=n_particles)
-    # x_particles = jnp.transpose(x_particles)
-    # if "scale_cost" not in pointcloud_kwargs:
-    #     scale_cost = jnp.max(jnp.std(x_particles, axis=0))
-    #     scale_cost = jnp.sqrt(x_particles.shape[1]) * scale_cost
-    #     x_particles_scaled = x_particles/scale_cost
-    # else:
-    #     x_particles_scaled = x_particles
-    geom = pointcloud.PointCloud(x=x_particles,
-                                 y=x_particles,
+    if scaled:
+        # can't jit compile pointcloud_kwargs.update(scale_cost=scale_cost)
+        # this way.  So instead scale particles directly.
+        scale_cost = jnp.max(jnp.var(x_particles, axis=0))
+        scale_cost = jnp.sqrt(x_particles.shape[1] * scale_cost)
+        x_particles_scaled = x_particles/scale_cost
+        pointcloud_kwargs.update(scale_cost=1.0)
+    else:
+        x_particles_scaled = x_particles
+    geom = pointcloud.PointCloud(x=x_particles_scaled,
+                                 y=x_particles_scaled,
                                  **pointcloud_kwargs)
     sink = sinkhorn.sinkhorn(geom,
                              a=prob,

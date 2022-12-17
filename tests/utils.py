@@ -1206,6 +1206,7 @@ def test_resample_ot_sinkhorn(self):
                 # kwargs need to be jitted each time,
                 # can't make dict static argument
                 resampler = partial(pf.particle_resamplers.resample_ot,
+                                    scaled=False,
                                     sinkhorn_kwargs=sinkhorn_kwargs,
                                     pointcloud_kwargs=pointcloud_kwargs)
                 out1 = jax.jit(resampler)(
@@ -1250,16 +1251,18 @@ def test_resample_ot_jit(self):
     test_cases = expand_grid(
         method=["jitted_1", "jitted_2"],
         kwargs=jnp.array([False, True]),
-        scale_cost=jnp.array([False, True])
+        scaled=jnp.array([False, True])
     )
     n_cases = test_cases.shape[0]
 
     for i in range(n_cases):
         case = test_cases.iloc[i]
         with self.subTest(case=case):
-            if case["scale_cost"]:
-                scale_cost = jnp.max(jnp.std(x_particles_prev.T, axis=0))
-                scale_cost = jnp.sqrt(n_dim) * scale_cost
+            if case["scaled"]:
+                # scale_cost = jax.vmap(jnp.var,
+                #                       in_axes=1)(x_particles_prev)
+                scale_cost = jnp.max(jnp.var(x_particles_prev, axis=0))
+                scale_cost = n_dim * n_res * scale_cost
             else:
                 scale_cost = 1.0
             if case["kwargs"]:
@@ -1272,6 +1275,7 @@ def test_resample_ot_jit(self):
                 pointcloud_kwargs = {}
             # unjitted
             resampler = partial(pf.particle_resamplers.resample_ot,
+                                scaled=case["scaled"],
                                 sinkhorn_kwargs=sinkhorn_kwargs,
                                 pointcloud_kwargs=pointcloud_kwargs)
             out1 = resampler(
@@ -1294,6 +1298,7 @@ def test_resample_ot_jit(self):
                         x_particles_prev=x_particles_prev,
                         logw=logw,
                         key=key,
+                        scaled=False,  # scale_cost set via sinkhorn_kwargs
                         sinkhorn_kwargs=sinkhorn_kwargs,
                         pointcloud_kwargs=pointcloud_kwargs
                     )
