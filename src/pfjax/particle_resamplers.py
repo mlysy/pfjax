@@ -6,6 +6,7 @@ from jax import random
 from jax import lax
 import ott
 from ott.geometry import pointcloud
+from ott.problems.linear import linear_problem
 from ott.solvers.linear import sinkhorn
 from .utils import logw_to_prob, tree_array2d
 
@@ -96,18 +97,18 @@ def resample_ot(key, x_particles_prev, logw,
         key: PRNG key.
         x_particles_prev: An `ndarray` with leading dimension `n_particles` consisting of the particles from the previous time step.
         logw: Vector of corresponding `n_particles` unnormalized log-weights.
-        scaled: Whether or not to divide `x_particles_prev` by `sqrt(x_particles_prev.shape[1]) * max(std(x_particles_prev, axis=0))`, after reshaping `x_particles` into a 2D array with leading dimension of size `n_particles`.  Does this by setting `pointcloud_kwargs["scale_cost"]`, so any other value of this is overwritten.
+        scaled: Whether or not to divide `x_particles_prev` by `sqrt(x_particles_prev.shape[1]) * max(std(x_particles_prev, axis=0))`, after reshaping `x_particles` into a 2D array with leading dimension of size `n_particles`.  If `True` overrides any value of `pointcloud_kwargs["scale_cost"]`.
         pointcloud_kwargs: Dictionary of additional arguments to `ott.pointcloud.PointCloud()`.
-        sinkhorn_kwargs: Dictionary of additional arguments to `ott.solvers.linear.sinkhorn.sinkhorn()`.
+        sinkhorn_kwargs: Dictionary of additional arguments to `ott.solvers.linear.sinkhorn.Sinkhorn()`.
 
     Returns:
         A dictionary with elements:
             - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.
-            - `sink`: An object of type `ott.solvers.linear.sinkhorn.SinkhornOutput`, as returned by `ott.solvers.linear.sinkhorn.sinkhorn()`.
+            - `sink`: An object of type `ott.solvers.linear.sinkhorn.SinkhornOutput`, as returned by `ott.solvers.linear.sinkhorn.Sinkhorn()`.
     """
     sinkhorn_kwargs = sinkhorn_kwargs.copy()
     pointcloud_kwargs = pointcloud_kwargs.copy()
-    sinkhorn_kwargs.update(jit=False)
+    # sinkhorn_kwargs.update(jit=False) # depreciated argument
     prob = logw_to_prob(logw)
     # p_shape = x_particles_prev.shape
     # n_particles = p_shape[0]
@@ -127,10 +128,15 @@ def resample_ot(key, x_particles_prev, logw,
     geom = pointcloud.PointCloud(x=x_particles_scaled,
                                  y=x_particles_scaled,
                                  **pointcloud_kwargs)
-    sink = sinkhorn.sinkhorn(geom,
-                             a=prob,
-                             b=jnp.ones(n_particles)/n_particles,
-                             **sinkhorn_kwargs)
+    problem = linear_problem.LinearProblem(geom,
+                                           a=prob,
+                                           b=jnp.ones(n_particles)/n_particles)
+    solver = sinkhorn.Sinkhorn(**sinkhorn_kwargs)
+    sink = solver(problem)
+    # sink = sinkhorn.sinkhorn(geom,
+    #                          a=prob,
+    #                          b=jnp.ones(n_particles)/n_particles,
+    #                          **sinkhorn_kwargs)
     x_particles = sink.apply(inputs=x_particles.T, axis=1)
     return {
         "x_particles": unravel_fn(x_particles.T),

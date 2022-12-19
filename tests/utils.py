@@ -10,6 +10,7 @@ import jax.tree_util as jtu
 import jax.random as random
 import ott
 from ott.geometry import pointcloud
+from ott.problems.linear import linear_problem
 from ott.solvers.linear import sinkhorn
 import pfjax as pf
 # import pfjax.experimental.particle_filter as pfex
@@ -1157,7 +1158,7 @@ def test_resample_ot_sinkhorn(self):
     v = random.normal(subkeys[3], shape=(n_particles, n_dim))
     test_cases = expand_grid(
         method=["jax-ott", "resample_ot"],
-        scale_cost=jnp.array([False, True])
+        scaled=jnp.array([False, True])
     )
     n_cases = test_cases.shape[0]
     sinkhorn_custom = jax.jit(sinkhorn_test, static_argnames="n_iterations")
@@ -1165,15 +1166,15 @@ def test_resample_ot_sinkhorn(self):
     for i in range(n_cases):
         case = test_cases.iloc[i]
         with self.subTest(case=case):
-            if case["scale_cost"]:
-                scale_cost = jnp.max(jnp.std(u.T, axis=0))
-                scale_cost = jnp.sqrt(n_dim) * scale_cost
+            if case["scaled"]:
+                scale_cost = jnp.max(jnp.var(u, axis=0))
+                scale_cost = n_dim * scale_cost
             else:
                 scale_cost = 1.0
             sinkhorn_kwargs = {"min_iterations": n_iter_ot,
                                "max_iterations": n_iter_ot}
             pointcloud_kwargs = {"epsilon": epsilon,
-                                 "scale_cost": scale_cost}
+                                 "scale_cost": 1.0}
             custom_kwargs = {
                 "a": a,
                 "u": u,
@@ -1188,10 +1189,14 @@ def test_resample_ot_sinkhorn(self):
                     "v": custom_v
                 })
                 # sinkhorn with jax-ott
-                geom = pointcloud.PointCloud(u, v,
+                geom = pointcloud.PointCloud(u / jnp.sqrt(scale_cost),
+                                             v / jnp.sqrt(scale_cost),
                                              **pointcloud_kwargs)
-                sink = sinkhorn.sinkhorn(geom, a, b,
-                                         **sinkhorn_kwargs)
+                problem = linear_problem.LinearProblem(geom, a=a, b=b)
+                solver = sinkhorn.Sinkhorn(**sinkhorn_kwargs)
+                sink = solver(problem)
+                # sink = sinkhorn.sinkhorn(geom, a, b,
+                #                          **sinkhorn_kwargs)
                 out1 = {
                     "P": sink.matrix,
                     "tsp": sink.apply(inputs=custom_v.T, axis=1).T
@@ -1206,7 +1211,7 @@ def test_resample_ot_sinkhorn(self):
                 # kwargs need to be jitted each time,
                 # can't make dict static argument
                 resampler = partial(pf.particle_resamplers.resample_ot,
-                                    scaled=False,
+                                    scaled=case["scaled"],
                                     sinkhorn_kwargs=sinkhorn_kwargs,
                                     pointcloud_kwargs=pointcloud_kwargs)
                 out1 = jax.jit(resampler)(
@@ -1217,15 +1222,13 @@ def test_resample_ot_sinkhorn(self):
                 out1["P"] = out1["sink"].matrix
                 out1["tsp"] = out1["x_particles"]
             # sinkhorn with custom code
-            _, _, P2, _ = sinkhorn_custom(**custom_kwargs)
+            _, _, P2, C2 = sinkhorn_custom(**custom_kwargs)
             out2 = {
                 "P": P2,
                 # note: using P1 instead since
                 # transport errors propagate quite a bit
                 "tsp": jnp.matmul(out1["P"], custom_v)
             }
-            # breakpoint()
-
             for k in out2.keys():  # Note: out1 has different keys!
                 with self.subTest(k=k):
                     err = rel_err(out1[k], out2[k])
@@ -1269,7 +1272,7 @@ def test_resample_ot_jit(self):
                 sinkhorn_kwargs = {"min_iterations": n_iterations,
                                    "max_iterations": n_iterations}
                 pointcloud_kwargs = {"epsilon": epsilon,
-                                     "scale_cost": scale_cost}
+                                     "scale_cost": 1.0}
             else:
                 sinkhorn_kwargs = {}
                 pointcloud_kwargs = {}
@@ -1298,7 +1301,7 @@ def test_resample_ot_jit(self):
                         x_particles_prev=x_particles_prev,
                         logw=logw,
                         key=key,
-                        scaled=False,  # scale_cost set via sinkhorn_kwargs
+                        scaled=case["scaled"],
                         sinkhorn_kwargs=sinkhorn_kwargs,
                         pointcloud_kwargs=pointcloud_kwargs
                     )
