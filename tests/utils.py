@@ -1162,6 +1162,7 @@ def test_resample_ot_sinkhorn(self):
     )
     n_cases = test_cases.shape[0]
     sinkhorn_custom = jax.jit(sinkhorn_test, static_argnames="n_iterations")
+    x_over_y = jax.vmap(lambda x, y: x/y)  # to divide matrix by vector
 
     for i in range(n_cases):
         case = test_cases.iloc[i]
@@ -1176,15 +1177,16 @@ def test_resample_ot_sinkhorn(self):
             pointcloud_kwargs = {"epsilon": epsilon,
                                  "scale_cost": 1.0}
             custom_kwargs = {
-                "a": a,
-                "u": u,
                 "epsilon": epsilon,
                 "scale_cost": scale_cost,
                 "n_iterations": n_iter_custom
             }
             if case["method"] == "jax-ott":
+                custom_a = a
                 custom_v = v
                 custom_kwargs.update({
+                    "a": custom_a,
+                    "u": u,
                     "b": b,
                     "v": custom_v
                 })
@@ -1199,12 +1201,15 @@ def test_resample_ot_sinkhorn(self):
                 #                          **sinkhorn_kwargs)
                 out1 = {
                     "P": sink.matrix,
-                    "tsp": sink.apply(inputs=custom_v.T, axis=1).T
+                    "tsp": x_over_y(sink.apply(inputs=v.T, axis=1).T, a)
                 }
             elif case["method"] == "resample_ot":
+                custom_a = jnp.ones(n_particles)/n_particles
                 custom_v = u
                 custom_kwargs.update({
-                    "b": jnp.ones(n_particles)/n_particles,
+                    "a": custom_a,
+                    "u": u,
+                    "b": a,
                     "v": custom_v
                 })
                 # sinkhorn with resample-ott
@@ -1216,7 +1221,7 @@ def test_resample_ot_sinkhorn(self):
                                     pointcloud_kwargs=pointcloud_kwargs)
                 out1 = jax.jit(resampler)(
                     x_particles_prev=u,
-                    logw=jnp.log(a),
+                    logw=jnp.log(a) - 5.0,
                     key=key,
                 )
                 out1["P"] = out1["sink"].matrix
@@ -1227,7 +1232,7 @@ def test_resample_ot_sinkhorn(self):
                 "P": P2,
                 # note: using P1 instead since
                 # transport errors propagate quite a bit
-                "tsp": jnp.matmul(out1["P"], custom_v)
+                "tsp": x_over_y(jnp.matmul(out1["P"], custom_v), custom_a)
             }
             for k in out2.keys():  # Note: out1 has different keys!
                 with self.subTest(k=k):

@@ -129,15 +129,15 @@ def resample_ot(key, x_particles_prev, logw,
                                  y=x_particles_scaled,
                                  **pointcloud_kwargs)
     problem = linear_problem.LinearProblem(geom,
-                                           a=prob,
-                                           b=jnp.ones(n_particles)/n_particles)
+                                           a=jnp.ones(n_particles)/n_particles,
+                                           b=prob)
     solver = sinkhorn.Sinkhorn(**sinkhorn_kwargs)
     sink = solver(problem)
     # sink = sinkhorn.sinkhorn(geom,
     #                          a=prob,
     #                          b=jnp.ones(n_particles)/n_particles,
     #                          **sinkhorn_kwargs)
-    x_particles = sink.apply(inputs=x_particles.T, axis=1)
+    x_particles = n_particles * sink.apply(inputs=x_particles.T, axis=1)
     return {
         "x_particles": unravel_fn(x_particles.T),
         "sink": sink
