@@ -7,3 +7,4 @@ pfjax.egg-info
 docs/notebooks/internal/*.Rmd
 docs/notebooks/internal/*.html
 .tox
+docs/notebooks/internal/stochvol_jump_tutorial.ipynb
