@@ -71,7 +71,7 @@ def resample_mvn(key, x_particles_prev, logw):
                                              mean=mvn_mean,
                                              cov=mvn_cov,
                                              shape=(n_particles,),
-                                             method="svd")
+                                             method="eigh")
     return {
         "x_particles": unravel_fn(x_particles),
         "mvn_mean": mvn_mean,
