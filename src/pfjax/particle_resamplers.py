@@ -70,7 +70,8 @@ def resample_mvn(key, x_particles_prev, logw):
     x_particles = random.multivariate_normal(key,
                                              mean=mvn_mean,
                                              cov=mvn_cov,
-                                             shape=(n_particles,))
+                                             shape=(n_particles,),
+                                             method="svd")
     return {
         "x_particles": unravel_fn(x_particles),
         "mvn_mean": mvn_mean,
