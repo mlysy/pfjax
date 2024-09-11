@@ -137,7 +137,8 @@ def resample_mvn_for(key, x_particles_prev, logw):
     samples = random.multivariate_normal(key,
                                          mean=mu,
                                          cov=cov_mat,
-                                         shape=(n_particles,))
+                                         shape=(n_particles,),
+                                         method="eigh")
     ret_val = {"x_particles": samples.reshape(x_particles_prev.shape),
                "mvn_mean": mu,
                "mvn_cov": cov_mat}
