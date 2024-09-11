@@ -4,7 +4,8 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.random as random
 import pfjax as pf
-import pfjax.sde
+import pfjax.models
+# import pfjax.sde
 # import lotvol_model as lv
 
 
@@ -26,7 +27,7 @@ n_obs = 7
 x_init = jnp.block([[jnp.zeros((n_res-1, 2))],
                     [jnp.log(jnp.array([5., 3.]))]])
 # simulate with inherited class
-lv_model = pf.LotVolModel(dt=dt, n_res=n_res)
+lv_model = pf.models.LotVolModel(dt=dt, n_res=n_res)
 y_meas, x_state = pf.simulate(lv_model, key, n_obs, x_init, theta)
 
 # # bridge proposal
