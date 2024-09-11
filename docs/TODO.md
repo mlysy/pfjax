@@ -36,3 +36,20 @@
 	Tested that the above does work for `docs`.
 
 - [ ] Clean up a ton of warnings when running `make html`.  
+
+- [ ] Systematically deal with prior on initial state.  For example, it is missing from `loglik_full()`.  It is also missing from gradient/hessian calculations in `particle_filter()` and `particle_filter_rb()`.
+
+- [ ] Naming of things:
+
+	- [ ] Change `*_sample()` to `*_sim()`.
+	
+	- [ ] Change `{x/y}_init` to `{x/y}_curr`.  Or maybe not?  Which is more likely to improve the user's experience?  Probably the latter, right?
+
+	- [ ] `{prior/state/meas}_{lpdf/sim}()`: Define the relevant pieces of the state-space model itself.
+	
+	- [ ] `{init/step}_{lpdf/sim}()`: Define the relevant pieces of the proposal distribution.
+
+	- [ ] `{init/step}_particle()`: Combinations of the above to return a particle and its (unnormalized) log-weight.  This is done automatically  users can define these manually if there are lots of duplicate calculations in doing it automatically. 
+
+	- [ ] `particle_filter = AuxillaryPF()`: Then just run it as a functor.  Could do the same with `particle_filter = RaoBlackwellPF()`.
+
