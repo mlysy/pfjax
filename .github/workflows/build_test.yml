@@ -1,6 +1,10 @@
-name: Python package
+name: tox-check
 
-on: [push]
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
 
 jobs:
   build:
