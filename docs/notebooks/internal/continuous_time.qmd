@@ -1,0 +1,79 @@
+---
+title: Continuous-Time Markov Models in PFJAX
+author: 
+  name: "Martin Lysy"
+  affiliation: "University of Waterloo"
+date: "January 1, 2022"
+format:
+  html:
+    toc: true
+    # theme: journal
+    code-fold: false
+    code-block-bg: "#F7F7F7"
+jupyter:
+  jupytext:
+    text_representation:
+      extension: .qmd
+      format_name: quarto
+      format_version: '1.0'
+      jupytext_version: 1.15.2
+  kernelspec:
+    display_name: Python 3 (ipykernel)
+    language: python
+    name: python3
+---
+
+{{< include latex_macros.qmd >}}
+
+# Setup
+
+- A latent continuous-time Markov process $\XX(t)$.
+
+- Measurements $\yy_n$ at regular time points $t_n = n \cdot \dt$. 
+
+- States can occur between measurements.  So for given resolution level $m$, the state variable is
+
+    $$
+	\xx_n = \XX^{(m)}_{(n-1)m + (1:m)} = (\XX^{(m)}_{(n-1)m+1}, \ldots, \XX^{(m)}_{nm}),
+	$$
+	
+	where $\XX^{(m)}_k = \XX(k \cdot \dt_m)$ and $\dt_m = \dt/m$.
+
+- Transition kernel defined in terms of the interobservation time:
+
+	$$
+    f_{\dt_m}(\XX^{(m)}_{k} \mid \XX^{(m)}_{k-1}, \tth).
+	$$
+	
+- Proposal kernel defined in terms of interobservation time and time till next measurement:
+
+	$$
+	r_{\dt_m, v_k}(\XX^{(m)}_{(n-1)m + k} \mid \XX^{(m)}_{(n-1)m + k-1}, \yy_{n}, \tth),
+	$$
+	
+	where $v_k = (m-k) \cdot \dt/m$. 
+
+## Special Cases
+
+- Transition densities can be normal, so only need to specify mean and variances.  Same for proposals.
+
+- Similarly, measurement densities can be normal, so same thing applies.
+
+- Measurements can be partially observed, e.g., $\yy_n = \AA_\tth \XX(t_n)$.  Easiest to do this with a degenerate measurement distribution $g(\yy_n \mid \XX(t_n), \tth) = \delta\{\yy_n = \AA_{\tth} \XX(t_n)\}$.  Resamplers should be desigend to account for this.
+
+- Initial distributions can be a bit annoying to specify.  Should be able to make these part of the unknown parameters.  Essentially this would make the `init_sample()` and `init_lpdf()`, `pf_init()` delta-functions.
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+
+r = np.arange(0, 2, 0.01)
+theta = 2 * np.pi * r
+fig, ax = plt.subplots(
+  subplot_kw = {'projection': 'polar'} 
+)
+ax.plot(theta, r)
+ax.set_rticks([0.5, 1, 1.5, 2])
+ax.grid(True)
+plt.show()
+```
