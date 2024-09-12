@@ -5,3 +5,4 @@ dist
 build
 pfjax.egg-info
 .tox
+docs/notebooks/internal/stochvol_jump_tutorial.ipynb
