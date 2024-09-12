@@ -1,34 +1,58 @@
 ---
-jupyter:
-  jupytext:
-    text_representation:
-      extension: .qmd
-      format_name: quarto
-      format_version: '1.0'
-      jupytext_version: 1.15.2
-  kernelspec:
-    display_name: Python 3 (ipykernel)
-    language: python
-    name: python3
+title: "Optional Runtime Methods"
+format: 
+  html:
+    highlight-style: github
+jupyter: python3
 ---
+
+# Problem Statement
+
+Here we want to define a base class which optional creates a method, i.e at runtime.  However, we want to do this in a way that the runtime method doesn't overwrite want would be done with the derived class.
+
+# Tests
 
 ```{python}
 import jax
 import jax.numpy as jnp
 
-class Foo:
-    def __init__(self):
-        def bar(self, x):
-            return 2*x
-        
-        if getattr(self.__class__, 'bar', None) is None: 
-            setattr(self.__class__, 'bar', bar)
+def bar(self, x):
+    """Optional method to create."""
+    return x*x
 
-    #def bar(self, x):
-    #    return x*x
-
-foo = Foo()
-foo.bar(3)
+class Base:
+    """Base class."""
+    def __init__(self, add_bar=False):
+        if add_bar:
+            if getattr(self.__class__, 'bar', None) is None: 
+                setattr(self.__class__, 'bar', bar)
 ```
 
+```{python}
+# test that derived class with default method works
+class Derived(Base):
+    def __init__(self):
+        super().__init__(add_bar=True)
+
+foo = Derived()
+foo.bar(3)
+```
+```{python}
+# test that derived class with custom method works
+class Derived(Base):
+    def bar(self, x):
+        return x + 3
+
+foo = Derived()
+foo.bar(3)
+```
+```{python}
+#| error: true
+# test that derived class with no bar method has correct error
+class Derived(Base):
+    pass
+
+foo = Derived()
+foo.bar(3)
+```
 
