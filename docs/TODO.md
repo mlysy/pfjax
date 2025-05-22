@@ -1,3 +1,4 @@
+# Documentation
 
 - [x] Fix relative links in `README.md` included by `index.md`.
 
@@ -37,6 +38,29 @@
 
 - [ ] Clean up a ton of warnings when running `make html`.  
 
+
+# Code
+
+- [ ] Use Quarto for development-side documentation (so much easier to write).  Here's what could be involved:
+
+	1. Convert all (or most of) the `.md` and `.ipynb` files to `.qmd`.  This can be done with **jupytext**.
+	
+	2. Reformat all docstrings to Quarto Markdown.  For example:
+	
+		- Inline code is written with single instead of double backticks.
+		
+		- Latex math is declared differently.  However, I've come to the conclusion that it's not a good idea to use latex in function documentation, because the source code is often illegible.  Instead, try to avoid math in docstrings whenever possible.  If you absolutely need it, then best to use pseudocode math in a fenced environment (i.e., renders as code).
+		
+		- Please use **numpydoc** style for documentation.  It's a bit more verbose than what we're using now.
+		
+		- Probably best to do all this for one file first to iron out the "template" for all the others.
+		
+	3. Use Quarto and **quartodocs** to render the documentation.
+	
+	4. The output of step 3 is functional but, in my opinion, somewhat limited in usability.  A more useful output format is that of **mkdocs** or **sphinx**.  However, there are no existing tools out there to convert from Quarto input to either of those output formats.
+
+- [ ] Refactor unit tests to use **pytest**.
+
 - [ ] Systematically deal with prior on initial state.  For example, it is missing from `loglik_full()`.  It is also missing from gradient/hessian calculations in `particle_filter()` and `particle_filter_rb()`.
 
 - [ ] Naming of things:
@@ -45,11 +69,39 @@
 	
 	- [ ] Change `{x/y}_init` to `{x/y}_curr`.  Or maybe not?  Which is more likely to improve the user's experience?  Probably the latter, right?
 
-	- [ ] `{prior/state/meas}_{lpdf/sim}()`: Define the relevant pieces of the state-space model itself.
+	- [x] `{prior/state/meas}_{lpdf/sim}()`: Define the relevant pieces of the state-space model itself.
+	
+		Done the first part but haven't changed `sample` to `sim`.
 	
 	- [ ] `{init/step}_{lpdf/sim}()`: Define the relevant pieces of the proposal distribution.
 
 	- [ ] `{init/step}_particle()`: Combinations of the above to return a particle and its (unnormalized) log-weight.  This is done automatically  users can define these manually if there are lots of duplicate calculations in doing it automatically. 
+		**Note:** There are currently called `pf_init()` and `pf_step()`.
+		
+		**Edit:** Can't we just call these `init()` and `step()`?
 
 	- [ ] `particle_filter = AuxillaryPF()`: Then just run it as a functor.  Could do the same with `particle_filter = RaoBlackwellPF()`.
+	
+		```python
+		# current api
+		output = particle_filter(model=model, key=key, ...) # usual particle filter
+		output2 = particle_filter_rb(model=model, key=key, ...) # rao-blackwellized pf
+		output3 = particle_filter_xyz(...) # some other pf we'll eventually define
+		
+		# non-functor api
+		class AuxillaryPF():
+	        def __call__(self, key, model, ...):
+			    return particle_filter(model=model, key=key, ...)
+		
+		if selected_filter == "aux":
+	        filter = AuxillaryPF(gradient=True, history=False)
+		elif selected_filter == "rb":
+		    filter = RaoBlackwellPF()
 
+	    output = filter(model=model, key=key, ...)
+		```
+
+
+- [ ] Use **numpyro** to create `*_{lpdf/sim}()`.  See `tests/interactive/test_numpyro.py`.
+
+- [ ] Maybe more easily, could have a specific interface to create `*_{lpdf/sim}()` for a normal distribution, which is the most common application of this.
