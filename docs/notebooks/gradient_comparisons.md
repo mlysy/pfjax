@@ -198,6 +198,24 @@ def bm_loglik_rb(theta, y_meas, key, n_particles):
         fisher=False
     )["loglik"])(theta, subkeys)
     return jnp.squeeze(ll)
+
+def bm_loglik_ott(theta, y_meas, key, n_particles):
+    """
+    Optimal transport particle filter approximation of the loglikelihood.
+    """
+    theta = jnp.atleast_2d(theta)
+    subkeys = jax.random.split(key, num=theta.shape[0])
+    ll = jax.vmap(lambda _theta, _key: pf.particle_filter(
+        model=bm_model,
+        key=_key,
+        y_meas=y_meas,
+        n_particles=n_particles,
+        theta=_theta,
+        history=False,
+        score=False,
+        fisher=False,
+    )["loglik"])(theta, subkeys)
+    return jnp.squeeze(ll)
 ```
 
 ### Timing Comparisons

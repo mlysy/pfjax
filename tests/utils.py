@@ -1,12 +1,17 @@
 import unittest
 import itertools
 import pandas as pd
+from functools import partial
 # import numpy as np
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.tree_util as jtu
 import jax.random as random
+import ott
+from ott.geometry import pointcloud
+from ott.problems.linear import linear_problem
+from ott.solvers.linear import sinkhorn
 import pfjax as pf
 # import pfjax.experimental.particle_filter as pfex
 import pfjax.mcmc as mcmc
@@ -16,6 +21,7 @@ import lotvol_model as lv
 # import pfjax.models.pgnet_model as pg
 import pfjax.particle_resamplers as resamplers
 import pfjax.test.utils as test
+from pfjax.test import sinkhorn_test
 
 
 # --- general-purpose utilities ------------------------------------------------
@@ -29,7 +35,7 @@ def rel_err(X1, X2):
     """
     x1 = X1.ravel() * 1.0
     x2 = X2.ravel() * 1.0
-    return jnp.max(jnp.abs((x1 - x2)/(0.1 + x1)))
+    return jnp.max(jnp.abs(x1 - x2) / (0.1 + jnp.abs(x1)))
 
 
 def var_sim(key, size):
@@ -58,7 +64,7 @@ def expand_grid(**kwargs):
     return pd.DataFrame.from_records(rows, columns=kwargs.keys())
 
 
-# --- model-based setup methods ------------------------------------------------
+# --- setup methods ------------------------------------------------------------
 
 
 def bm_setup(self):
@@ -169,7 +175,38 @@ def fact_setup(self):
     ])
 
 
+def ot_setup(self):
+    """
+    Creates the variables used in the tests for optimal transport.
+    """
+    self.key = random.PRNGKey(0)
+    self.n_particles = 12
+    self.n_dim = 5
+    # # parameter values
+    # alpha = 1.02
+    # beta = 1.02
+    # gamma = 4.
+    # delta = 1.04
+    # sigma_H = .1
+    # sigma_L = .2
+    # tau_H = .25
+    # tau_L = .35
+    # self.theta = jnp.array([alpha, beta, gamma, delta,
+    #                         sigma_H, sigma_L, tau_H, tau_L])
+    # # data specification
+    # dt = .09
+    # n_res = 5
+    # n_dim = 2
+    # self.n_obs = 8
+    # self.x_init = jnp.block([[jnp.zeros((n_res-1, n_dim))],
+    #                          [jnp.log(jnp.array([5., 3.]))]])
+    # self.model_args = {"dt": dt, "n_res": n_res}
+    # self.n_particles = 12
+    # self.Model = models.LotVolModel
+
+
 # --- simulate test functions --------------------------------------------------
+
 
 def test_simulate_for(self):
     """
@@ -1098,6 +1135,191 @@ def test_sde_bridge_step_for(self):
     )
     self.assertAlmostEqual(rel_err(x_curr1, x_curr2), 0.0)
     self.assertAlmostEqual(rel_err(logw1, logw2), 0.0)
+
+
+# --- resample_ot tests --------------------------------------------------------
+
+def test_resample_ot_sinkhorn(self):
+    """
+    Test ott vs custom implementation of Sinkhorn algorithhm.
+    """
+    key = self.key
+    # simulate data
+    n_particles = self.n_particles  # size of problem
+    n_dim = self.n_dim
+    n_iter_ot = 1000
+    n_iter_custom = 10_000
+    epsilon = .1
+    key, *subkeys = random.split(key, 5)
+    a = random.dirichlet(subkeys[0], alpha=jnp.ones((n_particles,)))
+    b = random.dirichlet(subkeys[1], alpha=jnp.ones((n_particles,)))
+    # NOTE: u and v must be 2d arrays, with 1st dim the number of points
+    u = random.normal(subkeys[2], shape=(n_particles, n_dim))
+    v = random.normal(subkeys[3], shape=(n_particles, n_dim))
+    test_cases = expand_grid(
+        method=["jax-ott", "resample_ot"],
+        scaled=jnp.array([False, True])
+    )
+    n_cases = test_cases.shape[0]
+    sinkhorn_custom = jax.jit(sinkhorn_test, static_argnames="n_iterations")
+    x_over_y = jax.vmap(lambda x, y: x/y)  # to divide matrix by vector
+
+    for i in range(n_cases):
+        case = test_cases.iloc[i]
+        with self.subTest(case=case):
+            if case["scaled"]:
+                scale_cost = jnp.max(jnp.var(u, axis=0))
+                scale_cost = n_dim * scale_cost
+            else:
+                scale_cost = 1.0
+            sinkhorn_kwargs = {"min_iterations": n_iter_ot,
+                               "max_iterations": n_iter_ot}
+            pointcloud_kwargs = {"epsilon": epsilon,
+                                 "scale_cost": 1.0}
+            custom_kwargs = {
+                "epsilon": epsilon,
+                "scale_cost": scale_cost,
+                "n_iterations": n_iter_custom
+            }
+            if case["method"] == "jax-ott":
+                custom_a = a
+                custom_v = v
+                custom_kwargs.update({
+                    "a": custom_a,
+                    "u": u,
+                    "b": b,
+                    "v": custom_v
+                })
+                # sinkhorn with jax-ott
+                geom = pointcloud.PointCloud(u / jnp.sqrt(scale_cost),
+                                             v / jnp.sqrt(scale_cost),
+                                             **pointcloud_kwargs)
+                problem = linear_problem.LinearProblem(geom, a=a, b=b)
+                solver = sinkhorn.Sinkhorn(**sinkhorn_kwargs)
+                sink = solver(problem)
+                # sink = sinkhorn.sinkhorn(geom, a, b,
+                #                          **sinkhorn_kwargs)
+                out1 = {
+                    "P": sink.matrix,
+                    "tsp": x_over_y(sink.apply(inputs=v.T, axis=1).T, a)
+                }
+            elif case["method"] == "resample_ot":
+                custom_a = jnp.ones(n_particles)/n_particles
+                custom_v = u
+                custom_kwargs.update({
+                    "a": custom_a,
+                    "u": u,
+                    "b": a,
+                    "v": custom_v
+                })
+                # sinkhorn with resample-ott
+                # kwargs need to be jitted each time,
+                # can't make dict static argument
+                resampler = partial(pf.particle_resamplers.resample_ot,
+                                    scaled=case["scaled"],
+                                    sinkhorn_kwargs=sinkhorn_kwargs,
+                                    pointcloud_kwargs=pointcloud_kwargs)
+                out1 = jax.jit(resampler)(
+                    x_particles_prev=u,
+                    logw=jnp.log(a) - 5.0,
+                    key=key,
+                )
+                out1["P"] = out1["sink"].matrix
+                out1["tsp"] = out1["x_particles"]
+            # sinkhorn with custom code
+            _, _, P2, C2 = sinkhorn_custom(**custom_kwargs)
+            out2 = {
+                "P": P2,
+                # note: using P1 instead since
+                # transport errors propagate quite a bit
+                "tsp": x_over_y(jnp.matmul(out1["P"], custom_v), custom_a)
+            }
+            for k in out2.keys():  # Note: out1 has different keys!
+                with self.subTest(k=k):
+                    err = rel_err(out1[k], out2[k])
+                    self.assertLess(err, .001)
+
+
+def test_resample_ot_jit(self):
+    """
+    Test various ways of jitting arguments.
+    """
+    key = self.key
+    # problem dimensions
+    n_particles = self.n_particles
+    n_res = 5
+    n_dim = 2
+    n_iterations = 1000
+    epsilon = jnp.array(.1)
+    key, *subkeys = random.split(key, 3)
+    prob = random.dirichlet(subkeys[0], alpha=jnp.ones((n_particles,)))
+    logw = jnp.log(prob) - 5.
+    x_particles_prev = random.normal(subkeys[1],
+                                     shape=(n_particles, n_res, n_dim))
+    test_cases = expand_grid(
+        method=["jitted_1", "jitted_2"],
+        kwargs=jnp.array([False, True]),
+        scaled=jnp.array([False, True])
+    )
+    n_cases = test_cases.shape[0]
+
+    for i in range(n_cases):
+        case = test_cases.iloc[i]
+        with self.subTest(case=case):
+            if case["scaled"]:
+                # scale_cost = jax.vmap(jnp.var,
+                #                       in_axes=1)(x_particles_prev)
+                scale_cost = jnp.max(jnp.var(x_particles_prev, axis=0))
+                scale_cost = n_dim * n_res * scale_cost
+            else:
+                scale_cost = 1.0
+            if case["kwargs"]:
+                sinkhorn_kwargs = {"min_iterations": n_iterations,
+                                   "max_iterations": n_iterations}
+                pointcloud_kwargs = {"epsilon": epsilon,
+                                     "scale_cost": 1.0}
+            else:
+                sinkhorn_kwargs = {}
+                pointcloud_kwargs = {}
+            # unjitted
+            resampler = partial(pf.particle_resamplers.resample_ot,
+                                scaled=case["scaled"],
+                                sinkhorn_kwargs=sinkhorn_kwargs,
+                                pointcloud_kwargs=pointcloud_kwargs)
+            out1 = resampler(
+                x_particles_prev=x_particles_prev,
+                logw=logw,
+                key=key
+            )
+            # jitted
+            if case["method"] == "jitted_1":
+                resampler = jax.jit(resampler)
+                out2 = resampler(
+                    x_particles_prev=x_particles_prev,
+                    logw=logw,
+                    key=key
+                )
+            elif case["method"] == "jitted_2":
+                @jax.jit
+                def resampler(x_particles_prev, logw, key):
+                    return pf.particle_resamplers.resample_ot(
+                        x_particles_prev=x_particles_prev,
+                        logw=logw,
+                        key=key,
+                        scaled=case["scaled"],
+                        sinkhorn_kwargs=sinkhorn_kwargs,
+                        pointcloud_kwargs=pointcloud_kwargs
+                    )
+                out2 = resampler(
+                    x_particles_prev=x_particles_prev,
+                    logw=logw,
+                    key=key
+                )
+            # jitted vs unjitted
+            for k in ["x_particles"]:
+                with self.subTest(k=k):
+                    err = rel_err(out1[k], out2[k])
+                    self.assertLess(err, 1e-4)
 
 
 # def test_for_particle_filter(self):
