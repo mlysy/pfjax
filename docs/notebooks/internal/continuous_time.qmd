@@ -3,11 +3,11 @@ title: Continuous-Time Markov Models in PFJAX
 author: 
   name: "Martin Lysy"
   affiliation: "University of Waterloo"
-date: "January 1, 2022"
+date: "September 12, 2024"
 format:
   html:
     toc: true
-    # theme: journal
+    theme: journal
     code-fold: false
     code-block-bg: "#F7F7F7"
 jupyter:
@@ -23,7 +23,7 @@ jupyter:
     name: python3
 ---
 
-{{< include latex_macros.qmd >}}
+{{< include _latex_macros.qmd >}}
 
 # Setup
 

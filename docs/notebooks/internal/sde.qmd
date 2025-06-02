@@ -22,7 +22,7 @@ jupyter:
     name: python3
 ---
 
-{{< include latex_macros.qmd >}}
+{{< include _latex_macros.qmd >}}
 
 # Model Specification
 

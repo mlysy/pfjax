@@ -1,8 +1,11 @@
 ---
 title: "Optional Runtime Methods"
+author: "Martin Lysy"
+date: "May 30, 2025"
 format: 
   html:
     highlight-style: github
+    toc: true
 jupyter: python3
 ---
 
@@ -24,8 +27,8 @@ class Base:
     """Base class."""
     def __init__(self, add_bar=False):
         if add_bar:
-            if getattr(self.__class__, 'bar', None) is None: 
-                setattr(self.__class__, 'bar', bar)
+            if not hasattr(self.__class__, "bar"): 
+                setattr(self.__class__, "bar", bar)
 ```
 
 ```{python}
@@ -53,6 +56,16 @@ class Derived(Base):
     pass
 
 foo = Derived()
+foo.bar(3)
+```
+
+```{python}
+#| error: true
+# same as a regular class without the method
+class Test:
+    pass
+
+foo = Test()
 foo.bar(3)
 ```
 
