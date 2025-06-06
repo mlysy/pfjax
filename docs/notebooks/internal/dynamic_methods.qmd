@@ -1,0 +1,348 @@
+---
+title: "Optional Runtime Methods"
+author: "Martin Lysy"
+date: last-modified
+format: 
+  html:
+    highlight-style: github
+    toc: true
+jupyter: python3
+---
+
+# Problem Statement
+
+Here we want to define a base class which optionally/conditionally creates a method at instantiation time.  However, we want to do this in a way that the runtime method doesn't overwrite a method of the same name normally defined in the derived class.
+
+# Tests
+
+```{python}
+import jax
+import jax.numpy as jnp
+from functools import partial
+import types
+
+def bar(self, x):
+    """Optional method to create."""
+    return self.y + x*x
+
+class Base:
+    """Base class."""
+    def __init__(self, y, add_bar=True):
+        self.y = y
+        if add_bar:
+            if "bar" not in self.__class__.__dict__: 
+                self.bar = types.MethodType(bar, self)
+```
+
+## Test that derived class with default method works
+
+Also checks that behavior in instance-specific.
+
+```{python}
+#| error: true
+class Derived(Base):
+    pass
+
+foo = Derived(y=1.0, add_bar=True)
+baz = Derived(y=1.0, add_bar=False)
+
+foo.bar(3)
+baz.bar(3)
+```
+
+```{python}
+#| error: true
+# same as a regular class without the method
+class Test:
+    pass
+
+foo = Test()
+foo.bar(3)
+```
+
+## Test that derived class with custom method works
+
+```{python}
+class Derived2(Base):
+    def bar(self, x):
+        return self.y + x + 3
+
+foo = Derived2(y=1.0, add_bar=True)
+baz = Derived2(y=1.0, add_bar=False)
+
+
+foo.bar(3)
+baz.bar(3)
+```
+
+## Test that inherited method doesn't prevent dynamic creation
+
+```{python}
+class Base2(object):
+    def bar(self, x):
+        return self.y + jnp.exp(x)
+
+class Derived3(Base2, Base):
+    pass
+
+foo = Derived3(y=1.0, add_bar=True)
+baz = Derived3(y=1.0, add_bar=False)
+
+foo.bar(3)
+baz.bar(3)
+```
+
+## Test what happens in jitted code
+
+```{python}
+#| error: true
+@partial(jax.jit, static_argnums=(2,3))
+def eval_foo_bar(y, x, method, add_bar):
+    if method == 1:
+        foo = Derived(y=y, add_bar=add_bar)
+    elif method == 2:
+        foo = Derived2(y=y, add_bar=add_bar)
+    elif method == 3:
+        foo = Derived3(y=y, add_bar=add_bar)
+    return foo.bar(x)
+
+print(eval_foo_bar(y=1.0, x=3.0, method=1, add_bar=True))
+print(eval_foo_bar(y=1.0, x=3.0, method=1, add_bar=False))
+print(eval_foo_bar(y=1.0, x=3.0, method=2, add_bar=True))
+print(eval_foo_bar(y=1.0, x=3.0, method=2, add_bar=False))
+print(eval_foo_bar(y=1.0, x=3.0, method=3, add_bar=True))
+print(eval_foo_bar(y=1.0, x=3.0, method=3, add_bar=False))
+```
+
+## Another test for jitted code
+
+```{python}
+import jax
+import jax.numpy as jnp
+
+class MyClass:
+    def __init__(self, x):
+        self.x = x + 1  # this mutates `self`
+
+    def get(self):
+        return self.x
+
+@jax.jit
+def use_myclass(x):
+    obj = MyClass(x)          # mutation inside __init__
+    return obj.get()          # Will likely fail or behave unpredictably
+
+print(use_myclass(3.0))
+print(use_myclass(4.3))
+```
+
+# API Specification
+
+```{python}
+#| eval: false
+import jax
+import jax.numpy as jnp
+from dataclasses import dataclass
+
+class Distribution(object):
+    def sample(key, *args, **kwargs):
+        pass
+    def lpdf(x, *args, **kwargs):
+        pass
+    def sample_and_lpdf(key, *args, **kwargs):
+        pass
+
+@dataclass(frozen=True)
+class BaseModel(object):
+    r"""
+    Base model for particle filters.
+    
+    PARAMETERS
+    ----------
+    bootstrap: bool
+      Whether or not to create a bootstrap particle filter.
+
+    """
+    bootstrap: bool
+
+    # methods
+    _state_lpdf: Callable | None = None
+    _state_sample: Callable | None = None
+    _meas_lpdf: Callable | None = None
+    _meas_sample: Callable | None = None
+    _prior_lpdf: Callable | None = None
+    _prior_sample: Callable | None = None
+    _init_lpdf: Callable | None = None
+    _init_sample: Callable | None = None
+    _step_lpdf: Callable | None = None
+    _step_sample: Callable | None = None
+    _pf_init: Callable | None = None
+    _pf_step: Callable | None = None
+
+    def state_lpdf(self, x_curr, x_prev, theta):
+        if self._state_lpdf is not None:
+            return self._state_lpdf(
+                self, x_curr=x_curr, x_prev=x_prev, theta=theta
+            )
+        else:
+            pass
+
+    def state_sample(self, key, x_prev, theta):
+        if self._state_sample is not None:
+            return self._state_sample(
+                self, key=key, x_prev=x_prev, theta=theta
+            )
+        else:
+            pass
+
+    def meas_lpdf(self, y_curr, x_curr, theta):
+        if self._meas_lpdf is not None:
+            return self._meas_lpdf(
+                self, y_curr=y_curr, x_curr=x_curr, theta=theta
+            )
+        else:
+            pass
+
+    def meas_sample(self, key, x_curr, theta):
+        if self._meas_sample is not None:
+            return self._meas_sample(
+                self, key=key, x_curr=x_curr, theta=theta
+            )
+
+    def prior_lpdf(self, x_init, theta):
+        return self._prior_lpdf(
+            self, x_init=x_init, theta=theta
+        )
+
+    def prior_sample(self, key, theta):
+        if self._prior_sample is not None:
+            return self._prior_sample(
+                self, theta=theta
+            )
+        else:
+            pass
+
+    def step_sample(self, key, x_prev, y_curr, theta):
+        if self._step_sample is not None:
+            return self._step_sample(
+                self, key=key, x_prev=x_prev, y_curr=y_curr, theta=theta
+            )
+        else:
+            if self.bootstrap:
+                return self.state_sample(
+                key=key, x_prev=x_prev, theta=theta
+                )
+            else:
+                pass
+
+    def step_lpdf(self, x_curr, x_prev, y_curr, theta):
+        if self._step_lpdf is not None:
+            return self._step_lpdf(
+                self, x_curr=x_curr, x_prev=x_prev, y_curr=y_curr, theta=theta
+            )
+        else:
+            if self.bootstrap:
+                return self.state_lpdf(
+                    x_curr=x_curr, x_prev=x_prev, theta=theta
+                )
+            else:
+                pass
+
+    def init_sample(self, key, y_init, theta):
+        if self._init_sample is not None:
+            return self._init_sample(
+                self, key=key, y_init=y_init, theta=theta
+            )
+        else:
+            if self.bootstrap:
+                return self.prior_sample(key=key, theta=theta)
+            else:
+                pass
+
+    def init_lpdf(self, x_init, y_init, theta):
+        if self._init_lpdf is not None:
+            return self._init_lpdf(
+                self, x_init=x_init, y_init=y_init, theta=theta
+            )
+        else:
+            if self.bootstrap:
+                return self.prior_lpdf(
+                    x_init=x_init, theta=theta
+                )
+            else:
+                pass
+
+    def pf_step(self, key, x_prev, y_curr, theta):
+        if self._pf_step is not None:
+            return self._pf_step(
+                self, key=key, x_prev=x_prev, y_curr=y_curr, theta=theta
+            )
+        else:
+            if self.bootstrap:
+                x_curr = self.state_sample(
+                    key=key, x_prev=x_prev, theta=theta
+                )
+                logw = self.meas_lpdf(
+                    y_curr=y_curr, x_curr=x_curr, theta=theta
+                )
+            else:
+                x_curr = self.step_sample(
+                    key=key, x_prev=x_prev, y_curr=y_curr, theta=theta
+                )
+                lp_prop = self.step_lpdf(
+                    x_curr=x_curr, x_prev=x_prev, y_curr=y_curr, theta=theta
+                )
+                lp_targ = self.state_lpdf(
+                    x_curr=x_curr, x_prev=x_prev, theta=theta
+                ) + self.meas_lpdf(
+                    y_curr=y_curr, x_curr=x_curr, theta=theta
+                )
+                logw = lp_targ - lp_prop
+            return x_curr, logw
+
+    def pf_init(self, key, y_init, theta):
+        if self._pf_init is not None:
+            return self._pf_init(
+                self, key=key, y_init=y_init, theta=theta
+            )
+        else:
+            if self.bootstrap:
+                x_curr = self.prior_sample(
+                    key=key, theta=theta
+                )
+                logw = self.meas_lpdf(
+                    y_curr=y_init, x_curr=x_curr, theta=theta
+                )
+            else:
+                x_curr = self.init_sample(key=key, theta=theta)
+                lp_prop = self.init_lpdf(x_curr=x_curr, theta=theta)
+                lp_targ = self.prior_lpdf(
+                    x_curr=x_curr, theta=theta
+                ) + self.meas_lpdf(
+                    y_curr=y_init, x_curr=x_curr, theta=theta
+                )
+                logw = lp_targ - lp_prop
+            return x_curr, logw
+
+
+@dataclass(frozen=True)
+class ARModel(BaseModel):
+    dt: float
+    _state_lpdf: Callable = additive_gaussian_lpdf(
+        pars=self.state_pars
+    )
+    _state_sample: Callable = additive_gaussian_sample(
+        pars=self.state_pars
+    )
+    
+    def __post_init__(dt, bootstrap=False):
+        self._dt = dt
+        state_lpdf, state_sample = additive_gaussian(
+            self.state_pars
+        )
+        super().__init__(
+            bootstrap=bootstrap,
+            _state_lpdf=state_lpdf,
+            _state_sample=state_sample
+        )
+```
