@@ -72,3 +72,87 @@ key = jax.random.PRNGKey(0)
 # simulation
 sv_model = StoVolModel(dt=dt)
 sv_model.state_sample(key=key, x_prev=x_init, theta=theta_true)
+
+a = pfjax.sde.SDEModel(dt=0.1, n_res=1, diff_diag=True)
+b = pfjax.sde.SDEModel(dt=0.1, n_res=1, diff_diag=False)
+
+
+# --- test whether args/kwargs can be missing altogether -----------------------
+
+
+def foo(x, bar, *args, **kwargs):
+    return bar(x, *args, **kwargs)
+
+
+def bar(x, y):
+    return x + y + 5.0
+
+
+foo(5.0, bar, 17.0)
+
+
+# --- test whether we can confuse a base class ---------------------------------
+
+import jax
+import jax.numpy as jnp
+
+
+class Base(object):
+    def foo(self, x):
+        return jnp.sin(x)
+
+    def bar(self, x):
+        return jax.tree.map(self.foo, x)
+
+
+class Derived(Base):
+    def __init__(self, use_base_foo):
+        self.use_base_foo = use_base_foo
+
+    def foo(self, x):
+        if self.use_base_foo:
+            return super().foo(x)
+        else:
+            return jnp.exp(x)
+
+
+key = jax.random.PRNGKey(0)
+
+x = (jnp.arange(3), jax.random.normal(key, (2, 5)), {"y": jax.random.normal(key, (3,))})
+
+obj = Derived(use_base_foo=False)
+obj.bar(x)
+
+
+class A:
+    def greet(self):
+        return "A"
+
+
+class B(A):
+    def __init__(self, use_base_greet):
+        self.use_base_greet = use_base_greet
+
+    def greet(self):
+        if self.use_base_greet:
+            return super().greet()
+        else:
+            return "B"
+
+
+foo = B(use_base_greet=True)
+foo.greet()
+
+bar = B(use_base_greet=False)
+bar.greet()
+
+# --- test replication ---------------------------------------------------------
+
+
+def zero_pad(x, n):
+    """Zero-pad an array along the leading dimension."""
+    zeros = jnp.zeros((n - 1,) + x.shape)
+    return jnp.concatenate([zeros, x[None]])
+
+
+jax.jit(zero_pad, static_argnums=1)(x=jnp.ones((3, 2)), n=1)
