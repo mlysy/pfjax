@@ -75,7 +75,8 @@
 	
 	- [ ] `{init/step}_{lpdf/sim}()`: Define the relevant pieces of the proposal distribution.
 
-	- [ ] `{init/step}_particle()`: Combinations of the above to return a particle and its (unnormalized) log-weight.  This is done automatically  users can define these manually if there are lots of duplicate calculations in doing it automatically. 
+	- [ ] `{init/step}_particle()`: Combinations of the above to return a particle and its (unnormalized) log-weight.  This can be done automatically, but users can define these manually if there are lots of duplicate calculations in doing it automatically. 
+	
 		**Note:** There are currently called `pf_init()` and `pf_step()`.
 		
 		**Edit:** Can't we just call these `init()` and `step()`?
