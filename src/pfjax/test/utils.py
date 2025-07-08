@@ -3,17 +3,17 @@ Utilities for both formal and interactive testing.
 """
 
 import jax
-import jax.numpy as jnp
-import jax.scipy as jsp
-import jax.random as random
-import jax.tree_util as jtu
 import jax.lax as lax
+import jax.numpy as jnp
+import jax.random as random
+import jax.scipy as jsp
+import jax.tree_util as jtu
+from pfjax.loglik_full import loglik_full
 from pfjax.particle_resamplers import resample_multinomial
 from pfjax.utils import *
-from pfjax.loglik_full import loglik_full
-
 
 # --- non-exported functions for testing ---------------------------------------
+
 
 def sinkhorn_test(a, b, u, v, epsilon, n_iterations, scale_cost=1.0):
     """
@@ -44,16 +44,15 @@ def sinkhorn_test(a, b, u, v, epsilon, n_iterations, scale_cost=1.0):
     g = jnp.zeros((n,))
     # distance calculation
     C = jax.vmap(
-        jax.vmap(lambda _u, _v: jnp.sum(jnp.square(_u - _v)),
-                 in_axes=(None, 0)),
-        in_axes=(0, None)
+        jax.vmap(lambda _u, _v: jnp.sum(jnp.square(_u - _v)), in_axes=(None, 0)),
+        in_axes=(0, None),
     )(u, v)
     C = C / scale_cost
     CT = C.T
 
     def Teps(a, f, c):
         """Sinkhorn dual transformation."""
-        return -epsilon * jsp.special.logsumexp(jnp.log(a) + (f - c)/epsilon)
+        return -epsilon * jsp.special.logsumexp(jnp.log(a) + (f - c) / epsilon)
 
     def update(fg, t):
         """Sinkhorn update step."""
@@ -64,7 +63,7 @@ def sinkhorn_test(a, b, u, v, epsilon, n_iterations, scale_cost=1.0):
 
     def transport_element(a, b, f, g, c):
         """Element of transport matrix."""
-        return a * b * jnp.exp((f + g - c)/epsilon)
+        return a * b * jnp.exp((f + g - c) / epsilon)
 
     # stepwise algorithm
     fg, _ = jax.lax.scan(update, (f, g), jnp.arange(n_iterations))
@@ -72,11 +71,8 @@ def sinkhorn_test(a, b, u, v, epsilon, n_iterations, scale_cost=1.0):
 
     # optimal transport matrix
     P = jax.vmap(
-        jax.vmap(
-            transport_element,
-            in_axes=(None, 0, None, 0, 0)
-        ),
-        in_axes=(0, None, 0, None, 0)
+        jax.vmap(transport_element, in_axes=(None, 0, None, 0, 0)),
+        in_axes=(0, None, 0, None, 0),
     )(a, b, f, g, C)
     return f, g, P, C
 
@@ -100,9 +96,7 @@ def resample_multinomial_old(key, logw):
     # prob = wgt / jnp.sum(wgt)
     prob = logw_to_prob(logw)
     n_particles = logw.size
-    return random.choice(key,
-                         a=jnp.arange(n_particles),
-                         shape=(n_particles,), p=prob)
+    return random.choice(key, a=jnp.arange(n_particles), shape=(n_particles,), p=prob)
 
 
 def resample_mvn_for(key, x_particles_prev, logw):
@@ -134,14 +128,14 @@ def resample_mvn_for(key, x_particles_prev, logw):
             cov_mat = cov_mat.at[i, j].set(c[0][1])
             cov_mat = cov_mat.at[j, i].set(cov_mat[i, j])
     cov_mat += jnp.diag(jnp.ones(n_dim) * 1e-10)  # for numeric stability
-    samples = random.multivariate_normal(key,
-                                         mean=mu,
-                                         cov=cov_mat,
-                                         shape=(n_particles,),
-                                         method="eigh")
-    ret_val = {"x_particles": samples.reshape(x_particles_prev.shape),
-               "mvn_mean": mu,
-               "mvn_cov": cov_mat}
+    samples = random.multivariate_normal(
+        key, mean=mu, cov=cov_mat, shape=(n_particles,), method="eigh"
+    )
+    ret_val = {
+        "x_particles": samples.reshape(x_particles_prev.shape),
+        "mvn_mean": mu,
+        "mvn_cov": cov_mat,
+    }
     return ret_val
 
 
@@ -173,17 +167,15 @@ def particle_filter_for(model, key, y_meas, theta, n_particles):
     n_obs = y_meas.shape[0]
     # x_particles = jnp.zeros((n_obs, n_particles) + model.n_state)
     logw = jnp.zeros((n_obs, n_particles))
-    ancestors = jnp.zeros((n_obs-1, n_particles), dtype=int)
+    ancestors = jnp.zeros((n_obs - 1, n_particles), dtype=int)
     x_particles = []
     # # initial particles have no ancestors
     # ancestors = ancestors.at[0].set(-1)
     # initial time point
-    key, *subkeys = random.split(key, num=n_particles+1)
+    key, *subkeys = random.split(key, num=n_particles + 1)
     x_part = []
     for p in range(n_particles):
-        xp, lw = model.pf_init(subkeys[p],
-                               y_init=y_meas[0],
-                               theta=theta)
+        xp, lw = model.pf_init(subkeys[p], y_init=y_meas[0], theta=theta)
         x_part.append(xp)
         # x_particles = x_particles.at[0, p].set(xp)
         logw = logw.at[0, p].set(lw)
@@ -198,19 +190,19 @@ def particle_filter_for(model, key, y_meas, theta, n_particles):
     for t in range(1, n_obs):
         # resampling step
         key, subkey = random.split(key)
-        ancestors = ancestors.at[t-1].set(
-            resample_multinomial_old(subkey, logw[t-1])
+        ancestors = ancestors.at[t - 1].set(
+            resample_multinomial_old(subkey, logw[t - 1])
         )
         # update
-        key, *subkeys = random.split(key, num=n_particles+1)
+        key, *subkeys = random.split(key, num=n_particles + 1)
         x_part = []
         for p in range(n_particles):
             xp, lw = model.pf_step(
                 subkeys[p],
                 # x_prev=x_particles[t-1, ancestors[t-1, p]],
-                x_prev=x_particles[t-1][ancestors[t-1, p]],
+                x_prev=x_particles[t - 1][ancestors[t - 1, p]],
                 y_curr=y_meas[t],
-                theta=theta
+                theta=theta,
             )
             x_part.append(xp)
             # x_particles = x_particles.at[t, p].set(xp)
@@ -224,16 +216,20 @@ def particle_filter_for(model, key, y_meas, theta, n_particles):
             #     model.meas_lpdf(y_meas[t], x_particles[t, p], theta)
             # )
         x_particles.append(x_part)
-    return {
-        "x_particles": jnp.array(x_particles),
-        "logw": logw,
-        "ancestors": ancestors
-    }
+    return {"x_particles": jnp.array(x_particles), "logw": logw, "ancestors": ancestors}
 
 
-def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
-                           resampler=resample_multinomial,
-                           score=True, fisher=False, history=False):
+def particle_filter_rb_for(
+    model,
+    key,
+    y_meas,
+    theta,
+    n_particles,
+    resampler=resample_multinomial,
+    score=True,
+    fisher=False,
+    history=False,
+):
     r"""
     Rao-Blackwellized particle filter.
 
@@ -272,8 +268,7 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
         """
         Calculate log-density of the proposal distribution `x_curr ~ q(x_t | x_t-1, y_t, theta)`.
         """
-        return model.step_lpdf(x_curr=x_curr, x_prev=x_prev, y_curr=y_curr,
-                               theta=theta)
+        return model.step_lpdf(x_curr=x_curr, x_prev=x_prev, y_curr=y_curr, theta=theta)
 
     def pf_step(key, x_prev, y_curr):
         """
@@ -282,11 +277,11 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
         If `model.pf_prop()` is missing, use `model.pf_step()` instead.  However, in this case discards the log-weight for the proposal as it is not used in this particle filter.
         """
         if callable(getattr(model, "pf_prop", None)):
-            x_curr = model.pf_prop(key=key, x_prev=x_prev, y_curr=y_curr,
-                                   theta=theta)
+            x_curr = model.pf_prop(key=key, x_prev=x_prev, y_curr=y_curr, theta=theta)
         else:
-            x_curr, _ = model.pf_step(key=key, x_prev=x_prev, y_curr=y_curr,
-                                      theta=theta)
+            x_curr, _ = model.pf_step(
+                key=key, x_prev=x_prev, y_curr=y_curr, theta=theta
+            )
         return x_curr
 
     def pf_init(key):
@@ -299,11 +294,7 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
         The auxillary log-density is given by model.pf_aux(). If this method is missing, `logw_aux` is set to 0.
         """
         if callable(getattr(model, "pf_aux", None)):
-            logw_aux = model.pf_aux(
-                x_prev=x_prev,
-                y_curr=y_curr,
-                theta=theta
-            )
+            logw_aux = model.pf_aux(x_prev=x_prev, y_curr=y_curr, theta=theta)
             return logw_aux + logw_prev
         else:
             return logw_prev
@@ -324,10 +315,8 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
         # grad and hess functions
         grad_meas = jax.grad(model.meas_lpdf, argnums=2)
         grad_state = jax.grad(model.state_lpdf, argnums=2)
-        hess_meas = jax.jacfwd(jax.jacrev(model.meas_lpdf, argnums=2),
-                               argnums=2)
-        hess_state = jax.jacfwd(jax.jacrev(model.state_lpdf, argnums=2),
-                                argnums=2)
+        hess_meas = jax.jacfwd(jax.jacrev(model.meas_lpdf, argnums=2), argnums=2)
+        hess_state = jax.jacfwd(jax.jacrev(model.state_lpdf, argnums=2), argnums=2)
         # storage
         logw_bar = jnp.zeros(n_particles)
         _logw_targ = jnp.zeros(n_particles)
@@ -339,54 +328,44 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
         for i in jnp.arange(x_curr.shape[0]):
             for j in jnp.arange(x_prev.shape[0]):
                 _logw_targ = _logw_targ.at[j].set(
-                    model.state_lpdf(
-                        x_prev=x_prev[j],
-                        x_curr=x_curr[i],
-                        theta=theta
-                    ) + acc_prev["logw_bar"][j]
+                    model.state_lpdf(x_prev=x_prev[j], x_curr=x_curr[i], theta=theta)
+                    + acc_prev["logw_bar"][j]
                 )
                 # id_print(x_prev[j])
                 # id_print(acc_prev["logw_bar"][j])
                 # id_print(_logw_targ[j])
                 _logw_prop = _logw_prop.at[j].set(
                     model.step_lpdf(
-                        x_prev=x_prev[j],
-                        x_curr=x_curr[i],
-                        y_curr=y_curr,
-                        theta=theta
-                    ) + logw_aux[j]
+                        x_prev=x_prev[j], x_curr=x_curr[i], y_curr=y_curr, theta=theta
+                    )
+                    + logw_aux[j]
                 )
                 if has_acc:
                     _alpha_full = _alpha_full.at[j].set(
-                        grad_meas(y_curr, x_curr[i], theta) +
-                        grad_state(x_curr[i], x_prev[j], theta) +
-                        acc_prev["alpha"][j]
+                        grad_meas(y_curr, x_curr[i], theta)
+                        + grad_state(x_curr[i], x_prev[j], theta)
+                        + acc_prev["alpha"][j]
                     )
                     # id_print(_alpha_full[j])
                     if fisher:
                         _beta_full = _beta_full.at[j].set(
-                            jnp.outer(_alpha_full[j], _alpha_full[j]) +
-                            hess_meas(y_curr, x_curr[i], theta) +
-                            hess_state(x_curr[i], x_prev[j], theta) +
-                            acc_prev["beta"][j]
+                            jnp.outer(_alpha_full[j], _alpha_full[j])
+                            + hess_meas(y_curr, x_curr[i], theta)
+                            + hess_state(x_curr[i], x_prev[j], theta)
+                            + acc_prev["beta"][j]
                         )
-            logw_tilde = jsp.special.logsumexp(_logw_targ) + \
-                model.meas_lpdf(
-                y_curr=y_curr,
-                x_curr=x_curr[i],
-                theta=theta
+            logw_tilde = jsp.special.logsumexp(_logw_targ) + model.meas_lpdf(
+                y_curr=y_curr, x_curr=x_curr[i], theta=theta
             )
             logw_bar = logw_bar.at[i].set(
                 logw_tilde - jsp.special.logsumexp(_logw_prop)
             )
             if has_acc:
-                alpha_curr = alpha_curr.at[i].set(
-                    tree_mean(_alpha_full, _logw_targ)
-                )
+                alpha_curr = alpha_curr.at[i].set(tree_mean(_alpha_full, _logw_targ))
                 if fisher:
                     beta_curr = beta_curr.at[i].set(
-                        tree_mean(_beta_full, _logw_targ) -
-                        jnp.outer(alpha_curr[i], alpha_curr[i])
+                        tree_mean(_beta_full, _logw_targ)
+                        - jnp.outer(alpha_curr[i], alpha_curr[i])
                     )
         acc_curr = {"logw_bar": logw_bar}
         if has_acc:
@@ -400,22 +379,18 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
         # 1. sample particles from previous time point
         key, subkey = random.split(carry["key"])
         # augment previous weights with auxiliary weights
-        logw_aux = jax.vmap(
-            pf_aux,
-            in_axes=(0, 0, None)
-        )(carry["logw_bar"], carry["x_particles"], y_meas[t])
+        logw_aux = jax.vmap(pf_aux, in_axes=(0, 0, None))(
+            carry["logw_bar"], carry["x_particles"], y_meas[t]
+        )
         # resampled particles
         resample_out = resampler(
-            key=subkey,
-            x_particles_prev=carry["x_particles"],
-            logw=logw_aux
+            key=subkey, x_particles_prev=carry["x_particles"], logw=logw_aux
         )
         # 2. sample particles for current timepoint
-        key, *subkeys = random.split(key, num=n_particles+1)
-        x_particles = jax.vmap(
-            pf_step,
-            in_axes=(0, 0, None)
-        )(jnp.array(subkeys), resample_out["x_particles"], y_meas[t])
+        key, *subkeys = random.split(key, num=n_particles + 1)
+        x_particles = jax.vmap(pf_step, in_axes=(0, 0, None))(
+            jnp.array(subkeys), resample_out["x_particles"], y_meas[t]
+        )
         # 3. compute all double summations
         acc_prev = {"logw_bar": carry["logw_bar"]}
         if has_acc:
@@ -427,35 +402,28 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
             x_curr=x_particles,
             y_curr=y_meas[t],
             acc_prev=acc_prev,
-            logw_aux=logw_aux
+            logw_aux=logw_aux,
         )
         # output
         res_carry = {
             "x_particles": x_particles,
-            "loglik": carry["loglik"] +
-            jsp.special.logsumexp(acc_curr["logw_bar"]),
+            "loglik": carry["loglik"] + jsp.special.logsumexp(acc_curr["logw_bar"]),
             "key": key
             # "resample_out": rm_keys(resample_out, "x_particles")
         }
         res_carry.update(acc_curr)
         if history:
-            res_stack = {k: res_carry[k]
-                         for k in ["x_particles", "logw_bar"]}
+            res_stack = {k: res_carry[k] for k in ["x_particles", "logw_bar"]}
             if set(["x_particles"]) < resample_out.keys():
-                res_stack["resample_out"] = rm_keys(
-                    x=resample_out,
-                    keys="x_particles"
-                )
+                res_stack["resample_out"] = rm_keys(x=resample_out, keys="x_particles")
         else:
             res_stack = None
         return res_carry, res_stack
 
     # lax.scan initial value
-    key, *subkeys = random.split(key, num=n_particles+1)
+    key, *subkeys = random.split(key, num=n_particles + 1)
     # initial particles and weights
-    x_particles, logw = jax.vmap(
-        pf_init
-    )(jnp.array(subkeys))
+    x_particles, logw = jax.vmap(pf_init)(jnp.array(subkeys))
     # # dummy initialization for resampler
     # init_res = resampler(key, x_particles, logw)
     # init_res = tree_zeros(rm_keys(init_res, ["x_particles"]))
@@ -470,9 +438,7 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
         # dummy initialization for derivatives
         filter_init["alpha"] = jnp.zeros((n_particles, theta.size))
         if fisher:
-            filter_init["beta"] = jnp.zeros(
-                (n_particles, theta.size, theta.size)
-            )
+            filter_init["beta"] = jnp.zeros((n_particles, theta.size, theta.size))
 
     # lax.scan itself
     last, full = lax.scan(filter_step, filter_init, jnp.arange(1, n_obs))
@@ -480,12 +446,12 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
     # format output
     if history:
         # append initial values of x_particles and logw
-        full["x_particles"] = jnp.concatenate([
-            filter_init["x_particles"][None], full["x_particles"]
-        ])
-        full["logw_bar"] = jnp.concatenate([
-            filter_init["logw_bar"][None], full["logw_bar"]
-        ])
+        full["x_particles"] = jnp.concatenate(
+            [filter_init["x_particles"][None], full["x_particles"]]
+        )
+        full["logw_bar"] = jnp.concatenate(
+            [filter_init["logw_bar"][None], full["logw_bar"]]
+        )
     else:
         full = last
     # calculate loglikelihood
@@ -500,13 +466,13 @@ def particle_filter_rb_for(model, key, y_meas, theta, n_particles,
             prob = logw_to_prob(last["logw_bar"])
             alpha = last["alpha"]
             beta = last["beta"]
-            alpha, gamma = jax.vmap(
-                lambda p, a, b: (p * a, p * (jnp.outer(a, a) + b))
-            )(prob, alpha, beta)
+            alpha, gamma = jax.vmap(lambda p, a, b: (p * a, p * (jnp.outer(a, a) + b)))(
+                prob, alpha, beta
+            )
             alpha = jnp.sum(alpha, axis=0)
             hess = jnp.sum(gamma, axis=0) - jnp.outer(alpha, alpha)
             full["score"] = alpha
-            full["fisher"] = -1. * hess
+            full["fisher"] = -1.0 * hess
 
     return full
 
@@ -527,15 +493,14 @@ def loglik_full_for(model, y_meas, x_state, theta):
         The value of the loglikelihood.
     """
     n_obs = y_meas.shape[0]
-    loglik = model.meas_lpdf(y_curr=y_meas[0], x_curr=x_state[0],
-                             theta=theta)
+    loglik = model.meas_lpdf(y_curr=y_meas[0], x_curr=x_state[0], theta=theta)
     for t in range(1, n_obs):
-        loglik = loglik + \
-            model.state_lpdf(x_curr=x_state[t], x_prev=x_state[t-1],
-                             theta=theta)
-        loglik = loglik + \
-            model.meas_lpdf(y_curr=y_meas[t], x_curr=x_state[t],
-                            theta=theta)
+        loglik = loglik + model.state_lpdf(
+            x_curr=x_state[t], x_prev=x_state[t - 1], theta=theta
+        )
+        loglik = loglik + model.meas_lpdf(
+            y_curr=y_meas[t], x_curr=x_state[t], theta=theta
+        )
     return loglik
 
 
@@ -565,7 +530,7 @@ def simulate_for(model, key, n_obs, x_init, theta):
     # subsequent observations
     for t in range(1, n_obs):
         key, *subkeys = random.split(key, num=3)
-        x_state.append(model.state_sample(subkeys[0], x_state[t-1], theta))
+        x_state.append(model.state_sample(subkeys[0], x_state[t - 1], theta))
         y_meas.append(model.meas_sample(subkeys[1], x_state[t], theta))
     return jnp.array(y_meas), jnp.array(x_state)
     # y_meas = jnp.zeros((n_obs, ) + model.n_meas)
@@ -608,13 +573,12 @@ def param_mwg_update_for(model, prior, key, theta, x_state, y_meas, rw_sd, theta
 
     Returns:
         theta_out: Updated parameter vector.
-        accept: Boolean vector of size `theta_order.size` indicating whether or not the proposal was accepted. 
+        accept: Boolean vector of size `theta_order.size` indicating whether or not the proposal was accepted.
     """
     n_updates = theta_order.size
-    theta_curr = theta + 0.  # how else to copy...
+    theta_curr = theta + 0.0  # how else to copy...
     accept = jnp.empty(0, dtype=bool)
-    lp_curr = loglik_full(model, y_meas, x_state,
-                          theta_curr) + prior.lpdf(theta_curr)
+    lp_curr = loglik_full(model, y_meas, x_state, theta_curr) + prior.lpdf(theta_curr)
     for i in theta_order:
         # 2 subkeys for each param: rw_jump and mh_accept
         key, *subkeys = random.split(key, num=3)
@@ -623,18 +587,18 @@ def param_mwg_update_for(model, prior, key, theta, x_state, y_meas, rw_sd, theta
             theta_curr[i] + rw_sd[i] * random.normal(key=subkeys[0])
         )
         # acceptance rate
-        lp_prop = loglik_full(model, y_meas, x_state,
-                              theta_prop) + prior.lpdf(theta_prop)
+        lp_prop = loglik_full(model, y_meas, x_state, theta_prop) + prior.lpdf(
+            theta_prop
+        )
         lrate = lp_prop - lp_curr
         # breakpoint()
         # update parameter draw
-        acc = random.bernoulli(key=subkeys[1],
-                               p=jnp.minimum(1.0, jnp.exp(lrate)))
+        acc = random.bernoulli(key=subkeys[1], p=jnp.minimum(1.0, jnp.exp(lrate)))
         # print("acc = {}".format(acc))
         theta_curr = theta_curr.at[i].set(
-            theta_prop[i] * acc + theta_curr[i] * (1-acc)
+            theta_prop[i] * acc + theta_curr[i] * (1 - acc)
         )
-        lp_curr = lp_prop * acc + lp_curr * (1-acc)
+        lp_curr = lp_prop * acc + lp_curr * (1 - acc)
         accept = jnp.append(accept, acc)
     return theta_curr, accept
 
@@ -654,8 +618,8 @@ def particle_smooth_for(key, logw, x_particles, ancestors, n_sample=1):
     x_state = jnp.zeros((n_obs,) + n_state)
     # draw index of particle at time T
     i_part = random.choice(key, a=jnp.arange(n_particles), p=prob)
-    x_state = x_state.at[n_obs-1].set(x_particles[n_obs-1, i_part, ...])
-    for i_obs in reversed(range(n_obs-1)):
+    x_state = x_state.at[n_obs - 1].set(x_particles[n_obs - 1, i_part, ...])
+    for i_obs in reversed(range(n_obs - 1)):
         # successively extract the ancestor particle going backwards in time
         i_part = ancestors[i_obs, i_part]
         x_state = x_state.at[i_obs].set(x_particles[i_obs, i_part, ...])
@@ -702,9 +666,9 @@ def particle_ancestor(x_particles, ancestors, id_particle_last):
         return id_particle_curr, id_particle_curr
 
     # lax.scan
-    id_particle_first, id_particle_full = \
-        jax.lax.scan(_particle_ancestor, id_particle_last,
-                     jnp.arange(n_obs-1), reverse=True)
+    id_particle_first, id_particle_full = jax.lax.scan(
+        _particle_ancestor, id_particle_last, jnp.arange(n_obs - 1), reverse=True
+    )
     # append last particle index
     id_particle_full = jnp.concatenate(
         [id_particle_full, jnp.array(id_particle_last)[None]]
@@ -712,7 +676,9 @@ def particle_ancestor(x_particles, ancestors, id_particle_last):
     return x_particles[jnp.arange(n_obs), id_particle_full, ...]
 
 
-def accumulate_smooth(logw, x_particles, ancestors, y_meas, theta, accumulator, mean=True):
+def accumulate_smooth(
+    logw, x_particles, ancestors, y_meas, theta, accumulator, mean=True
+):
     """
     Accumulate expectation using the basic particle smoother.
 
@@ -732,18 +698,14 @@ def accumulate_smooth(logw, x_particles, ancestors, y_meas, theta, accumulator, 
     """
     # Get full set of particles
     n_particles = x_particles.shape[1]
-    x_particles_full = jax.vmap(
-        lambda i: particle_ancestor(x_particles, ancestors, i)
-    )(jnp.arange(n_particles))
+    x_particles_full = jax.vmap(lambda i: particle_ancestor(x_particles, ancestors, i))(
+        jnp.arange(n_particles)
+    )
     x_particles_prev = x_particles_full[:, :-1]
     x_particles_curr = x_particles_full[:, 1:]
     y_curr = y_meas[1:]
     acc_out = jax.vmap(
-        jax.vmap(
-            accumulator,
-            in_axes=(0, 0, 0, None)
-        ),
-        in_axes=(0, 0, None, None)
+        jax.vmap(accumulator, in_axes=(0, 0, 0, None)), in_axes=(0, 0, None, None)
     )(x_particles_prev, x_particles_curr, y_curr, theta)
     acc_out = jtu.tree_map(lambda x: jnp.sum(x, axis=1), acc_out)
     if mean:

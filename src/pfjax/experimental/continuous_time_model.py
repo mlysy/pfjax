@@ -1,22 +1,25 @@
 import jax
 import jax.numpy as jnp
-import pfjax.experimental
-from jax import lax, random, tree
+import pfjax.experimental.base_model
+
+# from jax import lax, random, tree
 
 
 class ContinuousTimeModel(pfjax.experimental.base_model.BaseModel):
     r"""
     Base class for continuous-time state-space models.
 
-    Notes:
-
-    - Derived class can provide the following methods:
+    Notes
+    -----
+    - [x] Derived class can provide the following methods:
 
         - `state_dt_{lpdf/sample}()`: Needed to define `state_{lpdf/sample}()`.
 
         - `step_dt_{lpdf/sample}()`: Needed to define `step_{lpdf/sample}()`.
 
-        - `pf_dt_step()`: Can be used to define `pf_step()` more efficiently.
+        - `pf_step_dt()`: Can be used to define `pf_step()` more efficiently.
+
+    - [x] `bootstrap == True` argument uses `super()` method to define `step_{lpdf/sample}()` and `pf_step()`, whereas `bootstrap == False` constructs `pf_step_dt()` from `step_dt_{lpdf/sample}()` and `state_dt_lpdf()`.
 
     - [x] Currently set up for `x_state` being a 2D array (including `n_res` dimension).  Should set this up for `x_state` to be a PyTree with leading dimension `n_res`.
 
@@ -38,12 +41,12 @@ class ContinuousTimeModel(pfjax.experimental.base_model.BaseModel):
 
         This is helpful for constructing `x_init` to have the correct dimension.
 
-        PARAMETERS
+        Parameters
         ----------
         x_init: PyTree
             The state variable at time `t = 0`.
 
-        RETURNS
+        Returns
         -------
         x_init: PyTree
             The original `x_init` of which each leaf has been zero-padded to have leading dimension `n_res`.
@@ -60,7 +63,7 @@ class ContinuousTimeModel(pfjax.experimental.base_model.BaseModel):
         """
         Log-pdf of state transition over a time interval `dt`.
 
-        PARAMETERS
+        Parameters
         ----------
         dt: float
             Time interval between `x_prev` and `x_curr`, which is `self.dt / self.n_res`.
@@ -77,7 +80,7 @@ class ContinuousTimeModel(pfjax.experimental.base_model.BaseModel):
         """
         Calculate the log-pdf of a proposal within a time interval.
 
-        PARAMETERS
+        Parameters
         ----------
         y_next: PyTree
             The next measurement, which is at time `dt_prev + dt_next`.
@@ -98,8 +101,8 @@ class ContinuousTimeModel(pfjax.experimental.base_model.BaseModel):
         """
         Particle filter update within a time interval.
 
-        WARNINGS
-        -----
+        Warnings
+        --------
         The returned `logw` **must not include** the contribution from `meas_lpdf()`.  This is because `pf_step_dt()` will be run through `lax.scan()` inside `pf_step()`, and it's simply easier to add the contribution from `meas_lpdf()` after this is done.
         """
         x_curr = self.step_dt_sample(
@@ -125,27 +128,29 @@ class ContinuousTimeModel(pfjax.experimental.base_model.BaseModel):
         return x_curr, logw
 
     def state_lpdf(self, x_curr, x_prev, theta):
-        dt_sim = self._dt / self._n_res
+        dt_res = self._dt / self._n_res
         x0 = jax.tree.map(
             lambda xp, xc: jnp.concatenate([xp[-1][None], xc[:-1]]),
-            x_curr,
             x_prev,
+            x_curr,
         )
         x1 = x_curr
         lp = jax.vmap(
             fun=lambda xp, xc: self.state_dt_lpdf(
-                x_curr=xc, x_prev=xp, dt=dt_sim, theta=theta
+                x_curr=xc, x_prev=xp, dt=dt_res, theta=theta
             )
         )(x0, x1)
         return jnp.sum(lp)
 
     def state_sample(self, key, x_prev, theta):
-        dt_sim = self._dt / self._n_res
+        dt_res = self._dt / self._n_res
 
         # lax.scan function
         def fun(carry, t):
-            key, subkey = random.split(carry["key"])
-            x = self.state_dt_sim(key=subkey, x_prev=carry["x"], dt=dt_sim, theta=theta)
+            key, subkey = jax.random.split(carry["key"])
+            x = self.state_dt_sample(
+                key=subkey, x_prev=carry["x"], dt=dt_res, theta=theta
+            )
             res = {"x": x, "key": key}
             return res, x
 
@@ -156,7 +161,7 @@ class ContinuousTimeModel(pfjax.experimental.base_model.BaseModel):
         }
 
         # lax.scan itself
-        _, full = lax.scan(fun, init, jnp.arange(self._n_res))
+        _, full = jax.lax.scan(fun, init, jnp.arange(self._n_res))
         return full
 
     def step_lpdf(self, x_curr, x_prev, y_curr, theta):
@@ -171,14 +176,14 @@ class ContinuousTimeModel(pfjax.experimental.base_model.BaseModel):
                 x_prev,
             )
             x1 = x_curr
-            dt_sim = self._dt / self._n_res
+            dt_res = self._dt / self._n_res
             lp = jax.vmap(
                 fun=lambda xp, xc, n: self.step_dt_lpdf(
                     x_curr=xc,
                     x_prev=xp,
                     y_next=y_curr,
-                    dt_prev=dt_sim,
-                    dt_next=self._dt - (n + 1.0) * dt_sim,
+                    dt_prev=dt_res,
+                    dt_next=self._dt - (n + 1.0) * dt_res,
                     theta=theta,
                 )
             )(x0, x1, jnp.arange(self._n_res))
@@ -190,17 +195,17 @@ class ContinuousTimeModel(pfjax.experimental.base_model.BaseModel):
                 key=key, x_prev=x_prev, y_curr=y_curr, theta=theta
             )
         else:
-            dt_sim = self._dt / self._n_res
+            dt_res = self._dt / self._n_res
 
             # lax.scan function
             def fun(carry, n):
-                key, subkey = random.split(carry["key"])
+                key, subkey = jax.random.split(carry["key"])
                 x = self.step_dt_sample(
                     key=subkey,
                     x_prev=carry["x"],
                     y_next=y_curr,
-                    dt_prev=dt_sim,
-                    dt_next=self._dt - (n + 1.0) * dt_sim,
+                    dt_prev=dt_res,
+                    dt_next=self._dt - (n + 1.0) * dt_res,
                     theta=theta,
                 )
                 res = {"x": x, "key": key}
@@ -213,26 +218,26 @@ class ContinuousTimeModel(pfjax.experimental.base_model.BaseModel):
             }
 
             # lax.scan itself
-            _, full = lax.scan(fun, init, jnp.arange(self._n_res))
+            _, full = jax.lax.scan(fun, init, jnp.arange(self._n_res))
             return full
 
     def pf_step(self, key, x_prev, y_curr, theta):
         if self._bootstrap:
             return super().pf_step(key=key, x_prev=x_prev, y_curr=y_curr, theta=theta)
         else:
-            dt_sim = self._dt / self._n_res
+            dt_res = self._dt / self._n_res
 
             # lax.scan function
             def fun(carry, n):
                 key = carry["key"]
                 x = carry["x"]
-                key, subkey = random.split(key)
+                key, subkey = jax.random.split(key)
                 x_prop, logw = self.pf_step_dt(
                     key=subkey,
                     x_prev=carry["x"],
                     y_next=y_curr,
-                    dt_prev=dt_sim,
-                    dt_next=self._dt - (n + 1.0) * dt_sim,
+                    dt_prev=dt_res,
+                    dt_next=self._dt - (n + 1.0) * dt_res,
                     theta=theta,
                 )
                 res_carry = {"x": x_prop, "key": key}
@@ -246,7 +251,7 @@ class ContinuousTimeModel(pfjax.experimental.base_model.BaseModel):
             }
 
             # lax.scan itself
-            _, full = lax.scan(fun, init, jnp.arange(self._n_res))
+            _, full = jax.lax.scan(fun, init, jnp.arange(self._n_res))
 
             # add the contribution of meas_lpdf()
             x_curr = full["x"]

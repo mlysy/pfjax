@@ -1,4 +1,4 @@
-"""
+r"""
 Lotka-Volterra predator-prey model.
 
 The model is:
@@ -33,8 +33,7 @@ y_t ~ N( exp(x_{m,mt}), diag(tau_H^2, tau_L^2) )
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
-from jax import random
-from jax import lax
+from jax import lax, random
 from pfjax import sde as sde
 
 # --- helper functions ---------------------------------------------------------
@@ -48,8 +47,10 @@ def lotvol_drift(x, dt, theta):
     beta = theta[1]
     gamma = theta[2]
     delta = theta[3]
-    return x + jnp.array([alpha - beta * jnp.exp(x[1]),
-                          -gamma + delta * jnp.exp(x[0])]) * dt
+    return (
+        x
+        + jnp.array([alpha - beta * jnp.exp(x[1]), -gamma + delta * jnp.exp(x[0])]) * dt
+    )
 
 
 # def euler_sim(key, n_steps, x, dt, theta, n_state):
@@ -77,6 +78,7 @@ def lotvol_drift(x, dt, theta):
 
 # --- main functions -----------------------------------------------------------
 
+
 class LotVolModel(object):
     def __init__(self, dt, n_res):
         self.dt = dt
@@ -91,8 +93,7 @@ class LotVolModel(object):
         beta = theta[1]
         gamma = theta[2]
         delta = theta[3]
-        return jnp.array([alpha - beta * jnp.exp(x[1]),
-                          -gamma + delta * jnp.exp(x[0])])
+        return jnp.array([alpha - beta * jnp.exp(x[1]), -gamma + delta * jnp.exp(x[0])])
 
     def diff(self, x, theta):
         """
@@ -112,49 +113,56 @@ class LotVolModel(object):
         Returns:
             The log-density of `p(x_curr | x_prev, theta)`.
         """
-        x = jnp.append(jnp.expand_dims(x_prev[self.n_res-1], axis=0),
-                       x_curr, axis=0)
+        x = jnp.append(jnp.expand_dims(x_prev[self.n_res - 1], axis=0), x_curr, axis=0)
         # return sde.euler_lpdf_diag(x, self.dt/self.n_res,
         #                            self.drift, self.diff, theta)
-        x0 = jnp.append(jnp.expand_dims(
-            x_prev[self.n_res-1], axis=0), x_curr[:self.n_res-1], axis=0)
+        x0 = jnp.append(
+            jnp.expand_dims(x_prev[self.n_res - 1], axis=0),
+            x_curr[: self.n_res - 1],
+            axis=0,
+        )
         x1 = x_curr
-        dt_res = self.dt/self.n_res
+        dt_res = self.dt / self.n_res
         sigma = theta[4:6] * jnp.sqrt(dt_res)
-        lp = jax.vmap(lambda t:
-                      jsp.stats.norm.logpdf(x1[t],
-                                            loc=lotvol_drift(
-                                                x0[t], dt_res, theta),
-                                            scale=sigma))(jnp.arange(self.n_res))
+        lp = jax.vmap(
+            lambda t: jnp.sum(
+                jsp.stats.norm.logpdf(
+                    x1[t], loc=lotvol_drift(x0[t], dt_res, theta), scale=sigma
+                )
+            )
+        )(jnp.arange(self.n_res))
         return jnp.sum(lp)
 
-    # def state_lpdf_for(self, x_curr, x_prev, theta):
-    #     """
-    #     Calculates the log-density of `p(x_curr | x_prev, theta)`.
+    def state_lpdf_for(self, x_curr, x_prev, theta):
+        """
+        Calculates the log-density of `p(x_curr | x_prev, theta)`.
 
-    #     For-loop version for testing.
+        For-loop version for testing.
 
-    #     Args:
-    #         x_curr: State variable at current time `t`.
-    #         x_prev: State variable at previous time `t-1`.
-    #         theta: Parameter value.
+        Args:
+            x_curr: State variable at current time `t`.
+            x_prev: State variable at previous time `t-1`.
+            theta: Parameter value.
 
-    #     Returns:
-    #         The log-density of `p(x_curr | x_prev, theta)`.
-    #     """
-    #     dt_res = self.dt/self.n_res
-    #     x0 = jnp.append(jnp.expand_dims(
-    #         x_prev[self.n_res-1], axis=0), x_curr[:self.n_res-1], axis=0)
-    #     x1 = x_curr
-    #     sigma = theta[4:6] * jnp.sqrt(dt_res)
-    #     lp = jnp.array(0.0)
-    #     for t in range(self.n_res):
-    #         lp = lp + jnp.sum(jsp.stats.norm.logpdf(
-    #             x1[t],
-    #             loc=lotvol_drift(x0[t], dt_res, theta),
-    #             scale=sigma
-    #         ))
-    #     return lp
+        Returns:
+            The log-density of `p(x_curr | x_prev, theta)`.
+        """
+        dt_res = self.dt / self.n_res
+        x0 = jnp.append(
+            jnp.expand_dims(x_prev[self.n_res - 1], axis=0),
+            x_curr[: self.n_res - 1],
+            axis=0,
+        )
+        x1 = x_curr
+        sigma = theta[4:6] * jnp.sqrt(dt_res)
+        lp = jnp.array(0.0)
+        for t in range(self.n_res):
+            lp = lp + jnp.sum(
+                jsp.stats.norm.logpdf(
+                    x1[t], loc=lotvol_drift(x0[t], dt_res, theta), scale=sigma
+                )
+            )
+        return lp
 
     def state_sample(self, key, x_prev, theta):
         """
@@ -168,19 +176,21 @@ class LotVolModel(object):
         Returns:
             Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
         """
-        dt_res = self.dt/self.n_res
+        dt_res = self.dt / self.n_res
         sigma = theta[4:6] * jnp.sqrt(dt_res)
         # lax.scan setup:
 
         # scan function
         def fun(carry, t):
             key, subkey = random.split(carry["key"])
-            x = lotvol_drift(carry["x"], dt_res, theta) + \
-                sigma * random.normal(subkey, (2,))
+            x = lotvol_drift(carry["x"], dt_res, theta) + sigma * random.normal(
+                subkey, (2,)
+            )
             res = {"x": x, "key": key}
             return res, res
+
         # scan initial value
-        init = {"x": x_prev[self.n_res-1], "key": key}
+        init = {"x": x_prev[self.n_res - 1], "key": key}
         last, full = lax.scan(fun, init, jnp.arange(self.n_res))
         return full["x"]
         # return sde.euler_sim_diag(
@@ -194,30 +204,32 @@ class LotVolModel(object):
         # )
         # return euler_sim(self.n_res, x_prev[self.n_res-1], self.dt/self.n_res, theta, key, self.n_state)
 
-    # def state_sample_for(self, x_prev, theta, key):
-    #     """
-    #     Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
+    def state_sample_for(self, key, x_prev, theta):
+        """
+        Samples from `x_curr ~ p(x_curr | x_prev, theta)`.
 
-    #     For-loop version for testing.
+        For-loop version for testing.
 
-    #     Args:
-    #         x_prev: State variable at previous time `t-1`.
-    #         theta: Parameter value.
-    #         key: PRNG key.
+        Args:
+            x_prev: State variable at previous time `t-1`.
+            theta: Parameter value.
+            key: PRNG key.
 
-    #     Returns:
-    #         Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
-    #     """
-    #     dt_res = self.dt/self.n_res
-    #     sigma = theta[4:6] * jnp.sqrt(dt_res)
-    #     x_curr = jnp.zeros(self.n_state)
-    #     x_state = x_prev[self.n_res-1]
-    #     for t in range(self.n_res):
-    #         key, subkey = random.split(key)
-    #         x_state = lotvol_drift(x_state, dt_res, theta) + \
-    #             random.normal(subkey, (self.n_state[1],)) * sigma
-    #         x_curr = x_curr.at[t].set(x_state)
-    #     return x_curr
+        Returns:
+            Sample of the state variable at current time `t`: `x_curr ~ p(x_curr | x_prev, theta)`.
+        """
+        dt_res = self.dt / self.n_res
+        sigma = theta[4:6] * jnp.sqrt(dt_res)
+        x_curr = jnp.zeros(self.n_state)
+        x_state = x_prev[self.n_res - 1]
+        for t in range(self.n_res):
+            key, subkey = random.split(key)
+            x_state = (
+                lotvol_drift(x_state, dt_res, theta)
+                + random.normal(subkey, (self.n_state[1],)) * sigma
+            )
+            x_curr = x_curr.at[t].set(x_state)
+        return x_curr
 
     def meas_lpdf(self, y_curr, x_curr, theta):
         """
@@ -331,17 +343,22 @@ class LotVolModel(object):
         """
         tau = theta[6:8]
         key, subkey = random.split(key)
-        x_init = jnp.log(y_init + tau * random.truncated_normal(
-            subkey,
-            lower=-y_init/tau,
-            upper=jnp.inf,
-            shape=(self.n_state[1],)
-        ))
-        logw = jnp.sum(jsp.stats.norm.logcdf(y_init/tau))
-        return \
-            jnp.append(jnp.zeros((self.n_res-1,) + x_init.shape),
-                       jnp.expand_dims(x_init, axis=0), axis=0), \
-            logw
+        x_init = jnp.log(
+            y_init
+            + tau
+            * random.truncated_normal(
+                subkey, lower=-y_init / tau, upper=jnp.inf, shape=(self.n_state[1],)
+            )
+        )
+        logw = jnp.sum(jsp.stats.norm.logcdf(y_init / tau))
+        return (
+            jnp.append(
+                jnp.zeros((self.n_res - 1,) + x_init.shape),
+                jnp.expand_dims(x_init, axis=0),
+                axis=0,
+            ),
+            logw,
+        )
         # x_init = jnp.log(y_init +
         #                  tau * random.normal(subkey, (self.n_state[1],)))
         # return \
