@@ -146,28 +146,3 @@ jax.jit(pyro_lpdf, static_argnums=1)(
 jax.jit(pyro_sample, static_argnums=1)(
     key=key, dist=pyro_dist, x_prev=x_prev, theta=theta
 )
-
-# --- building classes ---------------------------------------------------------
-
-
-class foo:
-    def bar(self, x):
-        pass
-
-
-baz = foo()
-y = baz.bar(3)
-y
-
-
-def foo(x):
-    return x + 5.0
-
-
-class bar:
-    baz = foo(3.0)
-
-
-y = bar()
-
-y.baz(3.0)
