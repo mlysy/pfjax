@@ -1,4 +1,4 @@
-"""
+r"""
 Unit tests for the factorizations of pdfs used in the bridge proposal.
 In particular, suppose we are given
 
@@ -12,18 +12,20 @@ We are interested in factoring the pdf p(W, X, Y)= p(W) p(X|W) p(Y|X, W)
 and P(W, Y) = P(Y) P(W|Y).
 """
 import unittest
+
 import jax
 import jax.numpy as jnp
-import jax.scipy as jsp
 import jax.random as random
+import jax.scipy as jsp
 from pfjax.mvn_bridge import *
+
 import utils
+
 # from jax.config import config
 # config.update("jax_enable_x64", True)
 
 
 class TestFact(unittest.TestCase):
-
     def setUp(self):
         """
         Creates the variables used in the tests for factorization.
@@ -48,33 +50,37 @@ class TestFact(unittest.TestCase):
         self.Y = random.normal(subkeys[2], (self.n_obs,))
         # joint distribution using single mvn
         self.mu_Y = jnp.matmul(self.A, self.mu_W + self.mu_XW)
-        self.Sigma_Y = jnp.linalg.multi_dot(
-            [self.A, self.Sigma_W + self.Sigma_XW, self.A.T]) + self.Omega
+        self.Sigma_Y = (
+            jnp.linalg.multi_dot([self.A, self.Sigma_W + self.Sigma_XW, self.A.T])
+            + self.Omega
+        )
         AS_W = jnp.matmul(self.A, self.Sigma_W)
         AS_XW = jnp.matmul(self.A, self.Sigma_W + self.Sigma_XW)
         self.mu = jnp.block([self.mu_W, self.mu_W + self.mu_XW, self.mu_Y])
-        self.Sigma = jnp.block([
-            [self.Sigma_W, self.Sigma_W, AS_W.T],
-            [self.Sigma_W, self.Sigma_W + self.Sigma_XW, AS_XW.T],
-            [AS_W, AS_XW, self.Sigma_Y]
-        ])
+        self.Sigma = jnp.block(
+            [
+                [self.Sigma_W, self.Sigma_W, AS_W.T],
+                [self.Sigma_W, self.Sigma_W + self.Sigma_XW, AS_XW.T],
+                [AS_W, AS_XW, self.Sigma_Y],
+            ]
+        )
 
     def test_tri_fact(self):
         """
         Check if p(W, X, Y) = p(W) p(X|W) p(Y|X, W).
         """
         # joint distribution using factorization
-        lpdf1 = jsp.stats.multivariate_normal.logpdf(
-            self.W, self.mu_W, self.Sigma_W)
-        lpdf1 = lpdf1 + \
-            jsp.stats.multivariate_normal.logpdf(
-                self.X, self.W + self.mu_XW, self.Sigma_XW)
-        lpdf1 = lpdf1 + \
-            jsp.stats.multivariate_normal.logpdf(
-                self.Y, jnp.matmul(self.A, self.X), self.Omega)
+        lpdf1 = jsp.stats.multivariate_normal.logpdf(self.W, self.mu_W, self.Sigma_W)
+        lpdf1 = lpdf1 + jsp.stats.multivariate_normal.logpdf(
+            self.X, self.W + self.mu_XW, self.Sigma_XW
+        )
+        lpdf1 = lpdf1 + jsp.stats.multivariate_normal.logpdf(
+            self.Y, jnp.matmul(self.A, self.X), self.Omega
+        )
         # joint distribution using single mvn
         lpdf2 = jsp.stats.multivariate_normal.logpdf(
-            jnp.block([self.W, self.X, self.Y]), self.mu, self.Sigma)
+            jnp.block([self.W, self.X, self.Y]), self.mu, self.Sigma
+        )
         self.assertAlmostEqual(utils.rel_err(lpdf1, lpdf2), 0.0)
 
     def test_double_fact(self):
@@ -83,24 +89,22 @@ class TestFact(unittest.TestCase):
         """
         # joint distribution using factorization
         mu_Y, AS_W, Sigma_Y = mvn_bridge_pars(
-            self.mu_W, self.Sigma_W, self.mu_XW,
-            self.Sigma_XW, self.A, self.Omega
+            self.mu_W, self.Sigma_W, self.mu_XW, self.Sigma_XW, self.A, self.Omega
         )
-        mu_WY, Sigma_WY = mvn_bridge_mv(self.mu_W, self.Sigma_W, mu_Y,
-                                        AS_W, Sigma_Y, self.Y)
-        lpdf1 = jsp.stats.multivariate_normal.logpdf(
-            self.Y, mu_Y, Sigma_Y)
-        lpdf1 = lpdf1 + \
-            jsp.stats.multivariate_normal.logpdf(self.W, mu_WY, Sigma_WY)
+        mu_WY, Sigma_WY = mvn_bridge_mv(
+            self.mu_W, self.Sigma_W, mu_Y, AS_W, Sigma_Y, self.Y
+        )
+        lpdf1 = jsp.stats.multivariate_normal.logpdf(self.Y, mu_Y, Sigma_Y)
+        lpdf1 = lpdf1 + jsp.stats.multivariate_normal.logpdf(self.W, mu_WY, Sigma_WY)
         # joint distribution using single mvn
         ind = jnp.concatenate(
-            [jnp.arange(self.n_lat), 2*self.n_lat + jnp.arange(self.n_obs)])
+            [jnp.arange(self.n_lat), 2 * self.n_lat + jnp.arange(self.n_obs)]
+        )
         lpdf2 = jsp.stats.multivariate_normal.logpdf(
-            jnp.block([self.W, self.Y]), self.mu[ind],
-            self.Sigma[jnp.ix_(ind, ind)]
+            jnp.block([self.W, self.Y]), self.mu[ind], self.Sigma[jnp.ix_(ind, ind)]
         )
         self.assertAlmostEqual(utils.rel_err(lpdf1, lpdf2), 0.0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

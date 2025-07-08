@@ -1138,7 +1138,7 @@ def test_resample_ot_sinkhorn(self):
         method=["jax-ott", "resample_ot"], scaled=jnp.array([False, True])
     )
     n_cases = test_cases.shape[0]
-    sinkhorn_custom = jax.jit(pfjax.tests.sinkhorn_test, static_argnames="n_iterations")
+    sinkhorn_custom = jax.jit(test.sinkhorn_test, static_argnames="n_iterations")
     x_over_y = jax.vmap(lambda x, y: x / y)  # to divide matrix by vector
 
     for i in range(n_cases):
