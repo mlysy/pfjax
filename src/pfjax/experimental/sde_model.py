@@ -57,7 +57,7 @@ class SDEModel(pfjax.experimental.continuous_time_model.ContinuousTimeModel):
         if self._diff_diag:
             return jnp.sum(jsp.stats.norm.logpdf(x=x_curr, loc=dr, scale=df))
         else:
-            return jsp.stats.multivariate_normal.logpdf(x=x_curr, mean=df, cov=df)
+            return jsp.stats.multivariate_normal.logpdf(x=x_curr, mean=dr, cov=df)
 
     def state_dt_sample(self, key, x_prev, dt, theta):
         dr, df = self._state_dt_pars(x_prev=x_prev, dt=dt, theta=theta)

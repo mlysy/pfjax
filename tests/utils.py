@@ -10,11 +10,11 @@ import jax.tree_util as jtu
 import ott
 import pandas as pd
 import pfjax as pf
-import pfjax.experimental.lotvol_model as lv
+import pfjax.experimental.models as models_exp
 import pfjax.mcmc as mcmc
 import pfjax.models as models
 import pfjax.particle_resamplers as resamplers
-import pfjax.test.lotvol_model as lv_test
+import pfjax.test.models as models_test
 import pfjax.test.utils as test
 import pfjax.utils as utils
 from ott.geometry import pointcloud
@@ -111,8 +111,33 @@ def lv_setup(self):
     self.n_particles = 25
     # self.Model = models.LotVolModel
     # self.Model2 = lv.LotVolModel
-    self.Model = lv.LotVolModel
-    self.Model2 = lv_test.LotVolModel
+    self.Model = models_exp.LotVolModel
+    self.Model2 = models_test.LotVolModel
+
+
+def sv_setup(self):
+    """
+    Creates input arguments to tests for StoVolModel.
+    """
+    self.key = random.PRNGKey(0)
+    # parameter values
+    alpha = 0.001
+    gamma = 3
+    eta = 3 * -1.3
+    sigma = 1
+    rho = -0.8
+    self.theta = jnp.array([alpha, gamma, eta, sigma, rho])
+    # data specification
+    dt = 0.5
+    n_res = 1
+    self.model_args = {"dt": dt, "n_res": n_res, "unconstrained_scale": False}
+    self.n_obs = 2
+    self.x_init = jnp.block([[jnp.zeros((n_res - 1, 2))], [jnp.array([0.0, 0.0])]])
+    self.n_particles = 15
+    # self.Model = models.LotVolModel
+    # self.Model2 = lv.LotVolModel
+    self.Model = models_exp.StoVolModel
+    self.Model2 = models_test.StoVolModel
 
 
 def pg_setup(self):

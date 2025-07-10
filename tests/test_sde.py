@@ -21,9 +21,9 @@ import unittest
 import utils
 
 
-class TestInherit(unittest.TestCase):
+class TestInheritDiag(unittest.TestCase):
     """
-    Check that inheritance from SDEModel works as expected.
+    Check that inheritance from SDEModel with `diff_diag=True` works as expected.
     """
 
     setUp = utils.lv_setup
@@ -32,9 +32,20 @@ class TestInherit(unittest.TestCase):
     test_loglik = utils.test_loglik_full_models
 
 
-class TestJit(unittest.TestCase):
+class TestInheritDense(unittest.TestCase):
     """
-    Check that jitted code works as expected.
+    Check that inheritance from SDEModel with `diff_diag=False` works as expected.
+    """
+
+    setUp = utils.sv_setup
+
+    test_sim = utils.test_simulate_models
+    test_loglik = utils.test_loglik_full_models
+
+
+class TestJitDiag(unittest.TestCase):
+    """
+    Check that jitted code with `diff_diag=True` works as expected.
     """
 
     setUp = utils.lv_setup
@@ -43,7 +54,22 @@ class TestJit(unittest.TestCase):
     test_loglik = utils.test_loglik_full_jit
 
 
+class TestJitDense(unittest.TestCase):
+    """
+    Check that jitted code with `diff_diag=False` works as expected.
+    """
+
+    setUp = utils.sv_setup
+
+    test_sim = utils.test_simulate_jit
+    test_loglik = utils.test_loglik_full_jit
+
+
 class TestFor(unittest.TestCase):
+    """
+    Check that vmap/lax.scan are the same as for-loop (`LotVolModel` only).
+    """
+
     setUp = utils.lv_setup
 
     test_state_sample = utils.test_sde_state_sample_for
