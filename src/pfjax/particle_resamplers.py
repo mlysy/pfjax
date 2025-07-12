@@ -32,7 +32,10 @@ def resample_multinomial(key, x_particles_prev, logw):
     ancestors = random.choice(
         key, a=jnp.arange(n_particles), shape=(n_particles,), p=prob
     )
-    return {"x_particles": x_particles_prev[ancestors, ...], "ancestors": ancestors}
+    return {
+        "x_particles": tree_shuffle(x_particles_prev, index=ancestors),
+        "ancestors": ancestors,
+    }
 
 
 def resample_mvn(key, x_particles_prev, logw):
