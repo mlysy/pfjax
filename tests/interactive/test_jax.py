@@ -8,6 +8,31 @@ import jax.tree_util as jtu
 import numpy as np
 import pfjax as pf
 
+# --- leading dimensions -------------------------------------------------------
+
+x = (1.0 * jnp.arange(2), (1.0 * jnp.arange(3), jnp.array(3.0)))
+y = jtu.tree_map(lambda x: jnp.atleast_1d(x).shape[0], x)
+
+jtu.tree_reduce(lambda x, y: jnp.minimum(x, y), y)
+jtu.tree_reduce(lambda x, y: jnp.maximum(x, y), y)
+
+pf.utils.tree_leading_dim(x)
+
+x = (1.0 * jnp.arange(2), (1.0 * jnp.arange(2), 1.0 * jnp.arange(2)))
+pf.utils.tree_leading_dim(x)
+
+
+# --- vmap with key-value pairs ------------------------------------------------
+
+
+def foo(a, b):
+    return a**2 + b
+
+
+grad_foo = jax.grad(foo)
+
+grad_foo(a=2.0, b=3.0)
+
 # --- broadcasting with vmap ---------------------------------------------------
 
 

@@ -1,3 +1,10 @@
+r"""
+Particle resamplers.
+
+Each of these should return a dictionary with an element `x_particles` and optionally other elements.
+"""
+
+
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
@@ -8,7 +15,7 @@ from ott.geometry import pointcloud
 from ott.problems.linear import linear_problem
 from ott.solvers.linear import sinkhorn
 
-from pfjax.utils import logw_to_prob, tree_array2d, tree_shuffle
+from pfjax.utils import logw_to_prob, tree_array2d, tree_subset
 
 
 def resample_multinomial(key, x_particles_prev, logw):
@@ -33,7 +40,7 @@ def resample_multinomial(key, x_particles_prev, logw):
         key, a=jnp.arange(n_particles), shape=(n_particles,), p=prob
     )
     return {
-        "x_particles": tree_shuffle(x_particles_prev, index=ancestors),
+        "x_particles": tree_subset(x_particles_prev, index=ancestors),
         "ancestors": ancestors,
     }
 
