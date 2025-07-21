@@ -4,7 +4,7 @@ import jax.scipy as jsp
 import jax.tree_util as jtu
 from jax import lax, random
 
-from pfjax.utils import *
+import pfjax.utils as utils
 
 
 def loglik_full(model, y_meas, x_state, theta):
@@ -32,14 +32,30 @@ def loglik_full(model, y_meas, x_state, theta):
     Returns:
         The value of the complete data loglikelihood.
     """
-    n_obs = y_meas.shape[0]
+    # n_obs = y_meas.shape[0]
     # initial measurement
-    ll_init = model.meas_lpdf(y_curr=y_meas[0], x_curr=x_state[0], theta=theta)
+    ll_init = model.meas_lpdf(
+        y_curr=utils.tree_subset(y_meas, 0),
+        x_curr=x_state[0],
+        theta=theta,
+    )
     # subsequent measurements and state variables
     ll_step = jax.vmap(
-        lambda xc, xp, yc: model.state_lpdf(x_curr=xc, x_prev=xp, theta=theta)
-        + model.meas_lpdf(y_curr=yc, x_curr=xc, theta=theta)
-    )(tree_remove_first(x_state), tree_remove_last(x_state), tree_remove_first(y_meas))
+        lambda xc, xp, yc: model.state_lpdf(
+            x_curr=xc,
+            x_prev=xp,
+            theta=theta,
+        )
+        + model.meas_lpdf(
+            y_curr=yc,
+            x_curr=xc,
+            theta=theta,
+        )
+    )(
+        utils.tree_remove_first(x_state),
+        utils.tree_remove_last(x_state),
+        utils.tree_remove_first(y_meas),
+    )
     # ll_step = jax.vmap(lambda t:
     #                    model.state_lpdf(x_curr=x_state[t],
     #                                     x_prev=x_state[t-1],

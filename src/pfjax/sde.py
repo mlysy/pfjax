@@ -11,8 +11,9 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 from jax import lax, random
 
-from pfjax import mvn_bridge as mb
-from pfjax.utils import *
+import pfjax.mvn_bridge as mb
+
+# import pfjax.utils as utils
 
 
 def euler_sim_diag(key, x, dt, drift, diff, theta):

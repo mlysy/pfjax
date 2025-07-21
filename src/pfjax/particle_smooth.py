@@ -2,10 +2,9 @@ import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 import jax.tree_util as jtu
-from jax import random
-from jax import lax
-# from jax.experimental.maps import xmap
-from .utils import logw_to_prob
+from jax import lax, random
+
+import pfjax.utils as utils
 
 
 def particle_smooth(key, logw, x_particles, ancestors):
@@ -23,7 +22,7 @@ def particle_smooth(key, logw, x_particles, ancestors):
     """
     n_particles = logw.size
     n_obs = x_particles.shape[0]
-    prob = logw_to_prob(logw)
+    prob = utils.logw_to_prob(logw)
     # wgt = jnp.exp(logw - jnp.max(logw))
     # prob = wgt / jnp.sum(wgt)
 
@@ -37,12 +36,11 @@ def particle_smooth(key, logw, x_particles, ancestors):
         # res_carry = {"i_part": i_part}
         # res_stack = {"i_part": i_part, "x_state": x_particles[t, i_part]}
         # return res_carry, res_stack
+
     # scan initial value
-    init = {
-        "i_part": random.choice(key, a=jnp.arange(n_particles), p=prob)
-    }
+    init = {"i_part": random.choice(key, a=jnp.arange(n_particles), p=prob)}
     # lax.scan itself
-    last, full = lax.scan(fun, init, jnp.flip(jnp.arange(n_obs-1)))
+    last, full = lax.scan(fun, init, jnp.flip(jnp.arange(n_obs - 1)))
     # particle indices in forward order
     i_part = jnp.flip(jnp.append(init["i_part"], full["i_part"]))
     return x_particles[jnp.arange(n_obs), i_part, ...]  # , i_part

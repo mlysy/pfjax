@@ -15,7 +15,7 @@ from ott.geometry import pointcloud
 from ott.problems.linear import linear_problem
 from ott.solvers.linear import sinkhorn
 
-from pfjax.utils import logw_to_prob, tree_array2d, tree_subset
+import pfjax.utils as utils
 
 
 def resample_multinomial(key, x_particles_prev, logw):
@@ -34,13 +34,13 @@ def resample_multinomial(key, x_particles_prev, logw):
             - `x_particles`: An `ndarray` with leading dimension `n_particles` consisting of the particles from the current time step.  These are sampled with replacement from `x_particles_prev` with probability vector `exp(logw) / sum(exp(logw))`.
             - `ancestors`: Vector of `n_particles` integers between 0 and `n_particles-1` giving the index of each element of `x_particles_prev` corresponding to the elements of `x_particles`.
     """
-    prob = logw_to_prob(logw)
+    prob = utils.logw_to_prob(logw)
     n_particles = logw.size
     ancestors = random.choice(
         key, a=jnp.arange(n_particles), shape=(n_particles,), p=prob
     )
     return {
-        "x_particles": tree_subset(x_particles_prev, index=ancestors),
+        "x_particles": utils.tree_subset(x_particles_prev, index=ancestors),
         "ancestors": ancestors,
     }
 
@@ -60,13 +60,16 @@ def resample_mvn(key, x_particles_prev, logw):
             - `mvn_mean`: Vector of length `n_state = prod(x_particles.shape[1:])` representing the mean of the MVN.
             - `mvn_cov`: Matrix of size `n_state x n_state` representing the covariance matrix of the MVN.
     """
-    prob = logw_to_prob(logw)
+    prob = utils.logw_to_prob(logw)
     # convert particles to 2d array
     # p_shape = x_particles_prev.shape
     # n_particles = p_shape[0]
     # x_particles = jnp.transpose(x_particles_prev.reshape((n_particles, -1)))
     n_particles = logw.shape[0]
-    x_particles, unravel_fn = tree_array2d(x_particles_prev, shape0=n_particles)
+    x_particles, unravel_fn = utils.tree_array2d(
+        x_particles_prev,
+        shape0=n_particles,
+    )
     # x_particles = jnp.transpose(x_particles)
     # calculate weighted mean and variance
     mvn_mean = jnp.average(x_particles, axis=0, weights=prob)
@@ -113,12 +116,15 @@ def resample_ot(
     sinkhorn_kwargs = sinkhorn_kwargs.copy()
     pointcloud_kwargs = pointcloud_kwargs.copy()
     # sinkhorn_kwargs.update(jit=False) # depreciated argument
-    prob = logw_to_prob(logw)
+    prob = utils.logw_to_prob(logw)
     # p_shape = x_particles_prev.shape
     # n_particles = p_shape[0]
     # x_particles = x_particles_prev.reshape((n_particles, -1))
     n_particles = logw.shape[0]
-    x_particles, unravel_fn = tree_array2d(x_particles_prev, shape0=n_particles)
+    x_particles, unravel_fn = utils.tree_array2d(
+        x_particles_prev,
+        shape0=n_particles,
+    )
     if scaled:
         # can't jit compile pointcloud_kwargs.update(scale_cost=scale_cost)
         # this way.  So instead scale particles directly.
