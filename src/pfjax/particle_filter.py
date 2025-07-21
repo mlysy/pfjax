@@ -134,15 +134,6 @@ def particle_filter(
             logw_aux = jnp.array(0.0)
         return logw_aux
 
-    # def pf_acc(acc_prev, x_prev, x_curr, y_curr):
-    #     acc_curr = accumulate_deriv(
-    #         x_prev=x_prev,
-    #         x_curr=x_curr,
-    #         y_curr=y_curr,
-    #         theta=theta,
-    #     )
-    #     return utils.tree_add(tree1=acc_prev, tree2=acc_curr)
-
     # lax.scan stepping function
     def filter_step(carry, y_curr):
         # 1. sample particles from previous time point
@@ -261,6 +252,7 @@ def particle_filter(
             hess = jnp.sum(gamma, axis=0) - jnp.outer(alpha, alpha)
             full["score"] = alpha
             full["fisher"] = -hess
+
     return full
 
 
@@ -313,16 +305,18 @@ def particle_filter_rb(
         - **fisher** Optional JAX array of shape `(n_theta, n_theta)` containing the estimated observed fisher information at `theta`.
         - **resample_out** If `history=True`, a dictionary of additional outputs from `resampler` function.  The leading dimension of each element of the dictionary has leading dimension `n_obs-1`, since these additional outputs do not apply to the first time point `t=0`.
     """
-    n_obs = y_meas.shape[0]
+    n_obs = jtu.tree_leaves(y_meas)[0].shape[0]
+    has_aux = callable(getattr(model, "pf_aux", None))
     has_acc = score or fisher
 
-    # internal functions for vmap
-    def accumulator(x_prev, x_curr, y_curr, acc_prev, logw_aux):
+    def accumulate_deriv(x_prev, x_curr, y_curr, acc_prev, logw_aux):
         """
         Accumulator for weights and possibly derivative calculations.
 
-        Args:
-            acc_prev: Dictionary with elements logw_bar, and optionally alpha and beta.
+        Parameters
+        ----------
+        acc_prev : dict
+            Dictionary with elements `logw_bar`, and optionally `alpha` and `beta`.
 
         Returns:
             Dictionary with elements:
@@ -335,8 +329,10 @@ def particle_filter_rb(
         logw_targ = (
             model.state_lpdf(x_curr=x_curr, x_prev=x_prev, theta=theta) + logw_bar
         )
+        # logw_prop: elements of q_theta(x_n | y_1:n)
         logw_prop = (
             model.step_lpdf(x_curr=x_curr, x_prev=x_prev, y_curr=y_curr, theta=theta)
+            + logw_bar
             + logw_aux
         )
         acc_full = {"logw_targ": logw_targ, "logw_prop": logw_prop}
@@ -369,35 +365,46 @@ def particle_filter_rb(
         """
         Calculate log-density of the proposal distribution `x_curr ~ q(x_t | x_t-1, y_t, theta)`.
         """
-        return model.step_lpdf(x_curr=x_curr, x_prev=x_prev, y_curr=y_curr, theta=theta)
+        return model.step_lpdf(
+            x_curr=x_curr,
+            x_prev=x_prev,
+            y_curr=y_curr,
+            theta=theta,
+        )
 
     def pf_step(key, x_prev, y_curr):
         """
         Sample from the proposal distribution `x_curr ~ q(x_t | x_t-1, y_t, theta)`.
         """
-        return model.step_sample(key=key, x_prev=x_prev, y_curr=y_curr, theta=theta)
-        # if callable(getattr(model, "pf_prop", None)):
-        #     x_curr = model.pf_prop(key=key, x_prev=x_prev, y_curr=y_curr,
-        #                            theta=theta)
-        # else:
-        #     x_curr, _ = model.pf_step(key=key, x_prev=x_prev, y_curr=y_curr,
-        #                               theta=theta)
-        # return x_curr
+        return model.step_sample(
+            key=key,
+            x_prev=x_prev,
+            y_curr=y_curr,
+            theta=theta,
+        )
 
     def pf_init(key):
-        return model.pf_init(key=key, y_init=y_meas[0], theta=theta)
+        return model.pf_init(
+            key=key,
+            y_init=utils.tree_subset(y_meas, 0),
+            theta=theta,
+        )
 
-    def pf_aux(logw_prev, x_prev, y_curr):
+    def pf_aux(x_prev, y_curr):
         """
-        Add the log-density for auxillary sampling `logw_aux` to the log-weights from the previous step `logw_prev`.
+        Compute the log-density for auxillary sampling `logw_aux`.
 
         The auxillary log-density is given by model.pf_aux(). If this method is missing, `logw_aux` is set to 0.
         """
-        if callable(getattr(model, "pf_aux", None)):
-            logw_aux = model.pf_aux(x_prev=x_prev, y_curr=y_curr, theta=theta)
-            return logw_aux + logw_prev
+        if has_aux:
+            logw_aux = model.pf_aux(
+                x_prev=x_prev,
+                y_curr=y_curr,
+                theta=theta,
+            )
         else:
-            return logw_prev
+            logw_aux = jnp.array(0.0)
+        return logw_aux
 
     def pf_bar(x_prev, x_curr, y_curr, acc_prev, logw_aux):
         """
@@ -412,14 +419,17 @@ def particle_filter_rb(
             - beta: optional current value of beta.
         """
         # Calculate the accumulated values looping over x_prev
-        acc_full = jax.vmap(accumulator, in_axes=(0, None, None, 0, 0))(
-            x_prev, x_curr, y_curr, acc_prev, logw_aux
-        )
+        acc_full = jax.vmap(
+            accumulate_deriv,
+            in_axes=(0, None, None, 0, 0),
+        )(x_prev, x_curr, y_curr, acc_prev, logw_aux)
         # Calculate logw_tilde and logw_bar
         logw_targ, logw_prop = acc_full["logw_targ"], acc_full["logw_prop"]
+        # logw_tilde: (19) of poyiadjis et al
         logw_tilde = jsp.special.logsumexp(logw_targ) + model.meas_lpdf(
             y_curr=y_curr, x_curr=x_curr, theta=theta
         )
+        # logw_bar: (18) of poyiadjis et al
         logw_bar = logw_tilde - jsp.special.logsumexp(logw_prop)
         acc_curr = {"logw_bar": logw_bar}
         if has_acc:
@@ -436,36 +446,41 @@ def particle_filter_rb(
         return acc_curr
 
     # lax.scan stepping function
-    def filter_step(carry, t):
+    def filter_step(carry, y_curr):
         # 1. sample particles from previous time point
         key, subkey = random.split(carry["key"])
-        # augment previous weights with auxiliary weights
-        logw_aux = jax.vmap(pf_aux, in_axes=(0, 0, None))(
-            carry["logw_bar"], carry["x_particles"], y_meas[t]
-        )
+        # auxiliary weights
+        logw_aux = jax.vmap(
+            pf_aux,
+            in_axes=(0, None),
+        )(carry["x_particles"], y_curr)
         # resampled particles
         resample_out = resampler(
-            key=subkey, x_particles_prev=carry["x_particles"], logw=logw_aux
+            key=subkey,
+            x_particles_prev=carry["x_particles"],
+            logw=logw_aux + carry["logw_bar"],
         )
         # 2. sample particles for current timepoint
         key, *subkeys = random.split(key, num=n_particles + 1)
-        x_particles = jax.vmap(pf_step, in_axes=(0, 0, None))(
-            jnp.array(subkeys), resample_out["x_particles"], y_meas[t]
-        )
+        x_particles = jax.vmap(
+            pf_step,
+            in_axes=(0, 0, None),
+        )(jnp.array(subkeys), resample_out["x_particles"], y_curr)
         # 3. compute all double summations
         acc_prev = {"logw_bar": carry["logw_bar"]}
         if has_acc:
             acc_prev["alpha"] = carry["alpha"]
             if fisher:
                 acc_prev["beta"] = carry["beta"]
-        acc_curr = jax.vmap(pf_bar, in_axes=(None, 0, None, None, None))(
-            carry["x_particles"], x_particles, y_meas[t], acc_prev, logw_aux
-        )
+        acc_curr = jax.vmap(
+            pf_bar,
+            in_axes=(None, 0, None, None, None),
+        )(carry["x_particles"], x_particles, y_curr, acc_prev, logw_aux)
         # output
         res_carry = {
             "x_particles": x_particles,
             "loglik": carry["loglik"] + jsp.special.logsumexp(acc_curr["logw_bar"]),
-            "key": key
+            "key": key,
             # "resample_out": rm_keys(resample_out, "x_particles")
         }
         res_carry.update(acc_curr)
@@ -500,19 +515,30 @@ def particle_filter_rb(
             filter_init["beta"] = jnp.zeros((n_particles, theta.size, theta.size))
 
     # lax.scan itself
-    last, full = lax.scan(filter_step, filter_init, jnp.arange(1, n_obs))
+    last, full = lax.scan(
+        f=filter_step,
+        init=filter_init,
+        xs=utils.tree_subset(y_meas, jnp.arange(1, n_obs)),
+    )
 
     # format output
     if history:
-        # append initial values of x_particles and logw
-        full["x_particles"] = jnp.concatenate(
-            [filter_init["x_particles"][None], full["x_particles"]]
+        # append initial values of x_particles and logw_bar
+        full["x_particles"] = utils.tree_append_first(
+            tree=full["x_particles"], first=filter_init["x_particles"]
         )
-        full["logw_bar"] = jnp.concatenate(
-            [filter_init["logw_bar"][None], full["logw_bar"]]
+        full["logw_bar"] = utils.tree_append_first(
+            tree=full["logw_bar"], first=filter_init["logw_bar"]
         )
+        # full["x_particles"] = jnp.concatenate(
+        #     [filter_init["x_particles"][None], full["x_particles"]]
+        # )
+        # full["logw_bar"] = jnp.concatenate(
+        #     [filter_init["logw_bar"][None], full["logw_bar"]]
+        # )
     else:
         full = last
+
     # calculate loglikelihood
     full["loglik"] = last["loglik"] - n_obs * jnp.log(n_particles)
     if has_acc:
