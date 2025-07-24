@@ -98,13 +98,13 @@ class SDEModel(pfjax.experimental.continuous_time_model.ContinuousTimeModel):
         df = self.diff(x=x_prev, theta=theta)
         if self._diff_diag:
             df = jnp.diag(df)
-        df = df * dt_prev
+        # df = df * dt_prev
         return pfjax.mvn_bridge.mvn_bridge_mv(
             mu_W=x_prev + dr * dt_prev,
-            Sigma_W=df,
+            Sigma_W=df * dt_prev,
             mu_Y=jnp.matmul(A, x_prev + dr * dt_next),
             AS_W=jnp.matmul(A, df),
-            Sigma_Y=k * jnp.linalg.multi_dot([A, df, A.T]) + Omega,
+            Sigma_Y=jnp.linalg.multi_dot([A, df, A.T]) * dt_next + Omega,
             Y=Y,
         )
 
