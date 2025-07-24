@@ -91,6 +91,7 @@ class SDEModel(pfjax.experimental.continuous_time_model.ContinuousTimeModel):
 
     def _step_dt_pars(self, x_prev, y_next, dt_prev, dt_next, theta):
         """Parameters of the normal distribution for step_dt."""
+        dt_full = dt_prev + dt_next
         # pseudo linear gaussian measurement model
         Y, A, Omega = self.bridge_pars(y_curr=y_next, theta=theta)
         # drift and diffusion (variance scale)
@@ -99,12 +100,15 @@ class SDEModel(pfjax.experimental.continuous_time_model.ContinuousTimeModel):
         if self._diff_diag:
             df = jnp.diag(df)
         # df = df * dt_prev
+        Sigma_W = df * dt_prev
+        AS_W = jnp.matmul(A, Sigma_W)
+        Sigma_Y = jnp.matmul(AS_W, A.T) * (dt_full / dt_prev) + Omega
         return pfjax.mvn_bridge.mvn_bridge_mv(
             mu_W=x_prev + dr * dt_prev,
-            Sigma_W=df * dt_prev,
-            mu_Y=jnp.matmul(A, x_prev + dr * dt_next),
-            AS_W=jnp.matmul(A, df),
-            Sigma_Y=jnp.linalg.multi_dot([A, df, A.T]) * dt_next + Omega,
+            Sigma_W=Sigma_W,
+            mu_Y=jnp.matmul(A, x_prev + dr * dt_full),
+            AS_W=AS_W,
+            Sigma_Y=Sigma_Y,
             Y=Y,
         )
 

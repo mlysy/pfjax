@@ -67,6 +67,8 @@ def mvn_bridge_mv(mu_W, Sigma_W, mu_Y, AS_W, Sigma_Y, Y):
     #     Sigma_Y, jnp.hstack([jnp.array([Y-mu_Y]).T, AS_W])))
 
     Sigma_chol = jsp.linalg.cho_factor(Sigma_Y, True)
-    sol = jnp.matmul(AS_W.T, jsp.linalg.cho_solve(
-        Sigma_chol, jnp.hstack([jnp.array([Y-mu_Y]).T, AS_W])))
+    sol = jnp.matmul(
+        AS_W.T,
+        jsp.linalg.cho_solve(Sigma_chol, jnp.hstack([jnp.array([Y - mu_Y]).T, AS_W])),
+    )
     return mu_W + jnp.squeeze(sol[:, 0]), Sigma_W - sol[:, 1:]
