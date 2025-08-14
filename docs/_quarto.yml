@@ -1,0 +1,38 @@
+project:
+  type: website
+  render: 
+    - "*.qmd"
+    - "!sphinx/"
+
+website:
+  title: "PFJAX Docs"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - href: api/index.qmd
+        text: API Reference
+
+format:
+  html:
+    theme: cosmo
+
+metadata-files:
+  - api/_sidebar.yml
+
+bibliography: biblio.bib
+citeproc: true
+
+quartodoc:
+  package: pfjax
+  dir: api
+  sidebar: "api/_sidebar.yml"
+
+  sections:
+    - title: pfjax
+      contents:
+        - models.base_model
+##        - pfjax.models.bm_model
+## - pfjax.models.lotvol_model
+##        - models.base_model
+##        - pfjax.models.pgnet_model

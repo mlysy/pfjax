@@ -1,21 +1,11 @@
-import pytest
-from . import utils
+"""
+Unit tests for `pfjax.sde` module.
 
-@pytest.fixture(params=["lv_model", "bm_model", "pg_model"], ids=["lv", "bm", "pg"])
-def model_setup(request):
-    if request.param == "lv_model":
-        return utils.lv_setup()
-    if request.param == "bm_model":
-        return utils.bm_setup()
-    if request.param == "pg_model":
-        return utils.pg_setup()
-    raise ValueError(f"Unknown model type: {request.param}")
+Things to test:
 
-def test_sde_state_sample_for(model_setup):
-    utils.test_sde_state_sample_for(**model_setup)
+- [x] SDE base class works as expected, i.e., switches between `euler_{sim/lpdf}_diag()` and `euler_{sim/lpdf}_var()` at instantiation.
 
-def test_sde_state_lpdf_for(model_setup):
-    utils.test_sde_state_lpdf_for(**model_setup)
+- [x] `jit` + `grad` return without errors.
 
 - [x] JAX constructs (e.g., `vmap`, `xmap`, `lax.scan`, etc.) give the same result as for-loops, etc.
 
