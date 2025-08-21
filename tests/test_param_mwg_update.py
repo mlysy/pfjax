@@ -11,11 +11,10 @@ def model_setup(request):
         return utils.pg_setup()
     raise ValueError(f"Unknown model type: {request.param}")
 
-def test_particle_filter_rb_for(model_setup):
-    utils.test_particle_filter_rb_for(**model_setup)
 
-def test_particle_filter_rb_history(model_setup):
-    utils.test_particle_filter_rb_history(**model_setup)
+def test_param_mwg_update_for(model_setup):
+    utils.test_param_mwg_update_for(**model_setup)
 
-def test_particle_filter_rb_deriv(model_setup):
-    utils.test_particle_filter_rb_deriv(**model_setup)
+def test_param_mwg_update_jit(model_setup):
+    utils.test_param_mwg_update_jit(**model_setup)
+
