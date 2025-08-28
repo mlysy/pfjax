@@ -97,7 +97,7 @@ class ContinuousTimeModel(pfjax.experimental.base_model.BaseModel):
         """
         raise NotImplementedError
 
-    def pf_step_dt(key, x_prev, y_next, dt_prev, dt_next, theta):
+    def pf_step_dt(self, key, x_prev, y_next, dt_prev, dt_next, theta):
         """
         Particle filter update within a time interval.
 
