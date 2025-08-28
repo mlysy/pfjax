@@ -1,10 +1,12 @@
+import jax.numpy as jnp
+import jax.random as random
+import jax.scipy as jsp
 import matplotlib.pyplot as plt
 import numpy as np
-import jax.numpy as jnp
-import jax.scipy as jsp
-import jax.random as random
 import pfjax as pf
-import pfjax.models
+import pfjax.experimental.models
+
+# import pfjax.models
 # import pfjax.sde
 # import lotvol_model as lv
 
@@ -13,21 +15,20 @@ key = random.PRNGKey(0)
 # parameter values
 alpha = 1.02
 beta = 1.02
-gamma = 4.
+gamma = 4.0
 delta = 1.04
-sigma_H = .1
-sigma_L = .2
-tau_H = .25
-tau_L = .35
+sigma_H = 0.1
+sigma_L = 0.2
+tau_H = 0.25
+tau_L = 0.35
 theta = jnp.array([alpha, beta, gamma, delta, sigma_H, sigma_L, tau_H, tau_L])
 # data specification
-dt = .09
+dt = 0.09
 n_res = 10
 n_obs = 7
-x_init = jnp.block([[jnp.zeros((n_res-1, 2))],
-                    [jnp.log(jnp.array([5., 3.]))]])
+x_init = jnp.block([[jnp.zeros((n_res - 1, 2))], [jnp.log(jnp.array([5.0, 3.0]))]])
 # simulate with inherited class
-lv_model = pf.models.LotVolModel(dt=dt, n_res=n_res)
+lv_model = pf.experimental.models.LotVolModel(dt=dt, n_res=n_res)
 y_meas, x_state = pf.simulate(lv_model, key, n_obs, x_init, theta)
 
 # # bridge proposal
@@ -71,14 +72,21 @@ print("state_lp - state_lp_for= \n", state_lp - state_lp_for)
 
 # --- particle filter ----------------------------------------------------------
 
-pf.particle_filter(lv_model, key,
-                   y_meas, theta, n_particles=5,
-                   particle_sampler=pf.particle_resample_ot)
+pf.particle_filter(
+    lv_model,
+    key,
+    y_meas,
+    theta,
+    n_particles=5,
+    particle_sampler=pf.particle_resample_ot,
+)
 
 key, subkey = random.split(key)
-x_init = init_sample(y_init=jnp.log(jnp.array([5., 3.])),
-                     theta=jnp.append(theta[0:6], jnp.array([0., 0.])),
-                     key=subkey)
+x_init = init_sample(
+    y_init=jnp.log(jnp.array([5.0, 3.0])),
+    theta=jnp.append(theta[0:6], jnp.array([0.0, 0.0])),
+    key=subkey,
+)
 
 n_obs = 100
 key, subkey = random.split(key)
