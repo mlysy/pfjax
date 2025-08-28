@@ -1,24 +1,24 @@
-import itertools 
+import itertools
 import unittest
 from functools import partial
 
 import jax
-import jax.numpy as jnp 
-import jax.random as random 
-import jax.scipy as jsp 
-import jax.tree_util as jtu 
+import jax.numpy as jnp
+import jax.random as random
+import jax.scipy as jsp
+import jax.tree_util as jtu
 import ott
 import pandas as pd
 import pfjax as pf
-import pfjax.experimental.models as models_exp 
-import pfjax.mcmc as mcmc 
-import pfjax.models as models 
-import pfjax.particle_resamplers as resamplers 
-import pfjax.test.models as models_test 
-import pfjax.test.utils as test 
-import pfjax.utils as utils 
-from ott.geometry import pointcloud 
-from ott.problems.linear import linear_problem 
+import pfjax.experimental.models as models_exp
+import pfjax.mcmc as mcmc
+import pfjax.models as models
+import pfjax.particle_resamplers as resamplers
+import pfjax.test.models as models_test
+import pfjax.test.utils as test
+import pfjax.utils as utils
+from ott.geometry import pointcloud
+from ott.problems.linear import linear_problem
 from ott.solvers.linear import sinkhorn
 
 # --- general-purpose utilities ------------------------------------------------
@@ -46,18 +46,16 @@ def assert_equal(x1, x2, tol=1e-6, context=""):
     tol : float, optional
         Relative error tolerance. Default is 1e-6.
     context : str, optional
-        Extra string to include in assertion messages 
+        Extra string to include in assertion messages
         (e.g. "failed at index i, key k, or case c").
     """
     if isinstance(x1, dict):
         for k in x1.keys():
-            assert rel_err(x1[k], x2[k]) < tol, (
-                f"failed at key '{k}'" + (f", {context}" if context else "")
+            assert rel_err(x1[k], x2[k]) < tol, f"failed at key '{k}'" + (
+                f", {context}" if context else ""
             )
     else:
-        assert rel_err(x1, x2) < tol, (
-            f"failed" + (f" at {context}" if context else "")
-        )
+        assert rel_err(x1, x2) < tol, f"failed" + (f" at {context}" if context else "")
 
 
 def var_sim(key, size):
@@ -94,8 +92,8 @@ def bm_setup():
     """
     Setup function for BMModel tests.
 
-    This initializes key variables required for running Brownian Motion (BMModel) 
-    tests, including model parameters, number of observations, initial state, 
+    This initializes key variables required for running Brownian Motion (BMModel)
+    tests, including model parameters, number of observations, initial state,
     number of particles, and the model class reference.
 
     Returns
@@ -125,21 +123,21 @@ def bm_setup():
     tau = 0.1
     theta = jnp.array([mu, sigma, tau])
     # data specification
-    model_args = {"dt": .1}
+    model_args = {"dt": 0.1}
     n_obs = 5
-    x_init = jnp.array(0.)
+    x_init = jnp.array(0.0)
     # particle filter specification
     n_particles = 3
     # model specification
     Model = models.BMModel
     return {
-        'key': key,
-        'theta': theta,
-        'model_args': model_args,
-        'n_obs': n_obs,
-        'x_init': x_init,
-        'n_particles': n_particles,
-        'model': Model,
+        "key": key,
+        "theta": theta,
+        "model_args": model_args,
+        "n_obs": n_obs,
+        "x_init": x_init,
+        "n_particles": n_particles,
+        "model": Model,
     }
 
 
@@ -147,8 +145,8 @@ def lv_setup():
     """
     Setup function for LotVolModel tests.
 
-    This initializes key variables required for running LotVolModel tests, 
-    including model parameters, number of observations, initial state, 
+    This initializes key variables required for running LotVolModel tests,
+    including model parameters, number of observations, initial state,
     number of particles, and model class references.
 
     Returns
@@ -179,31 +177,29 @@ def lv_setup():
     beta = 1.02
     gamma = 4.0
     delta = 1.04
-    sigma_H = .1
-    sigma_L = .2
-    tau_H = .25
-    tau_L = .35
-    theta = jnp.array([alpha, beta, gamma, delta,
-                            sigma_H, sigma_L, tau_H, tau_L])
+    sigma_H = 0.1
+    sigma_L = 0.2
+    tau_H = 0.25
+    tau_L = 0.35
+    theta = jnp.array([alpha, beta, gamma, delta, sigma_H, sigma_L, tau_H, tau_L])
     # data specification
     dt = 0.09
     n_res = 3
     model_args = {"dt": dt, "n_res": n_res}
     n_obs = 7
-    x_init = jnp.block([[jnp.zeros((n_res-1, 2))],
-                             [jnp.log(jnp.array([5., 3.]))]])
+    x_init = jnp.block([[jnp.zeros((n_res - 1, 2))], [jnp.log(jnp.array([5.0, 3.0]))]])
     n_particles = 25
     Model = models_exp.LotVolModel
     Model2 = models_test.LotVolModel
     return {
-        'key': key,
-        'theta': theta,
-        'model_args': model_args,
-        'n_obs': n_obs,
-        'x_init': x_init,
-        'n_particles': n_particles,
-        'model': Model,
-        'model2': Model2
+        "key": key,
+        "theta": theta,
+        "model_args": model_args,
+        "n_obs": n_obs,
+        "x_init": x_init,
+        "n_particles": n_particles,
+        "model": Model,
+        "model2": Model2,
     }
 
 
@@ -211,8 +207,8 @@ def pg_setup():
     """
     Setup function for PGNETModel tests.
 
-    This initializes key variables required for running PGNETModel tests, 
-    including model parameters, number of observations, initial state, 
+    This initializes key variables required for running PGNETModel tests,
+    including model parameters, number of observations, initial state,
     number of particles, and model class references.
 
     Returns
@@ -247,30 +243,33 @@ def pg_setup():
     n_res = 4
     model_args = {"dt": dt, "n_res": n_res}
     n_obs = 9
-    x_init = jnp.block([[jnp.zeros((n_res-1, 4))],
-                             [jnp.log(jnp.array([8., 8., 8., 5.]))]])
+    x_init = jnp.block(
+        [[jnp.zeros((n_res - 1, 4))], [jnp.log(jnp.array([8.0, 8.0, 8.0, 5.0]))]]
+    )
     n_particles = 2
     Model = models.PGNETModel
     Model2 = models.PGNETModel
     return {
-        'key': key,
-        'theta': theta,
-        'model_args': model_args,
-        'n_obs': n_obs,
-        'x_init': x_init,
-        'n_particles': n_particles,
-        'model': Model,
-        'model2': Model2
+        "key": key,
+        "theta": theta,
+        "model_args": model_args,
+        "n_obs": n_obs,
+        "x_init": x_init,
+        "n_particles": n_particles,
+        "model": Model,
+        "model2": Model2,
     }
 
+
 # move into individual test files
-    
+
+
 def fact_setup(self):
     """
     Setup function for factorization tests.
 
-    This initializes variables required for matrix and vector factorization 
-    tests, including latent and observed dimensions, random parameters, 
+    This initializes variables required for matrix and vector factorization
+    tests, including latent and observed dimensions, random parameters,
     and joint distribution values.
 
     Returns
@@ -352,7 +351,7 @@ def ot_setup():
     """
     Setup function for optimal transport tests.
 
-    Initializes variables required for running optimal transport tests, 
+    Initializes variables required for running optimal transport tests,
     including the PRNG key, number of particles, and problem dimension.
 
     Returns
@@ -372,9 +371,9 @@ def ot_setup():
     n_dim = 5
 
     return {
-        'key': key,
-        'n_particles': n_particles,
-        'n_dim': n_dim,
+        "key": key,
+        "n_particles": n_particles,
+        "n_dim": n_dim,
     }
     # # parameter values
     # alpha = 1.02
@@ -406,8 +405,8 @@ def test_simulate_for(model, key, n_obs, x_init, theta, model_args, **kwargs):
     """
     Test function to compare simulation implementations.
 
-    Compares the outputs of two simulation approaches (for-loop vs scan/vmap) 
-    for the specified model. Checks that both the simulated measurements and 
+    Compares the outputs of two simulation approaches (for-loop vs scan/vmap)
+    for the specified model. Checks that both the simulated measurements and
     latent states match to within numerical precision.
 
      Parameters
@@ -488,25 +487,24 @@ def test_simulate_jit(model, key, n_obs, x_init, theta, model_args, **kwargs):
         total : float
             Sum of all elements in the simulation outputs as a scalar.
         """
-        out = pf.simulate(model = model, key = key, n_obs = n_obs, x_init = x_init, theta = theta)
-        return jtu.tree_reduce(lambda x, y: x + jnp.sum(y),
-                               out,
-                               jnp.array(0.0))
-    
+        out = pf.simulate(model=model, key=key, n_obs=n_obs, x_init=x_init, theta=theta)
+        return jtu.tree_reduce(lambda x, y: x + jnp.sum(y), out, jnp.array(0.0))
+
     # simulate without jit
     y_meas1, x_state1 = pf.simulate(model, key, n_obs, x_init, theta)
     # simulate with jit
     simulate_jit = jax.jit(pf.simulate, static_argnums=(0, 2))
     y_meas2, x_state2 = simulate_jit(model, key, n_obs, x_init, theta)
-    
+
     assert_equal(y_meas1, y_meas2)
     assert_equal(x_state1, x_state2)
-    
+
     # grad without jit
     grad1 = jax.grad(obj_fun, argnums=4)(model, key, n_obs, x_init, theta)
     # grad with jit
     grad2 = jax.jit(jax.grad(obj_fun, argnums=4), static_argnums=(0, 2))(
-        model, key, n_obs, x_init, theta)
+        model, key, n_obs, x_init, theta
+    )
     assert_equal(grad1, grad2)
 
 
@@ -514,7 +512,7 @@ def test_simulate_models(model, model2, key, n_obs, x_init, theta, **kwargs):
     """
     Test function to compare equivalent model definitions.
 
-    Checks that equivalent model implementations produce the same simulation 
+    Checks that equivalent model implementations produce the same simulation
     results for both measurements and latent states.
 
     Parameters
@@ -551,7 +549,7 @@ def test_loglik_full_for(model, key, n_obs, x_init, theta, model_args, **kwargs)
     Test function to compare old and new particle filter implementations.
 
     Compares the outputs of the old for-loop implementation and the vmap implementation
-    of the particle filter for a set of test cases. Checks that all relevant outputs 
+    of the particle filter for a set of test cases. Checks that all relevant outputs
     match to within numerical precision.
 
     Parameters
@@ -578,8 +576,7 @@ def test_loglik_full_for(model, key, n_obs, x_init, theta, model_args, **kwargs)
     # joint loglikelihood with for-loop
     loglik1 = test.loglik_full_for(model, y_meas, x_state, theta)
     # joint loglikelihood with vmap
-    loglik2 = pf.loglik_full(model,
-                             y_meas, x_state, theta)
+    loglik2 = pf.loglik_full(model, y_meas, x_state, theta)
     assert_equal(loglik1, loglik2)
 
 
@@ -616,8 +613,7 @@ def test_loglik_full_jit(model, key, n_obs, x_init, theta, model_args, **kwargs)
     loglik1 = pf.loglik_full(model, y_meas, x_state, theta)
     # joint loglikelihood with jit
     loglik_full_jit = jax.jit(pf.loglik_full, static_argnums=0)
-    loglik2 = loglik_full_jit(model,
-                              y_meas, x_state, theta)
+    loglik2 = loglik_full_jit(model, y_meas, x_state, theta)
     assert_equal(loglik1, loglik2)
     # grad without jit
     grad1 = jax.grad(pf.loglik_full, argnums=(2, 3))(model, y_meas, x_state, theta)
@@ -629,7 +625,9 @@ def test_loglik_full_jit(model, key, n_obs, x_init, theta, model_args, **kwargs)
         assert_equal(grad1[i], grad2[i], context=f"index '{i}'")
 
 
-def test_loglik_full_models(model1, model2, key, n_obs, x_init, theta, model_args, **kwargs):
+def test_loglik_full_models(
+    model1, model2, key, n_obs, x_init, theta, model_args, **kwargs
+):
     """
     Test function to compare joint loglikelihoods across two equivalent model
     implementations.
@@ -658,7 +656,9 @@ def test_loglik_full_models(model1, model2, key, n_obs, x_init, theta, model_arg
     """
 
     # simulate with inherited class
-    y_meas, x_state = pf.simulate(model=model2, key=key, n_obs=n_obs, x_init=x_init, theta=theta)
+    y_meas, x_state = pf.simulate(
+        model=model2, key=key, n_obs=n_obs, x_init=x_init, theta=theta
+    )
     # joint loglikelihood with non-inherited class
     loglik1 = pf.loglik_full(model=model1, y_meas=y_meas, x_state=x_state, theta=theta)
     # joint loglikelihood with inherited class
@@ -668,34 +668,37 @@ def test_loglik_full_models(model1, model2, key, n_obs, x_init, theta, model_arg
 
 # --- particle_filter test functions -------------------------------------------
 
-def test_particle_filter_for(model, key, n_obs, x_init, theta, model_args, n_particles, **kwargs):
-    """
-    Test function to compare old and new particle filter implementations.
 
-    Compares the outputs of the old for-loop implementation and the new vmap 
-    implementation of the particle filter for a set of test cases. 
-    Checks that all relevant outputs match to within numerical precision.
-
-    Parameters
-    ----------
-    model : callable
-        The model class/constructor to instantiate.
-    key : PRNGKey
-        JAX random key.
-    n_obs : int
-        Number of observations.
-    x_init : ndarray
-        Initial latent state.
-    theta : ndarray or dict
-        Model parameters.
-    n_particles : int
-        Number of particles for the filter.
-   model_args : dict
-        Keyword arguments used to instantiate model.
-   **kwargs : dict, optional
-        Additional unused keyword arguments.
+def test_particle_filter_for(
+    model, key, n_obs, x_init, theta, model_args, n_particles, **kwargs
+):
     """
-    
+     Test function to compare old and new particle filter implementations.
+
+     Compares the outputs of the old for-loop implementation and the new vmap
+     implementation of the particle filter for a set of test cases.
+     Checks that all relevant outputs match to within numerical precision.
+
+     Parameters
+     ----------
+     model : callable
+         The model class/constructor to instantiate.
+     key : PRNGKey
+         JAX random key.
+     n_obs : int
+         Number of observations.
+     x_init : ndarray
+         Initial latent state.
+     theta : ndarray or dict
+         Model parameters.
+     n_particles : int
+         Number of particles for the filter.
+    model_args : dict
+         Keyword arguments used to instantiate model.
+    **kwargs : dict, optional
+         Additional unused keyword arguments.
+    """
+
     # Instantiate model
     model = model(**model_args)
     # define test cases
@@ -711,33 +714,36 @@ def test_particle_filter_for(model, key, n_obs, x_init, theta, model_args, n_par
         case = test_cases.iloc[i]
         # new pf
         pf_out2 = pf.particle_filter(
-            model, subkey, y_meas, theta, n_particles,
-            score=False, fisher=False, **case)
+            model, subkey, y_meas, theta, n_particles, score=False, fisher=False, **case
+        )
         # check outputs
         if case["history"]:
-            max_diff = {k: rel_err(pf_out1[k], pf_out2[k])
-                        for k in ["x_particles", "logw"]}
+            max_diff = {
+                k: rel_err(pf_out1[k], pf_out2[k]) for k in ["x_particles", "logw"]
+            }
             max_diff["ancestors"] = rel_err(
-                X1=pf_out1["ancestors"],
-                X2=pf_out2["resample_out"]["ancestors"]
+                X1=pf_out1["ancestors"], X2=pf_out2["resample_out"]["ancestors"]
             )
         else:
-            max_diff = {k: rel_err(pf_out1[k][n_obs-1],  pf_out2[k])
-                        for k in ["x_particles", "logw"]}
+            max_diff = {
+                k: rel_err(pf_out1[k][n_obs - 1], pf_out2[k])
+                for k in ["x_particles", "logw"]
+            }
             max_diff["loglik"] = rel_err(
-                X1=test.particle_loglik(pf_out1["logw"]),
-                X2=pf_out2["loglik"]
+                X1=test.particle_loglik(pf_out1["logw"]), X2=pf_out2["loglik"]
             )
         for k in max_diff.keys():
-                assert_equal(max_diff[k], 0.0, context=f"key '{k}', case={case}")
+            assert_equal(max_diff[k], 0.0, context=f"key '{k}', case={case}")
 
 
-def test_particle_filter_deriv(model, key, n_obs, x_init, theta, model_args, n_particles, **kwargs):
+def test_particle_filter_deriv(
+    model, key, n_obs, x_init, theta, model_args, n_particles, **kwargs
+):
     """
     Test function to check particle filter derivatives.
 
-    Compares online and brute-force calculations of the score and Fisher information (hessian) for 
-    the particle filter, across multiple test cases. Asserts that both methods yield numerically 
+    Compares online and brute-force calculations of the score and Fisher information (hessian) for
+    the particle filter, across multiple test cases. Asserts that both methods yield numerically
     identical results.
 
     Parameters
@@ -759,7 +765,7 @@ def test_particle_filter_deriv(model, key, n_obs, x_init, theta, model_args, n_p
     **kwargs : dict, optional
         Additional unused keyword arguments.
     """
-    
+
     # instantiate model
     model = model(**model_args)
 
@@ -800,29 +806,27 @@ def test_particle_filter_deriv(model, key, n_obs, x_init, theta, model_args, n_p
     for i in range(n_cases):
         case = test_cases.iloc[i]
         # pf various history/derivatives
-        pf_out2 = pf.particle_filter(
-            model, subkey, y_meas, theta, n_particles, **case
-        )
+        pf_out2 = pf.particle_filter(model, subkey, y_meas, theta, n_particles, **case)
         # check outputs
         if case["history"]:
-            max_diff = {k: rel_err(pf_out1[k],  pf_out2[k])
-                        for k in ["x_particles", "logw"]}
+            max_diff = {
+                k: rel_err(pf_out1[k], pf_out2[k]) for k in ["x_particles", "logw"]
+            }
             max_diff["ancestors"] = rel_err(
                 X1=pf_out1["resample_out"]["ancestors"],
-                X2=pf_out2["resample_out"]["ancestors"]
+                X2=pf_out2["resample_out"]["ancestors"],
             )
         else:
-            max_diff = {k: rel_err(pf_out1[k][n_obs-1],  pf_out2[k])
-                        for k in ["x_particles", "logw"]}
-        max_diff["loglik"] = rel_err(
-            X1=pf_out1["loglik"],
-            X2=pf_out2["loglik"]
-        )
+            max_diff = {
+                k: rel_err(pf_out1[k][n_obs - 1], pf_out2[k])
+                for k in ["x_particles", "logw"]
+            }
+        max_diff["loglik"] = rel_err(X1=pf_out1["loglik"], X2=pf_out2["loglik"])
         if case["score"] or case["fisher"]:
             # score and hess using smoothing accumulator
             x_particles = pf_out1["x_particles"]
             ancestors = pf_out1["resample_out"]["ancestors"]
-            logw = pf_out1["logw"][n_obs-1]
+            logw = pf_out1["logw"][n_obs - 1]
             alpha, beta = test.accumulate_smooth(
                 logw=logw,
                 x_particles=x_particles,
@@ -830,20 +834,18 @@ def test_particle_filter_deriv(model, key, n_obs, x_init, theta, model_args, n_p
                 y_meas=y_meas,
                 theta=theta,
                 accumulator=accumulate_deriv,
-                mean=False
+                mean=False,
             )
             prob = utils.logw_to_prob(logw)
             _score = jax.vmap(jnp.multiply)(prob, alpha)
-            _hess = jax.vmap(
-                lambda p, a, b: p * (jnp.outer(a, a) + b)
-            )(prob, alpha, beta)
-            _score, _hess = jtu.tree_map(
-                lambda x: jnp.sum(x, axis=0), (_score, _hess))
+            _hess = jax.vmap(lambda p, a, b: p * (jnp.outer(a, a) + b))(
+                prob, alpha, beta
+            )
+            _score, _hess = jtu.tree_map(lambda x: jnp.sum(x, axis=0), (_score, _hess))
             max_diff["score"] = rel_err(_score, pf_out2["score"])
             if case["fisher"]:
                 max_diff["fisher"] = rel_err(
-                    -1. * (_hess - jnp.outer(_score, _score)),
-                    pf_out2["fisher"]
+                    -1.0 * (_hess - jnp.outer(_score, _score)), pf_out2["fisher"]
                 )
         for k in max_diff.keys():
             assert_equal(max_diff[k], 0.0, context=f"key '{k}', case={case}")
@@ -852,7 +854,9 @@ def test_particle_filter_deriv(model, key, n_obs, x_init, theta, model_args, n_p
 # --- particle_filter_rb test functions ----------------------------------------
 
 
-def test_particle_filter_rb_for(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
+def test_particle_filter_rb_for(
+    model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs
+):
     """
     Compare RB particle filter (vmap/scan) vs the for-loop reference.
 
@@ -878,7 +882,7 @@ def test_particle_filter_rb_for(model, key, n_obs, x_init, theta, n_particles, m
     **kwargs : dict, optional
         Additional unused keyword arguments.
     """
-    
+
     # instantiate model
     model = model(**model_args)
 
@@ -903,12 +907,16 @@ def test_particle_filter_rb_for(model, key, n_obs, x_init, theta, n_particles, m
         pf_out2 = test.particle_filter_rb_for(
             model, subkey, y_meas, theta, n_particles, **case
         )
-        max_diff = jtu.tree_map(rel_err, pf_out1, pf_out2)
-        for k in max_diff.keys():
-            assert_equal(max_diff[k], 0.0, context=f"key '{k}', case={case}")
+        # max_diff = jtu.tree_map(rel_err, pf_out1, pf_out2)
+        # for k in max_diff.keys():
+        #     assert_equal(max_diff[k], 0.0, context=f"key '{k}', case={case}")
+        for k in pf_out1.keys():
+            assert_equal(pf_out1[k], pf_out2[k], context=f"key='{k}', case={case}")
 
 
-def test_particle_filter_rb_history(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
+def test_particle_filter_rb_history(
+    model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs
+):
     """
     Check that RB particle filter outputs are identical with and without history.
 
@@ -934,7 +942,7 @@ def test_particle_filter_rb_history(model, key, n_obs, x_init, theta, n_particle
     **kwargs : dict, optional
         Additional unused keyword arguments.
     """
-    
+
     # instantiate model
     model = model(**model_args)
     # define test cases
@@ -950,25 +958,24 @@ def test_particle_filter_rb_history(model, key, n_obs, x_init, theta, n_particle
         key, subkey = random.split(key)
         # rb filter no history
         pf_out1 = pf.particle_filter_rb(
-            model, subkey, y_meas, theta, n_particles,
-            history=False, **case
+            model, subkey, y_meas, theta, n_particles, history=False, **case
         )
         # rb filter history
         pf_out2 = pf.particle_filter_rb(
-            model, subkey, y_meas, theta, n_particles,
-            history=True, **case
+            model, subkey, y_meas, theta, n_particles, history=True, **case
         )
         # check outputs
         keys = ["loglik"]
-        keys = keys + ["score"] \
-            if case["score"] or case["fisher"] else keys
+        keys = keys + ["score"] if case["score"] or case["fisher"] else keys
         keys = keys + ["fisher"] if case["fisher"] else keys
         max_diff = {k: rel_err(pf_out1[k], pf_out2[k]) for k in keys}
         for k in max_diff.keys():
             assert_equal(max_diff[k], 0.0, context=f"key '{k}', case={case}")
 
 
-def test_particle_filter_rb_deriv(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
+def test_particle_filter_rb_deriv(
+    model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs
+):
     """
     Parameters
     ----------
@@ -989,7 +996,7 @@ def test_particle_filter_rb_deriv(model, key, n_obs, x_init, theta, n_particles,
     **kwargs : dict, optional
         Additional unused keyword arguments.
     """
-    
+
     # instantiate model
     model = model(**model_args)
 
@@ -1110,7 +1117,9 @@ def test_particle_filter_rb_deriv(model, key, n_obs, x_init, theta, n_particles,
 # --- param_mwg_update test functions ------------------------------------------
 
 
-def test_param_mwg_update_for(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
+def test_param_mwg_update_for(
+    model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs
+):
     """
     Parameters
     ----------
@@ -1131,7 +1140,7 @@ def test_param_mwg_update_for(model, key, n_obs, x_init, theta, n_particles, mod
     **kwargs : dict, optional
         Additional unused keyword arguments.
     """
-    
+
     # instantiate model
     model = model(**model_args)
     # simulate without for-loop
@@ -1166,7 +1175,9 @@ def test_param_mwg_update_for(model, key, n_obs, x_init, theta, n_particles, mod
         assert_equal(mwg_out1[i], mwg_out2[i], context=f"index {i}")
 
 
-def test_param_mwg_update_jit(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
+def test_param_mwg_update_jit(
+    model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs
+):
     """
     Parameters
     ----------
@@ -1187,7 +1198,7 @@ def test_param_mwg_update_jit(model, key, n_obs, x_init, theta, n_particles, mod
     **kwargs : dict, optional
         Additional unused keyword arguments.
     """
-    
+
     # instantiate model
     model = model(**model_args)
     # simulate data
@@ -1249,30 +1260,26 @@ def test_resample_mvn_for(key, **kwargs):
     for i in range(n_cases):
         case = test_cases.iloc[i]
         x_particles = jax.random.normal(
-            key=subkey,
-            shape=(n_particles,) + case["shape"]
+            key=subkey, shape=(n_particles,) + case["shape"]
         )
         # for-loop version
         new_particles1 = test.resample_mvn_for(
-            key=subkey,
-            x_particles_prev=x_particles,
-            logw=logw
+            key=subkey, x_particles_prev=x_particles, logw=logw
         )
         # vmap version
         new_particles2 = resamplers.resample_mvn(
-            key=subkey,
-            x_particles_prev=x_particles,
-            logw=logw
+            key=subkey, x_particles_prev=x_particles, logw=logw
         )
         for k in new_particles1.keys():
-            assert_equal(new_particles1[k], new_particles2[k], context=f"key '{k}', case={case}")
-            
+            assert_equal(
+                new_particles1[k], new_particles2[k], context=f"key '{k}', case={case}"
+            )
 
 
 def test_resample_mvn_shape(key, **kwargs):
     """
     Check that shaped and flat particles give the same results.
-    
+
     Parameters
     ----------
     key : PRNGKey
@@ -1290,32 +1297,27 @@ def test_resample_mvn_shape(key, **kwargs):
         case = test_cases.iloc[i]
         # original shape
         x_particles1 = jax.random.normal(
-            key=subkey,
-            shape=(n_particles,) + case["shape"]
+            key=subkey, shape=(n_particles,) + case["shape"]
         )
         new_particles1 = test.resample_mvn_for(
-            key=subkey,
-            x_particles_prev=x_particles1,
-            logw=logw
+            key=subkey, x_particles_prev=x_particles1, logw=logw
         )
         # flattened shape
         dim2 = jnp.zeros(case["shape"]).size
         dim2 = (dim2,) if dim2 > 0 else ()
-        x_particles2 = jax.random.normal(
-            key=subkey,
-            shape=(n_particles,) + dim2
-        )
+        x_particles2 = jax.random.normal(key=subkey, shape=(n_particles,) + dim2)
         new_particles2 = resamplers.resample_mvn(
-            key=subkey,
-            x_particles_prev=x_particles2,
-            logw=logw
+            key=subkey, x_particles_prev=x_particles2, logw=logw
         )
         for k in ["mvn_mean", "mvn_cov"]:
-            assert_equal(new_particles1[k], new_particles2[k], context=f"key '{k}', case={case}")
-            
+            assert_equal(
+                new_particles1[k], new_particles2[k], context=f"key '{k}', case={case}"
+            )
 
 
-def test_resample_mvn_jit(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
+def test_resample_mvn_jit(
+    model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs
+):
     """
     Parameters
     ----------
@@ -1336,9 +1338,10 @@ def test_resample_mvn_jit(model, key, n_obs, x_init, theta, n_particles, model_a
     **kwargs : dict, optional
         Additional unused keyword arguments.
     """
-    
+
     # instantiate model
     model = model(**model_args)
+
     # objective function for gradient
     def obj_fun(model, key, y_meas, theta, n_particles):
         out = pf.particle_filter(
@@ -1368,14 +1371,17 @@ def test_resample_mvn_jit(model, key, n_obs, x_init, theta, n_particles, model_a
     grad1 = jax.grad(obj_fun, argnums=3)(model, key, y_meas, theta, n_particles)
     # grad with jit
     grad2 = jax.jit(jax.grad(obj_fun, argnums=3), static_argnums=(0, 4))(
-        model, key, y_meas, theta, n_particles)
+        model, key, y_meas, theta, n_particles
+    )
     assert_equal(grad1, grad2)
 
 
 # --- particle_smooth test functions -------------------------------------------
 
 
-def test_particle_smooth_for(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
+def test_particle_smooth_for(
+    model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs
+):
     """
     Parameters
     ----------
@@ -1396,7 +1402,7 @@ def test_particle_smooth_for(model, key, n_obs, x_init, theta, n_particles, mode
     **kwargs : dict, optional
         Additional unused keyword arguments.
     """
-    
+
     # instantiate model
     model = model(**model_args)
     # simulate without for-loop
@@ -1423,7 +1429,9 @@ def test_particle_smooth_for(model, key, n_obs, x_init, theta, n_particles, mode
     assert_equal(x_state1, x_state2)
 
 
-def test_particle_smooth_jit(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
+def test_particle_smooth_jit(
+    model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs
+):
     """
     Parameters
     ----------
@@ -1444,7 +1452,7 @@ def test_particle_smooth_jit(model, key, n_obs, x_init, theta, n_particles, mode
     **kwargs : dict, optional
         Additional unused keyword arguments.
     """
-    
+
     # instantiate model
     model = model(**model_args)
 
@@ -1489,18 +1497,21 @@ def test_particle_smooth_jit(model, key, n_obs, x_init, theta, n_particles, mode
     grad1 = jax.grad(obj_fun, argnums=3)(model, key, y_meas, theta, n_particles)
     # grad with jit
     grad2 = jax.jit(jax.grad(obj_fun, argnums=3), static_argnums=(0, 4))(
-        model, key, y_meas, theta, n_particles)
+        model, key, y_meas, theta, n_particles
+    )
     assert_equal(grad1, grad2)
 
 
 # --- sde test functions -------------------------------------------------------
 
 
-def test_sde_state_sample_for(model, model2, key, x_init, theta, n_particles, model_args, n_obs):
+def test_sde_state_sample_for(
+    model, model2, key, x_init, theta, n_particles, model_args, n_obs
+):
     """
-    Test function to compare sde implementations. Compares the outputs of 
+    Test function to compare sde implementations. Compares the outputs of
     two simulation approaches (for-loop vs scan/vmap) for the lv model.
-    Note: state_sample_for() only implemented in test.lotvol_model. 
+    Note: state_sample_for() only implemented in test.lotvol_model.
 
     Parameters
     ----------
@@ -1538,10 +1549,12 @@ def test_sde_state_sample_for(model, model2, key, x_init, theta, n_particles, mo
     assert_equal(x_state1, x_state2)
 
 
-def test_sde_state_lpdf_for(model, model2, key, x_init, theta, n_particles, model_args, n_obs):
+def test_sde_state_lpdf_for(
+    model, model2, key, x_init, theta, n_particles, model_args, n_obs
+):
     """
-    Test function to compare sde lpdf implementations. Compares the outputs of 
-    two simulation approaches (for-loop vs scan/vmap) for the lv model. 
+    Test function to compare sde lpdf implementations. Compares the outputs of
+    two simulation approaches (for-loop vs scan/vmap) for the lv model.
     Note: state_sample_for() only implemented in test.lotvol_model.
 
     Parameters
@@ -1585,7 +1598,9 @@ def test_sde_state_lpdf_for(model, model2, key, x_init, theta, n_particles, mode
     assert_equal(lp1, lp2)
 
 
-def test_bridge_step_for(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
+def test_bridge_step_for(
+    model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs
+):
     """
     Parameters
     ----------
@@ -1606,7 +1621,7 @@ def test_bridge_step_for(model, key, n_obs, x_init, theta, n_particles, model_ar
     **kwargs : dict, optional
         Additional unused keyword arguments.
     """
-    
+
     # instantiate model
     model = model(**model_args)
     n_res = model_args["n_res"]
@@ -1679,28 +1694,21 @@ def test_resample_ot_sinkhorn(key, n_particles, n_dim, **kwargs):
             scale_cost = n_dim * scale_cost
         else:
             scale_cost = 1.0
-        sinkhorn_kwargs = {"min_iterations": n_iter_ot,
-                            "max_iterations": n_iter_ot}
-        pointcloud_kwargs = {"epsilon": epsilon,
-                                "scale_cost": 1.0}
+        sinkhorn_kwargs = {"min_iterations": n_iter_ot, "max_iterations": n_iter_ot}
+        pointcloud_kwargs = {"epsilon": epsilon, "scale_cost": 1.0}
         custom_kwargs = {
             "epsilon": epsilon,
             "scale_cost": scale_cost,
-            "n_iterations": n_iter_custom
+            "n_iterations": n_iter_custom,
         }
         if case["method"] == "jax-ott":
             custom_a = a
             custom_v = v
-            custom_kwargs.update({
-                "a": custom_a,
-                "u": u,
-                "b": b,
-                "v": custom_v
-            })
+            custom_kwargs.update({"a": custom_a, "u": u, "b": b, "v": custom_v})
             # sinkhorn with jax-ott
-            geom = pointcloud.PointCloud(u / jnp.sqrt(scale_cost),
-                                            v / jnp.sqrt(scale_cost),
-                                            **pointcloud_kwargs)
+            geom = pointcloud.PointCloud(
+                u / jnp.sqrt(scale_cost), v / jnp.sqrt(scale_cost), **pointcloud_kwargs
+            )
             problem = linear_problem.LinearProblem(geom, a=a, b=b)
             solver = sinkhorn.Sinkhorn(**sinkhorn_kwargs)
             sink = solver(problem)
@@ -1708,24 +1716,21 @@ def test_resample_ot_sinkhorn(key, n_particles, n_dim, **kwargs):
             #                          **sinkhorn_kwargs)
             out1 = {
                 "P": sink.matrix,
-                "tsp": x_over_y(sink.apply(inputs=v.T, axis=1).T, a)
+                "tsp": x_over_y(sink.apply(inputs=v.T, axis=1).T, a),
             }
         elif case["method"] == "resample_ot":
-            custom_a = jnp.ones(n_particles)/n_particles
+            custom_a = jnp.ones(n_particles) / n_particles
             custom_v = u
-            custom_kwargs.update({
-                "a": custom_a,
-                "u": u,
-                "b": a,
-                "v": custom_v
-            })
+            custom_kwargs.update({"a": custom_a, "u": u, "b": a, "v": custom_v})
             # sinkhorn with resample-ott
             # kwargs need to be jitted each time,
             # can't make dict static argument
-            resampler = partial(pf.particle_resamplers.resample_ot,
-                                scaled=case["scaled"],
-                                sinkhorn_kwargs=sinkhorn_kwargs,
-                                pointcloud_kwargs=pointcloud_kwargs)
+            resampler = partial(
+                pf.particle_resamplers.resample_ot,
+                scaled=case["scaled"],
+                sinkhorn_kwargs=sinkhorn_kwargs,
+                pointcloud_kwargs=pointcloud_kwargs,
+            )
             out1 = jax.jit(resampler)(
                 x_particles_prev=u,
                 logw=jnp.log(a) - 5.0,
@@ -1739,11 +1744,11 @@ def test_resample_ot_sinkhorn(key, n_particles, n_dim, **kwargs):
             "P": P2,
             # note: using P1 instead since
             # transport errors propagate quite a bit
-            "tsp": x_over_y(jnp.matmul(out1["P"], custom_v), custom_a)
+            "tsp": x_over_y(jnp.matmul(out1["P"], custom_v), custom_a),
         }
         for k in out2.keys():  # Note: out1 has different keys!
             err = rel_err(out1[k], out2[k])
-            assert(err < .001), f"failed at key '{k}', case '{case}'"
+            assert err < 0.001, f"failed at key '{k}', case '{case}'"
 
 
 def test_resample_ot_jit(key, n_particles, **kwargs):
@@ -1785,32 +1790,28 @@ def test_resample_ot_jit(key, n_particles, **kwargs):
         else:
             scale_cost = 1.0
         if case["kwargs"]:
-            sinkhorn_kwargs = {"min_iterations": n_iterations,
-                                "max_iterations": n_iterations}
-            pointcloud_kwargs = {"epsilon": epsilon,
-                                    "scale_cost": 1.0}
+            sinkhorn_kwargs = {
+                "min_iterations": n_iterations,
+                "max_iterations": n_iterations,
+            }
+            pointcloud_kwargs = {"epsilon": epsilon, "scale_cost": 1.0}
         else:
             sinkhorn_kwargs = {}
             pointcloud_kwargs = {}
         # unjitted
-        resampler = partial(pf.particle_resamplers.resample_ot,
-                            scaled=case["scaled"],
-                            sinkhorn_kwargs=sinkhorn_kwargs,
-                            pointcloud_kwargs=pointcloud_kwargs)
-        out1 = resampler(
-            x_particles_prev=x_particles_prev,
-            logw=logw,
-            key=key
+        resampler = partial(
+            pf.particle_resamplers.resample_ot,
+            scaled=case["scaled"],
+            sinkhorn_kwargs=sinkhorn_kwargs,
+            pointcloud_kwargs=pointcloud_kwargs,
         )
+        out1 = resampler(x_particles_prev=x_particles_prev, logw=logw, key=key)
         # jitted
         if case["method"] == "jitted_1":
             resampler = jax.jit(resampler)
-            out2 = resampler(
-                x_particles_prev=x_particles_prev,
-                logw=logw,
-                key=key
-            )
+            out2 = resampler(x_particles_prev=x_particles_prev, logw=logw, key=key)
         elif case["method"] == "jitted_2":
+
             @jax.jit
             def resampler(x_particles_prev, logw, key):
                 return pf.particle_resamplers.resample_ot(
@@ -1819,17 +1820,14 @@ def test_resample_ot_jit(key, n_particles, **kwargs):
                     key=key,
                     scaled=case["scaled"],
                     sinkhorn_kwargs=sinkhorn_kwargs,
-                    pointcloud_kwargs=pointcloud_kwargs
+                    pointcloud_kwargs=pointcloud_kwargs,
                 )
-            out2 = resampler(
-                x_particles_prev=x_particles_prev,
-                logw=logw,
-                key=key
-            )
+
+            out2 = resampler(x_particles_prev=x_particles_prev, logw=logw, key=key)
         # jitted vs unjitted
         for k in ["x_particles"]:
             err = rel_err(out1[k], out2[k])
-            assert(err < 1e-4), f"failed at key '{k}', case '{case}'"
+            assert err < 1e-4, f"failed at key '{k}', case '{case}'"
 
 
 # def test_for_particle_filter(self):
