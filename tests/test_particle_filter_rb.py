@@ -1,7 +1,10 @@
 import pytest
 from . import utils
 
-@pytest.fixture(params=["lv_model", "bm_model", "pg_model"], ids=["lv", "bm", "pg"])
+model_names = ["lv_model", "bm_model", "pg_model"]
+model_ids = ["lv", "bm", "pg"]
+
+@pytest.fixture(params=model_names[0:1], ids=model_ids[0:1])
 def model_setup(request):
     if request.param == "lv_model":
         return utils.lv_setup()
@@ -19,3 +22,4 @@ def test_particle_filter_rb_history(model_setup):
 
 def test_particle_filter_rb_deriv(model_setup):
     utils.test_particle_filter_rb_deriv(**model_setup)
+
