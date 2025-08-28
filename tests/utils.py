@@ -1,27 +1,24 @@
-import itertools
+import itertools 
 import unittest
 from functools import partial
 
 import jax
-import jax.numpy as jnp
-import jax.random as random
-import jax.scipy as jsp
-import jax.tree_util as jtu
+import jax.numpy as jnp 
+import jax.random as random 
+import jax.scipy as jsp 
+import jax.tree_util as jtu 
 import ott
 import pandas as pd
 import pfjax as pf
-import pfjax.experimental.models as models_exp
-import pfjax.mcmc as mcmc
-import pfjax.models as models
-import pfjax.utils as utils
-import interactive.lotvol_model as lv
-# import pfjax.models.pgnet_model as pg
-import pfjax.particle_resamplers as resamplers
-import pfjax.test.models as models_test
-import pfjax.test.utils as test
-import pfjax.utils as utils
-from ott.geometry import pointcloud
-from ott.problems.linear import linear_problem
+import pfjax.experimental.models as models_exp 
+import pfjax.mcmc as mcmc 
+import pfjax.models as models 
+import pfjax.particle_resamplers as resamplers 
+import pfjax.test.models as models_test 
+import pfjax.test.utils as test 
+import pfjax.utils as utils 
+from ott.geometry import pointcloud 
+from ott.problems.linear import linear_problem 
 from ott.solvers.linear import sinkhorn
 
 # --- general-purpose utilities ------------------------------------------------
@@ -38,8 +35,29 @@ def rel_err(X1, X2):
     return jnp.max(jnp.abs(x1 - x2) / (0.1 + jnp.abs(x1)))
 
 
-def assertAlmostEqual(x1, x2):
-    assert rel_err(x1, x2) < 1e-7
+def assert_equal(x1, x2, tol=1e-6, context=""):
+    """
+    Relative error check for arrays or dictionaries.
+
+    Parameters
+    ----------
+    x1, x2 : array-like or dict
+        Objects to compare.
+    tol : float, optional
+        Relative error tolerance. Default is 1e-6.
+    context : str, optional
+        Extra string to include in assertion messages 
+        (e.g. "failed at index i, key k, or case c").
+    """
+    if isinstance(x1, dict):
+        for k in x1.keys():
+            assert rel_err(x1[k], x2[k]) < tol, (
+                f"failed at key '{k}'" + (f", {context}" if context else "")
+            )
+    else:
+        assert rel_err(x1, x2) < tol, (
+            f"failed" + (f" at {context}" if context else "")
+        )
 
 
 def var_sim(key, size):
@@ -76,7 +94,9 @@ def bm_setup():
     """
     Setup function for BMModel tests.
 
-    This initializes key variables required for running Brownian Motion (BMModel) tests, including model parameters, number of observations, initial state, number of particles, and the model class reference.
+    This initializes key variables required for running Brownian Motion (BMModel) 
+    tests, including model parameters, number of observations, initial state, 
+    number of particles, and the model class reference.
 
     Returns
     -------
@@ -127,7 +147,9 @@ def lv_setup():
     """
     Setup function for LotVolModel tests.
 
-    This initializes key variables required for running LotVolModel tests, including model parameters, number of observations, initial state, number of particles, and model class references.
+    This initializes key variables required for running LotVolModel tests, 
+    including model parameters, number of observations, initial state, 
+    number of particles, and model class references.
 
     Returns
     -------
@@ -171,8 +193,8 @@ def lv_setup():
     x_init = jnp.block([[jnp.zeros((n_res-1, 2))],
                              [jnp.log(jnp.array([5., 3.]))]])
     n_particles = 25
-    Model = models.LotVolModel
-    Model2 = lv.LotVolModel
+    Model = models_exp.LotVolModel
+    Model2 = models_test.LotVolModel
     return {
         'key': key,
         'theta': theta,
@@ -189,7 +211,9 @@ def pg_setup():
     """
     Setup function for PGNETModel tests.
 
-    This initializes key variables required for running PGNETModel tests, including model parameters, number of observations, initial state, number of particles, and model class references.
+    This initializes key variables required for running PGNETModel tests, 
+    including model parameters, number of observations, initial state, 
+    number of particles, and model class references.
 
     Returns
     -------
@@ -245,7 +269,9 @@ def fact_setup(self):
     """
     Setup function for factorization tests.
 
-    This initializes variables required for matrix and vector factorization tests, including latent and observed dimensions, random parameters, and joint distribution values.
+    This initializes variables required for matrix and vector factorization 
+    tests, including latent and observed dimensions, random parameters, 
+    and joint distribution values.
 
     Returns
     -------
@@ -322,11 +348,12 @@ def fact_setup(self):
     )
 
 
-def ot_setup(self):
+def ot_setup():
     """
     Setup function for optimal transport tests.
 
-    Initializes variables required for running optimal transport tests, including the PRNG key, number of particles, and problem dimension.
+    Initializes variables required for running optimal transport tests, 
+    including the PRNG key, number of particles, and problem dimension.
 
     Returns
     -------
@@ -340,9 +367,15 @@ def ot_setup(self):
             Dimension of each particle.
     """
 
-    self.key = random.PRNGKey(0)
-    self.n_particles = 12
-    self.n_dim = 5
+    key = random.PRNGKey(0)
+    n_particles = 12
+    n_dim = 5
+
+    return {
+        'key': key,
+        'n_particles': n_particles,
+        'n_dim': n_dim,
+    }
     # # parameter values
     # alpha = 1.02
     # beta = 1.02
@@ -352,18 +385,18 @@ def ot_setup(self):
     # sigma_L = .2
     # tau_H = .25
     # tau_L = .35
-    # self.theta = jnp.array([alpha, beta, gamma, delta,
-    #                         sigma_H, sigma_L, tau_H, tau_L])
+    # theta = jnp.array([alpha, beta, gamma, delta,
+    #                   sigma_H, sigma_L, tau_H, tau_L])
     # # data specification
     # dt = .09
     # n_res = 5
     # n_dim = 2
-    # self.n_obs = 8
-    # self.x_init = jnp.block([[jnp.zeros((n_res-1, n_dim))],
-    #                          [jnp.log(jnp.array([5., 3.]))]])
-    # self.model_args = {"dt": dt, "n_res": n_res}
-    # self.n_particles = 12
-    # self.Model = models.LotVolModel
+    # n_obs = 8
+    # x_init = jnp.block([[jnp.zeros((n_res-1, n_dim))],
+    #                   [jnp.log(jnp.array([5., 3.]))]])
+    # model_args = {"dt": dt, "n_res": n_res}
+    # n_particles = 12
+    # Model = models.LotVolModel
 
 
 # --- simulate test functions --------------------------------------------------
@@ -373,7 +406,9 @@ def test_simulate_for(model, key, n_obs, x_init, theta, model_args, **kwargs):
     """
     Test function to compare simulation implementations.
 
-    Compares the outputs of two simulation approaches (for-loop vs scan/vmap) for the specified model. Checks that both the simulated measurements and latent states match to within numerical precision.
+    Compares the outputs of two simulation approaches (for-loop vs scan/vmap) 
+    for the specified model. Checks that both the simulated measurements and 
+    latent states match to within numerical precision.
 
      Parameters
     ----------
@@ -391,13 +426,6 @@ def test_simulate_for(model, key, n_obs, x_init, theta, model_args, **kwargs):
         Arguments to initialize the model.
     **kwargs : dict, optional
         Additional unused keyword arguments.
-
-    Asserts
-    -------
-    rel_err(y_meas1, y_meas2) == 0.0
-        Ensures measurement outputs are identical.
-    rel_err(x_state1, x_state2) == 0.0
-        Ensures latent state outputs are identical.
     """
 
     # instantiate the model
@@ -406,8 +434,8 @@ def test_simulate_for(model, key, n_obs, x_init, theta, model_args, **kwargs):
     y_meas1, x_state1 = test.simulate_for(model, key, n_obs, x_init, theta)
     # simulate without for-loop
     y_meas2, x_state2 = pf.simulate(model, key, n_obs, x_init, theta)
-    assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
-    assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
+    assert_equal(y_meas1, y_meas2)
+    assert_equal(x_state1, x_state2)
 
 
 def test_simulate_jit(model, key, n_obs, x_init, theta, model_args, **kwargs):
@@ -432,15 +460,6 @@ def test_simulate_jit(model, key, n_obs, x_init, theta, model_args, **kwargs):
         Arguments to initialize the model.
     **kwargs : dict, optional
         Additional unused keyword arguments.
-
-    Asserts
-    -------
-    rel_err(y_meas1, y_meas2) == 0.0
-        Ensures measurement outputs from non-jitted and jitted simulation are identical.
-    rel_err(x_state1, x_state2) == 0.0
-        Ensures latent state outputs from non-jitted and jitted simulation are identical.
-    rel_err(grad1, grad2) == 0.0
-        Ensures gradients computed with and without jit are identical.
     """
 
     # instantiate the model
@@ -480,15 +499,15 @@ def test_simulate_jit(model, key, n_obs, x_init, theta, model_args, **kwargs):
     simulate_jit = jax.jit(pf.simulate, static_argnums=(0, 2))
     y_meas2, x_state2 = simulate_jit(model, key, n_obs, x_init, theta)
     
-    assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
-    assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
+    assert_equal(y_meas1, y_meas2)
+    assert_equal(x_state1, x_state2)
     
     # grad without jit
     grad1 = jax.grad(obj_fun, argnums=4)(model, key, n_obs, x_init, theta)
     # grad with jit
     grad2 = jax.jit(jax.grad(obj_fun, argnums=4), static_argnums=(0, 2))(
         model, key, n_obs, x_init, theta)
-    assertAlmostEqual(rel_err(grad1, grad2), 0.0)
+    assert_equal(grad1, grad2)
 
 
 def test_simulate_models(model, model2, key, n_obs, x_init, theta, **kwargs):
@@ -514,21 +533,14 @@ def test_simulate_models(model, model2, key, n_obs, x_init, theta, **kwargs):
         Model parameters.
     **kwargs : dict, optional
         Additional unused keyword arguments.
-
-    Asserts
-    -------
-    rel_err(y_meas1, y_meas2) == 0.0
-        Ensures measurement outputs for both model definitions are identical.
-    rel_err(x_state1, x_state2) == 0.0
-        Ensures latent state outputs for both model definitions are identical.
     """
 
     # simulate with non-inherited class
     y_meas1, x_state1 = pf.simulate(model, key, n_obs, x_init, theta)
     # simulate with inherited class
     y_meas2, x_state2 = pf.simulate(model2, key, n_obs, x_init, theta)
-    assertAlmostEqual(rel_err(y_meas1, y_meas2), 0.0)
-    assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
+    assert_equal(y_meas1, y_meas2)
+    assert_equal(x_state1, x_state2)
 
 
 # --- loglik_full test functions -----------------------------------------------
@@ -558,11 +570,6 @@ def test_loglik_full_for(model, key, n_obs, x_init, theta, model_args, **kwargs)
         Arguments to initialize the model.
     **kwargs : dict, optional
         Additional unused keyword arguments.
-
-    Asserts
-    -------
-    rel_err(pf_out1[k], pf_out2[k]) == 0.0
-        Ensures joint loglikelihoods match between implementations.
     """
     # instantiate the model
     model = model(**model_args)
@@ -573,7 +580,7 @@ def test_loglik_full_for(model, key, n_obs, x_init, theta, model_args, **kwargs)
     # joint loglikelihood with vmap
     loglik2 = pf.loglik_full(model,
                              y_meas, x_state, theta)
-    assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
+    assert_equal(loglik1, loglik2)
 
 
 def test_loglik_full_jit(model, key, n_obs, x_init, theta, model_args, **kwargs):
@@ -599,13 +606,6 @@ def test_loglik_full_jit(model, key, n_obs, x_init, theta, model_args, **kwargs)
         Arguments to initialize the model.
     **kwargs : dict, optional
         Additional unused keyword arguments.
-
-    Asserts
-    -------
-    rel_err(loglik1, loglik2) == 0.0
-        Ensures joint loglikelihood values with and without jit are identical.
-    rel_err(grad1[i], grad2[i]) == 0.0 for i in range(2)
-        Ensures gradient components with and without jit are identical.
     """
     # instantiate the model
     model = model(**model_args)
@@ -618,7 +618,7 @@ def test_loglik_full_jit(model, key, n_obs, x_init, theta, model_args, **kwargs)
     loglik_full_jit = jax.jit(pf.loglik_full, static_argnums=0)
     loglik2 = loglik_full_jit(model,
                               y_meas, x_state, theta)
-    assertAlmostEqual(rel_err(loglik1, loglik2), 0.0)
+    assert_equal(loglik1, loglik2)
     # grad without jit
     grad1 = jax.grad(pf.loglik_full, argnums=(2, 3))(model, y_meas, x_state, theta)
     # grad with jit
@@ -626,7 +626,7 @@ def test_loglik_full_jit(model, key, n_obs, x_init, theta, model_args, **kwargs)
         model, y_meas, x_state, theta
     )
     for i in range(2):
-        assertAlmostEqual(grad1[i], grad2[i]), f"failed at key '{i}'"
+        assert_equal(grad1[i], grad2[i], context=f"index '{i}'")
 
 
 def test_loglik_full_models(model1, model2, key, n_obs, x_init, theta, model_args, **kwargs):
@@ -655,12 +655,6 @@ def test_loglik_full_models(model1, model2, key, n_obs, x_init, theta, model_arg
         Keyword arguments used to instantiate models.
     **kwargs : dict, optional
         Additional unused keyword arguments.
-
-
-    Asserts
-    -------
-    rel_err(loglik1, loglik2) == 0.0
-        Ensures joint loglikelihood outputs are identical for both model class versions.
     """
 
     # simulate with inherited class
@@ -669,7 +663,7 @@ def test_loglik_full_models(model1, model2, key, n_obs, x_init, theta, model_arg
     loglik1 = pf.loglik_full(model=model1, y_meas=y_meas, x_state=x_state, theta=theta)
     # joint loglikelihood with inherited class
     loglik2 = pf.loglik_full(model=model2, y_meas=y_meas, x_state=x_state, theta=theta)
-    assertAlmostEqual(loglik1, loglik2)
+    assert_equal(loglik1, loglik2)
 
 
 # --- particle_filter test functions -------------------------------------------
@@ -700,11 +694,6 @@ def test_particle_filter_for(model, key, n_obs, x_init, theta, model_args, n_par
         Keyword arguments used to instantiate model.
    **kwargs : dict, optional
         Additional unused keyword arguments.
-
-    Asserts
-    -------
-    History=True: "x_particles", "logw", and "ancestors" match.
-    History=False: terminal "x_particles", terminal "logw", and total "loglik" match.
     """
     
     # Instantiate model
@@ -740,15 +729,16 @@ def test_particle_filter_for(model, key, n_obs, x_init, theta, model_args, n_par
                 X2=pf_out2["loglik"]
             )
         for k in max_diff.keys():
-                assertAlmostEqual(max_diff[k], 0.0), 
-                f"failed at key '{k}', case='{case}'"
+                assert_equal(max_diff[k], 0.0, context=f"key '{k}', case={case}")
 
 
 def test_particle_filter_deriv(model, key, n_obs, x_init, theta, model_args, n_particles, **kwargs):
     """
     Test function to check particle filter derivatives.
 
-    Compares online and brute-force calculations of the score and Fisher information (hessian) for the particle filter, across multiple test cases. Asserts that both methods yield numerically identical results.
+    Compares online and brute-force calculations of the score and Fisher information (hessian) for 
+    the particle filter, across multiple test cases. Asserts that both methods yield numerically 
+    identical results.
 
     Parameters
     ----------
@@ -768,13 +758,6 @@ def test_particle_filter_deriv(model, key, n_obs, x_init, theta, model_args, n_p
         Number of particles for the particle filter.
     **kwargs : dict, optional
         Additional unused keyword arguments.
-    
-    Asserts
-    -------
-    rel_err(score, pf_out2["score"]) == 0.0
-        Ensures that the score output matches between methods.
-    rel_err(fisher, pf_out2["fisher"]) == 0.0
-        Ensures that the Fisher information output matches between methods (if tested).
     """
     
     # instantiate model
@@ -863,7 +846,7 @@ def test_particle_filter_deriv(model, key, n_obs, x_init, theta, model_args, n_p
                     pf_out2["fisher"]
                 )
         for k in max_diff.keys():
-            assertAlmostEqual(max_diff[k], 0.0), f"failed at key '{k}', case='{case}'"
+            assert_equal(max_diff[k], 0.0, context=f"key '{k}', case={case}")
 
 
 # --- particle_filter_rb test functions ----------------------------------------
@@ -894,10 +877,6 @@ def test_particle_filter_rb_for(model, key, n_obs, x_init, theta, n_particles, m
         Keyword arguments used to instantiate model.
     **kwargs : dict, optional
         Additional unused keyword arguments.
-
-    Asserts
-    -------
-    All entries in "pf_out1" and "pf_out2" have relative error < 1e-7.
     """
     
     # instantiate model
@@ -926,7 +905,7 @@ def test_particle_filter_rb_for(model, key, n_obs, x_init, theta, n_particles, m
         )
         max_diff = jtu.tree_map(rel_err, pf_out1, pf_out2)
         for k in max_diff.keys():
-            assertAlmostEqual(max_diff[k], 0.0), f"failed at key '{k}', case='{case}'"
+            assert_equal(max_diff[k], 0.0, context=f"key '{k}', case={case}")
 
 
 def test_particle_filter_rb_history(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
@@ -986,12 +965,11 @@ def test_particle_filter_rb_history(model, key, n_obs, x_init, theta, n_particle
         keys = keys + ["fisher"] if case["fisher"] else keys
         max_diff = {k: rel_err(pf_out1[k], pf_out2[k]) for k in keys}
         for k in max_diff.keys():
-            assertAlmostEqual(max_diff[k], 0.0), f"failed at key '{k}', case='{case}'"
+            assert_equal(max_diff[k], 0.0, context=f"key '{k}', case={case}")
 
 
 def test_particle_filter_rb_deriv(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
     """
-
     Parameters
     ----------
     model : callable
@@ -1126,7 +1104,7 @@ def test_particle_filter_rb_deriv(model, key, n_obs, x_init, theta, n_particles,
         if case["fisher"]:
             max_diff["fisher"] = rel_err(pf_out2["fisher"], fisher2)
         for k in max_diff.keys():
-            assertAlmostEqual(max_diff[k], 0.0), f"failed at key '{k}', case='{case}'"
+            assert_equal(max_diff[k], 0.0, context=f"key '{k}', case={case}")
 
 
 # --- param_mwg_update test functions ------------------------------------------
@@ -1172,8 +1150,7 @@ def test_param_mwg_update_for(model, key, n_obs, x_init, theta, n_particles, mod
         model, prior, subkey, theta, x_state, y_meas, rw_sd, theta_order
     )
     for i in range(2):
-        assertAlmostEqual(rel_err(mwg_out1[i], mwg_out2[i]), 0.0), 
-        f"failed at index '{i}'"
+        assert_equal(mwg_out1[i], mwg_out2[i], context=f"index {i}")
     # with non-default order
     key, subkey = random.split(key)
     n_updates = 10
@@ -1186,8 +1163,7 @@ def test_param_mwg_update_for(model, key, n_obs, x_init, theta, n_particles, mod
         model, prior, subkey, theta, x_state, y_meas, rw_sd, theta_order
     )
     for i in range(2):
-        assertAlmostEqual(rel_err(mwg_out1[i], mwg_out2[i]), 0.0), 
-        f"failed at index '{i}'"
+        assert_equal(mwg_out1[i], mwg_out2[i], context=f"index {i}")
 
 
 def test_param_mwg_update_jit(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
@@ -1231,8 +1207,7 @@ def test_param_mwg_update_jit(model, key, n_obs, x_init, theta, n_particles, mod
         model, prior, subkey, theta, x_state, y_meas, rw_sd, theta_order
     )
     for i in range(2):
-        assertAlmostEqual(rel_err(mwg_out1[i], mwg_out2[i]), 0.0),
-        f"failed at index '{i}'"
+        assert_equal(mwg_out1[i], mwg_out2[i], context=f"index {i}")
 
     # objective function for gradient
     def obj_fun(model, prior, key, theta, x_state, y_meas, rw_sd, theta_order):
@@ -1250,8 +1225,7 @@ def test_param_mwg_update_jit(model, key, n_obs, x_init, theta, n_particles, mod
         model, prior, subkey, theta, x_state, y_meas, rw_sd, theta_order
     )
     for i in range(3):
-        assertAlmostEqual(rel_err(grad1[i], grad2[i]), 0.0),
-        f"failed at index '{i}'"
+        assert_equal(grad1[i], grad2[i], context=f"index {i}")
 
 
 # --- resample_mvn test functions ----------------------------------------------
@@ -1291,9 +1265,8 @@ def test_resample_mvn_for(key, **kwargs):
             logw=logw
         )
         for k in new_particles1.keys():
-            assertAlmostEqual(
-                rel_err(new_particles1[k], new_particles2[k]), 0.0),
-            f"failed at key '{k}', case='{case}'"
+            assert_equal(new_particles1[k], new_particles2[k], context=f"key '{k}', case={case}")
+            
 
 
 def test_resample_mvn_shape(key, **kwargs):
@@ -1338,9 +1311,7 @@ def test_resample_mvn_shape(key, **kwargs):
             logw=logw
         )
         for k in ["mvn_mean", "mvn_cov"]:
-            assertAlmostEqual(
-                    rel_err(new_particles1[k], new_particles2[k]), 0.0),
-            f"failed at key '{k}', case='{case}'"
+            assert_equal(new_particles1[k], new_particles2[k], context=f"key '{k}', case={case}")
             
 
 
@@ -1391,14 +1362,14 @@ def test_resample_mvn_jit(model, key, n_obs, x_init, theta, n_particles, model_a
         model, subkey, y_meas, theta, n_particles, resampler=resamplers.resample_mvn
     )
     for k in pf_out1.keys():
-        assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0),
+        assert_equal(pf_out1[k], pf_out2[k]),
         f"failed at key '{k}'"
     # grad without jit
     grad1 = jax.grad(obj_fun, argnums=3)(model, key, y_meas, theta, n_particles)
     # grad with jit
     grad2 = jax.jit(jax.grad(obj_fun, argnums=3), static_argnums=(0, 4))(
         model, key, y_meas, theta, n_particles)
-    assertAlmostEqual(rel_err(grad1, grad2), 0.0)
+    assert_equal(grad1, grad2)
 
 
 # --- particle_smooth test functions -------------------------------------------
@@ -1449,7 +1420,7 @@ def test_particle_smooth_for(model, key, n_obs, x_init, theta, n_particles, mode
         x_particles=pf_out["x_particles"],
         ancestors=pf_out["resample_out"]["ancestors"],
     )
-    assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
+    assert_equal(x_state1, x_state2)
 
 
 def test_particle_smooth_jit(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
@@ -1513,24 +1484,30 @@ def test_particle_smooth_jit(model, key, n_obs, x_init, theta, n_particles, mode
         x_particles=pf_out["x_particles"],
         ancestors=pf_out["resample_out"]["ancestors"],
     )
-    assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
+    assert_equal(x_state1, x_state2)
     # grad without jit
     grad1 = jax.grad(obj_fun, argnums=3)(model, key, y_meas, theta, n_particles)
     # grad with jit
     grad2 = jax.jit(jax.grad(obj_fun, argnums=3), static_argnums=(0, 4))(
         model, key, y_meas, theta, n_particles)
-    assertAlmostEqual(rel_err(grad1, grad2), 0.0)
+    assert_equal(grad1, grad2)
 
 
 # --- sde test functions -------------------------------------------------------
 
 
-def test_sde_state_sample_for(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
+def test_sde_state_sample_for(model, model2, key, x_init, theta, n_particles, model_args, n_obs):
     """
+    Test function to compare sde implementations. Compares the outputs of 
+    two simulation approaches (for-loop vs scan/vmap) for the lv model.
+    Note: state_sample_for() only implemented in test.lotvol_model. 
+
     Parameters
     ----------
-    model : callable
-        Model class to instantiate.
+    model1 : callable
+        First model constructor.
+    model2 : callable
+        Second model constructor.
     key : PRNGKey
         JAX random key.
     n_obs : int
@@ -1546,25 +1523,33 @@ def test_sde_state_sample_for(model, key, n_obs, x_init, theta, n_particles, mod
     **kwargs : dict, optional
         Additional unused keyword arguments.
     """
-    
-    # instantiate model
-    model = model(**model_args)
+    # instantiate both model variants
+    model1 = model(**model_args)  # vmap version
+    model2 = model2(**model_args)  # for-loop version
     n_res = model_args["n_res"]
     # generate previous timepoint
     key, subkey = random.split(key)
     x_prev = x_init
     x_prev = x_prev + random.normal(subkey, x_prev.shape)
     # simulate state using lax.scan
-    x_state2 = model.state_sample(key, x_prev, theta)
-    assertAlmostEqual(rel_err(x_state1, x_state2), 0.0)
+    x_state1 = model1.state_sample(key, x_prev, theta)
+    # simulate state using
+    x_state2 = model2.state_sample_for(key, x_prev, theta)
+    assert_equal(x_state1, x_state2)
 
 
-def test_sde_state_lpdf_for(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
+def test_sde_state_lpdf_for(model, model2, key, x_init, theta, n_particles, model_args, n_obs):
     """
+    Test function to compare sde lpdf implementations. Compares the outputs of 
+    two simulation approaches (for-loop vs scan/vmap) for the lv model. 
+    Note: state_sample_for() only implemented in test.lotvol_model.
+
     Parameters
     ----------
-    model : callable
-        Model class to instantiate.
+    model1 : callable
+        First model constructor.
+    model2 : callable
+        Second model constructor.
     key : PRNGKey
         JAX random key.
     n_obs : int
@@ -1577,23 +1562,27 @@ def test_sde_state_lpdf_for(model, key, n_obs, x_init, theta, n_particles, model
         Number of particles to use.
     model_args : dict
         Keyword arguments to initialize the model.
+    n_obs : int
+        Number of observations to simulate.
     **kwargs : dict, optional
         Additional unused keyword arguments.
     """
-    
-    # instantiate model
-    model = model(**model_args)
+
+    # instantiate both model variants
+    model1 = model(**model_args)  # vmap version
+    model2 = model2(**model_args)  # for-loop version
     n_res = model_args["n_res"]
     # generate previous timepoint
     key, subkey = random.split(key)
     x_prev = x_init
     x_prev = x_prev + random.normal(subkey, x_prev.shape)
     # simulate state using lax.scan
-    x_curr = model.state_sample(key, x_prev, theta)
-    # lpdf using for
-    lp1 = model._state_lpdf_for(x_curr, x_prev, theta)
-    lp2 = model.state_lpdf(x_curr, x_prev, theta)
-    assertAlmostEqual(rel_err(lp1, lp2), 0.0)
+    x_curr = model1.state_sample(key, x_prev, theta)
+    # lpdf using vmap
+    lp1 = model1.state_lpdf(x_curr, x_prev, theta)
+    # lpdf using for-loop
+    lp2 = model2.state_lpdf_for(x_curr, x_prev, theta)
+    assert_equal(lp1, lp2)
 
 
 def test_bridge_step_for(model, key, n_obs, x_init, theta, n_particles, model_args, **kwargs):
@@ -1647,8 +1636,8 @@ def test_bridge_step_for(model, key, n_obs, x_init, theta, n_particles, model_ar
         A=jnp.eye(2),
         Omega=jnp.eye(2),
     )
-    assertAlmostEqual(rel_err(x_curr1, x_curr2), 0.0)
-    assertAlmostEqual(rel_err(logw1, logw2), 0.0)
+    assert_equal(x_curr1, x_curr2)
+    assert_equal(logw1, logw2)
 
 
 # --- resample_ot tests --------------------------------------------------------
@@ -1865,7 +1854,7 @@ def test_resample_ot_jit(key, n_particles, **kwargs):
 #         model, subkey, y_meas, theta, n_particles)
 #     for k in pf_out1.keys():
 #         with self.subTest(k=k):
-#             self.assertAlmostEqual(rel_err(pf_out1[k], pf_out2[k]), 0.0)
+#             self.assert_equal(pf_out1[k], pf_out2[k])
 
 
 # def test_jit_particle_filter(self):
