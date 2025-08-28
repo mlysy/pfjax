@@ -1,30 +1,18 @@
-"""
-Unit tests for `pfjax.particle_filter()`.
+import pytest
+from . import utils
 
-Things to test:
+@pytest.fixture(params=["lv_model", "bm_model", "pg_model"], ids=["lv", "bm", "pg"])
+def model_setup(request):
+    if request.param == "lv_model":
+        return utils.lv_setup()
+    if request.param == "bm_model":
+        return utils.bm_setup()
+    if request.param == "pg_model":
+        return utils.pg_setup()
+    raise ValueError(f"Unknown model type: {request.param}")
 
-- [x] `vmap`, `xmap`, `scan`, etc. give the same result as with for-loops.
+def test_particle_filter_for(model_setup):
+    utils.test_particle_filter_for(**model_setup)
 
-- [x] `jit` + `grad` return without errors.
-
-Test code: from `pfjax/tests`:
-
-```
-python -m unittest -v test_particle_filter
-```
-"""
-
-import unittest
-import utils
-
-
-class TestBMModel(unittest.TestCase):
-
-    setUp = utils.bm_setup
-
-    test_for = utils.test_particle_filter_for
-    test_deriv = utils.test_particle_filter_deriv
-
-
-if __name__ == '__main__':
-    unittest.main()
+def test_particle_filter_deriv(model_setup):
+    utils.test_particle_filter_deriv(**model_setup)

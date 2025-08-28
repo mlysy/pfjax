@@ -1,0 +1,19 @@
+---
+title: "PFJAX Documentation"
+format:
+  html:
+    toc: true
+    theme: cosmo
+execute:
+      cache: true
+---
+
+# Welcome
+
+Welcome to the documentation for **PFJAX**, a particle filtering library developed at the University of Waterloo.
+
+This site includes:
+
+- Tutorials for learning how to use PFJAX.
+- Explanations of algorithms and models.
+- Reference material on functions and modules.

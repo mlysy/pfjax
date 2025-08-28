@@ -1,81 +1,47 @@
-"""
-Unit tests for `pfjax.sde` module.
+import pytest
+from . import utils
 
-Things to test:
+@pytest.fixture(params=["lv_model", "pg_model"], ids=["lv", "pg"])
+def model_setup(request):
+    if request.param == "lv_model":
+        return utils.lv_setup()
+    if request.param == "pg_model":
+        return utils.pg_setup()
+    raise ValueError(f"Unknown model type: {request.param}")
 
-- [x] SDE base class works as expected, i.e., switches between `euler_{sim/lpdf}_diag()` and `euler_{sim/lpdf}_var()` at instantiation.
+@pytest.fixture(params=["lv"], ids=["lv"])
+def model_pair(request):
+    if request.param == "lv":
+        obj = utils.lv_setup()
+        return (obj['model'](**obj['model_args']), obj['model2'](**obj['model_args']), obj)
+    else:
+        raise ValueError(f"Unknown model type: {request.param}")
 
-- [x] `jit` + `grad` return without errors.
+def test_sde_state_sample_for(model_pair):
+    model, model2, obj = model_pair
+    key = obj['key']
+    n_obs = obj['n_obs']
+    x_init = obj['x_init']
+    theta = obj['theta']
+    n_particles = obj['n_particles']
+    model_args = obj['model_args']
+    n_obs = obj['n_obs']
+    utils.test_sde_state_sample_for(model=model, model2=model2, key=key, x_init=x_init, 
+                                  theta=theta, n_particles=n_particles, 
+                                  model_args=model_args, n_obs=n_obs)
 
-- [x] JAX constructs (e.g., `vmap`, `xmap`, `lax.scan`, etc.) give the same result as for-loops, etc.
+def test_sde_state_lpdf_for(model_pair):
+    model, model2, obj = model_pair
+    key = obj['key']
+    n_obs = obj['n_obs']
+    x_init = obj['x_init']
+    theta = obj['theta']
+    n_particles = obj['n_particles']
+    model_args = obj['model_args']
+    n_obs = obj['n_obs']
+    utils.test_sde_state_lpdf_for(model=model, model2=model2, key=key, x_init=x_init, 
+                                  theta=theta, n_particles=n_particles, 
+                                  model_args=model_args, n_obs=n_obs)
 
-Test code: from `pfjax/tests`:
-
-```
-python -m unittest -v test_sde
-```
-"""
-
-import unittest
-
-import utils
-
-
-class TestInheritDiag(unittest.TestCase):
-    """
-    Check that inheritance from SDEModel with `diff_diag=True` works as expected.
-    """
-
-    setUp = utils.lv_setup
-
-    test_sim = utils.test_simulate_models
-    test_loglik = utils.test_loglik_full_models
-
-
-class TestInheritDense(unittest.TestCase):
-    """
-    Check that inheritance from SDEModel with `diff_diag=False` works as expected.
-    """
-
-    setUp = utils.sv_setup
-
-    test_sim = utils.test_simulate_models
-    test_loglik = utils.test_loglik_full_models
-
-
-class TestJitDiag(unittest.TestCase):
-    """
-    Check that jitted code with `diff_diag=True` works as expected.
-    """
-
-    setUp = utils.lv_setup
-
-    test_sim = utils.test_simulate_jit
-    test_loglik = utils.test_loglik_full_jit
-
-
-class TestJitDense(unittest.TestCase):
-    """
-    Check that jitted code with `diff_diag=False` works as expected.
-    """
-
-    setUp = utils.sv_setup
-
-    test_sim = utils.test_simulate_jit
-    test_loglik = utils.test_loglik_full_jit
-
-
-class TestFor(unittest.TestCase):
-    """
-    Check that vmap/lax.scan are the same as for-loop (`LotVolModel` only).
-    """
-
-    setUp = utils.lv_setup
-
-    test_state_sample = utils.test_sde_state_sample_for
-    test_state_lpdf = utils.test_sde_state_lpdf_for
-    # test_bridge_step = utils.test_sde_bridge_step_for
-
-
-if __name__ == "__main__":
-    unittest.main()
+def test_bridge_step_for(model_setup):
+    utils.test_bridge_step_for(**model_setup)
