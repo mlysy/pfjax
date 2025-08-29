@@ -91,15 +91,17 @@ This folder contains the test functions living inside the package, i.e., those w
 
 # Results of Testing So Far
 
+**Note:** All tests are run in 64 bit precision.
+
 - `test_loglik_full`: passed for models lv, bm, pg.
 
 - `test_simulate`: passed for models lv, bm, pg.
 
-- `test_particle_filter`: passed for models lv, bm, pg (in 64 bit).
+- `test_particle_filter`: passed for models lv, bm, pg.
 
 - `test_particle_filter_rb`: 
 
-	- passed for model bm (in 64 bit).
+	- passed for model bm.
 
 	- failed for model pg: `AttributeError: 'PGNETModel' object has no attribute 'step_sample'. Did you mean: 'state_sample'`
 	
@@ -107,12 +109,18 @@ This folder contains the test functions living inside the package, i.e., those w
 
 - `test_particle_smooth`: passed for models lv, bm, pg.
 
-- `test_resample_mvn`: passed for model bm (in 64 bit).
+- `test_resample_mvn`: passed for model bm.
 
-- `test_resample_ot`: passed for model ot (in 64 bit).
+- `test_resample_ot`: passed for ot setup.
 
 - `test_sde`: 
 
-	- failed for model lv.
-	
 	- failed for model pg:  not yet inheriting from `pfjax.experimental.sde_model.SDEModel`.
+	
+	- for model lv:
+	
+		- passed for `test_sde_state_sample_for` and `test_sde_state_lpdf_for`.
+		
+		- failed for `test_bridge_step_for`.  This is because `SDEModel` class no longer contains method `_bridge_step_for`.
+
+	- **TODO:** If we really want to do systematic for-loop testing, then we should write something like `pfjax.test.SDEModel` which uses for-loops for all the major methods.

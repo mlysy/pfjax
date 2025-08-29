@@ -88,6 +88,20 @@ def expand_grid(**kwargs):
 # --- setup methods ------------------------------------------------------------
 
 
+def model_setup(request):
+    """
+    Model selector to be invoked by `pytest.fixture()`.
+    """
+    if request.param == "lv":
+        return lv_setup()
+    elif request.param == "bm":
+        return bm_setup()
+    elif request.param == "pg":
+        return pg_setup()
+    else:
+        raise ValueError(f"Unknown model type: {request.param}")
+
+
 def bm_setup():
     """
     Setup function for BMModel tests.
@@ -508,7 +522,9 @@ def test_simulate_jit(model, key, n_obs, x_init, theta, model_args, **kwargs):
     assert_equal(grad1, grad2)
 
 
-def test_simulate_models(model, model2, key, n_obs, x_init, theta, **kwargs):
+def test_simulate_models(
+    model, model2, key, n_obs, x_init, theta, model_args, **kwargs
+):
     """
     Test function to compare equivalent model definitions.
 
@@ -517,10 +533,10 @@ def test_simulate_models(model, model2, key, n_obs, x_init, theta, **kwargs):
 
     Parameters
     ----------
-    model1 : callable
-        First model implementation.
-    model2 : callable
-        Second model implementation.
+    model : class
+        First model class definition.
+    model2 : class
+        Second model class definition.
     key : PRNGKey
         JAX random key.
     n_obs : int
@@ -529,13 +545,16 @@ def test_simulate_models(model, model2, key, n_obs, x_init, theta, **kwargs):
         Initial latent state.
     theta : ndarray or dict
         Model parameters.
+    model_args : dict
+        Arguments to initialize the models.
     **kwargs : dict, optional
         Additional unused keyword arguments.
     """
-
-    # simulate with non-inherited class
-    y_meas1, x_state1 = pf.simulate(model, key, n_obs, x_init, theta)
-    # simulate with inherited class
+    # instantiate the models
+    model1 = model(**model_args)
+    model2 = model2(**model_args)
+    # simulate with each model
+    y_meas1, x_state1 = pf.simulate(model1, key, n_obs, x_init, theta)
     y_meas2, x_state2 = pf.simulate(model2, key, n_obs, x_init, theta)
     assert_equal(y_meas1, y_meas2)
     assert_equal(x_state1, x_state2)
@@ -626,7 +645,7 @@ def test_loglik_full_jit(model, key, n_obs, x_init, theta, model_args, **kwargs)
 
 
 def test_loglik_full_models(
-    model1, model2, key, n_obs, x_init, theta, model_args, **kwargs
+    model, model2, key, n_obs, x_init, theta, model_args, **kwargs
 ):
     """
     Test function to compare joint loglikelihoods across two equivalent model
@@ -637,10 +656,10 @@ def test_loglik_full_models(
 
     Parameters
     ----------
-    model1 : callable
-        First model constructor.
+    model : class
+        First model class definition.
     model2 : callable
-        Second model constructor.
+        Second model class definition.
     key : PRNGKey
         JAX random key.
     n_obs : int
@@ -654,14 +673,15 @@ def test_loglik_full_models(
     **kwargs : dict, optional
         Additional unused keyword arguments.
     """
-
-    # simulate with inherited class
+    # instantiate the models
+    model1 = model(**model_args)
+    model2 = model2(**model_args)
+    # simulate data
     y_meas, x_state = pf.simulate(
-        model=model2, key=key, n_obs=n_obs, x_init=x_init, theta=theta
+        model=model1, key=key, n_obs=n_obs, x_init=x_init, theta=theta
     )
-    # joint loglikelihood with non-inherited class
+    # joint loglikelihood with each model
     loglik1 = pf.loglik_full(model=model1, y_meas=y_meas, x_state=x_state, theta=theta)
-    # joint loglikelihood with inherited class
     loglik2 = pf.loglik_full(model=model2, y_meas=y_meas, x_state=x_state, theta=theta)
     assert_equal(loglik1, loglik2)
 
@@ -1515,10 +1535,10 @@ def test_sde_state_sample_for(
 
     Parameters
     ----------
-    model1 : callable
-        First model constructor.
-    model2 : callable
-        Second model constructor.
+    model : class
+        First model class definition.
+    model2 : class
+        Second model class definition.
     key : PRNGKey
         JAX random key.
     n_obs : int
@@ -1530,7 +1550,7 @@ def test_sde_state_sample_for(
     n_particles : int
         Number of particles to use.
     model_args : dict
-        Keyword arguments to initialize the model.
+        Keyword arguments to initialize the models.
     **kwargs : dict, optional
         Additional unused keyword arguments.
     """
@@ -1559,10 +1579,10 @@ def test_sde_state_lpdf_for(
 
     Parameters
     ----------
-    model1 : callable
-        First model constructor.
-    model2 : callable
-        Second model constructor.
+    model : class
+        First model class definition.
+    model2 : class
+        Second model class definition.
     key : PRNGKey
         JAX random key.
     n_obs : int
@@ -1604,7 +1624,7 @@ def test_bridge_step_for(
     """
     Parameters
     ----------
-    model : callable
+    model : class
         Model class to instantiate.
     key : PRNGKey
         JAX random key.
@@ -1622,7 +1642,7 @@ def test_bridge_step_for(
         Additional unused keyword arguments.
     """
 
-    # instantiate model
+    # instantiate models
     model = model(**model_args)
     n_res = model_args["n_res"]
     # generate previous timepoint
