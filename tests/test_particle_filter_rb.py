@@ -1,19 +1,10 @@
 import pytest
 from . import utils
 
-model_names = ["lv_model", "bm_model", "pg_model"]
-model_ids = ["lv", "bm", "pg"]
 
-
-@pytest.fixture(params=model_names[1:2], ids=model_ids[1:2])
+@pytest.fixture(params=["bm"], ids=["bm"])
 def model_setup(request):
-    if request.param == "lv_model":
-        return utils.lv_setup()
-    if request.param == "bm_model":
-        return utils.bm_setup()
-    if request.param == "pg_model":
-        return utils.pg_setup()
-    raise ValueError(f"Unknown model type: {request.param}")
+    return utils.model_setup(request)
 
 
 def test_particle_filter_rb_for(model_setup):
