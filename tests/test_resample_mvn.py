@@ -1,31 +1,19 @@
-"""
-Unit tests for `pfjax.resamplers.resample_mvn()`.
-
-Things to test:
-
-- [x] `vmap`, `xmap`, `scan`, etc. give the same result as with for-loops.
-
-- [x] `jit` + `grad` return without errors.
-
-Test code: from `pfjax/tests`:
-
-```
-python -m unittest -v test_resample_mvn
-```
-"""
-
-import unittest
-import utils
+import pytest
+from . import utils
 
 
-class TestBMModel(unittest.TestCase):
-
-    setUp = utils.bm_setup
-
-    test_for = utils.test_resample_mvn_for
-    test_shape = utils.test_resample_mvn_shape
-    test_jit = utils.test_resample_mvn_jit
+@pytest.fixture(params=["bm"], ids=["bm"])
+def model_setup(request):
+    return utils.model_setup(request)
 
 
-if __name__ == '__main__':
-    unittest.main()
+def test_resample_mvn_for(model_setup):
+    utils.test_resample_mvn_for(**model_setup)
+
+
+def test_resample_mvn_shape(model_setup):
+    utils.test_resample_mvn_shape(**model_setup)
+
+
+def test_resample_mvn_jit(model_setup):
+    utils.test_resample_mvn_jit(**model_setup)
