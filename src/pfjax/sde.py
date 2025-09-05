@@ -418,9 +418,14 @@ class SDEModel(object):
             mu_bridge, Sigma_bridge = self._bridge_mv(
                 x=x, theta=theta, n=n, Y=Y, A=A, Omega=Omega
             )
+            # jax.debug.print(
+            #     "mu_bridge = {x}, Sigma_bridge = {y}", x=mu_bridge, y=Sigma_bridge
+            # )
             # bridge proposal
             key, subkey = random.split(key)
-            x_prop = random.multivariate_normal(key, mean=mu_bridge, cov=Sigma_bridge)
+            x_prop = random.multivariate_normal(
+                subkey, mean=mu_bridge, cov=Sigma_bridge
+            )
             # bridge log-pdf
             lp_prop = jsp.stats.multivariate_normal.logpdf(
                 x=x_prop, mean=mu_bridge, cov=Sigma_bridge
