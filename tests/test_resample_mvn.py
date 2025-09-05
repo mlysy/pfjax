@@ -1,31 +1,17 @@
-"""
-Unit tests for `pfjax.resamplers.resample_mvn()`.
+import pytest
+from . import utils
 
-Things to test:
+@pytest.fixture(params=["bm_model"], ids=["bm"])
+def model_setup(request):
+    if request.param == "bm_model":
+        return utils.bm_setup()
+    raise ValueError(f"Unknown model type: {request.param}")
 
-- [x] `vmap`, `xmap`, `scan`, etc. give the same result as with for-loops.
+def test_resample_mvn_for(model_setup):
+    utils.test_resample_mvn_for(**model_setup)
 
-- [x] `jit` + `grad` return without errors.
+def test_resample_mvn_shape(model_setup):
+    utils.test_resample_mvn_shape(**model_setup)
 
-Test code: from `pfjax/tests`:
-
-```
-python -m unittest -v test_resample_mvn
-```
-"""
-
-import unittest
-import utils
-
-
-class TestBMModel(unittest.TestCase):
-
-    setUp = utils.bm_setup
-
-    test_for = utils.test_resample_mvn_for
-    test_shape = utils.test_resample_mvn_shape
-    test_jit = utils.test_resample_mvn_jit
-
-
-if __name__ == '__main__':
-    unittest.main()
+def test_resample_mvn_jit(model_setup):
+    utils.test_resample_mvn_jit(**model_setup)

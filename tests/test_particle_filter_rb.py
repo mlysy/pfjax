@@ -1,31 +1,28 @@
-"""
-Unit tests for `pfjax.particle_filter_rb()`.
+import pytest
+from . import utils
 
-Things to test:
-
-- [x] `vmap`, `xmap`, `scan`, etc. give the same result as with for-loops.
-
-- [x] `jit` + `grad` return without errors.
-
-Test code: from `pfjax/tests`:
-
-```
-python -m unittest -v test_particle_filter_rb
-```
-"""
-
-import unittest
-import utils
+model_names = ["lv_model", "bm_model", "pg_model"]
+model_ids = ["lv", "bm", "pg"]
 
 
-class TestBMModel(unittest.TestCase):
+@pytest.fixture(params=model_names[1:2], ids=model_ids[1:2])
+def model_setup(request):
+    if request.param == "lv_model":
+        return utils.lv_setup()
+    if request.param == "bm_model":
+        return utils.bm_setup()
+    if request.param == "pg_model":
+        return utils.pg_setup()
+    raise ValueError(f"Unknown model type: {request.param}")
 
-    setUp = utils.bm_setup
 
-    test_for = utils.test_particle_filter_rb_for
-    test_hist = utils.test_particle_filter_rb_history
-    test_deriv = utils.test_particle_filter_rb_deriv
+def test_particle_filter_rb_for(model_setup):
+    utils.test_particle_filter_rb_for(**model_setup)
 
 
-if __name__ == '__main__':
-    unittest.main()
+def test_particle_filter_rb_history(model_setup):
+    utils.test_particle_filter_rb_history(**model_setup)
+
+
+def test_particle_filter_rb_deriv(model_setup):
+    utils.test_particle_filter_rb_deriv(**model_setup)

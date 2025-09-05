@@ -88,3 +88,31 @@ title: "Test Layout"
 
 This folder contains the test functions living inside the package, i.e., those which are available via `import pfjax.test`.  These are mostly the for-loop versions of the generic methods (`simulate()`, `loglik_full()`, etc.), and are ostensibly there in order to simplify interactive package development.  These can probably be safely moved to outside of the package to `pfjax/tests` if we are careful with the import layout.
 
+
+# Results of Testing So Far
+
+- `test_loglik_full`: passed for models lv, bm, pg.
+
+- `test_simulate`: passed for models lv, bm, pg.
+
+- `test_particle_filter`: passed for models lv, bm, pg (in 64 bit).
+
+- `test_particle_filter_rb`: 
+
+	- passed for model bm (in 64 bit).
+
+	- failed for model pg: `AttributeError: 'PGNETModel' object has no attribute 'step_sample'. Did you mean: 'state_sample'`
+	
+	- failed for model lv: actually it's taking forever because the for-loop version needs to be compiled.  consider reducing `n_particles` and `n_res` in `lv_setup()`.
+
+- `test_particle_smooth`: passed for models lv, bm, pg.
+
+- `test_resample_mvn`: passed for model bm (in 64 bit).
+
+- `test_resample_ot`: passed for model ot (in 64 bit).
+
+- `test_sde`: 
+
+	- failed for model lv.
+	
+	- failed for model pg:  not yet inheriting from `pfjax.experimental.sde_model.SDEModel`.

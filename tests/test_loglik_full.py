@@ -1,30 +1,47 @@
-"""
-Unit tests for `pfjax.loglik_full()`.
+import pytest
+from . import utils
 
-Things to test:
+@pytest.fixture(params=["lv_model", "bm_model", "pg_model"], ids=["lv", "bm", "pg"])
+def model_setup(request):
+    if request.param == "lv_model":
+        return utils.lv_setup()
+    elif request.param == "bm_model":
+        return utils.bm_setup()
+    elif request.param == "pg_model":
+        return utils.pg_setup()
+    else:
+        raise ValueError(f"Unknown model type: {request.param}")
 
-- [x] `vmap`, `xmap`, `scan`, etc. give the same result as with for-loops.
+@pytest.fixture(params=["lv", "pg"], ids=["lv", "pg"])
+def model_pair(request):
+    if request.param == "lv":
+        obj = utils.lv_setup()
+        return (obj['model'](**obj['model_args']), obj['model2'](**obj['model_args']), obj)
+    elif request.param == "pg":
+        obj = utils.pg_setup()
+        return (obj['model'](**obj['model_args']), obj['model2'](**obj['model_args']), obj)
+    else:
+        raise ValueError(f"Unknown model type: {request.param}")
+    
+def test_loglik_full_for(model_setup):
+    utils.test_loglik_full_for(**model_setup)
 
-- [x] `jit` + `grad` return without errors.
+def test_loglik_full_jit(model_setup):
+    utils.test_loglik_full_jit(**model_setup)
 
-Test code: from `pfjax/tests`:
-
-```
-python -m unittest -v test_loglik_full
-```
-"""
-
-import unittest
-import utils
-
-
-class TestBMModel(unittest.TestCase):
-
-    setUp = utils.bm_setup
-
-    test_for = utils.test_loglik_full_for
-    test_jit = utils.test_loglik_full_jit
-
-
-if __name__ == '__main__':
-    unittest.main()
+def test_loglik_full_models(model_pair):
+    model, model2, obj = model_pair
+    key = obj['key']
+    n_obs = obj['n_obs']
+    x_init = obj['x_init']
+    theta = obj['theta']
+    model_args=obj["model_args"]
+    utils.test_loglik_full_models(
+        model1=model, 
+        model2=model2, 
+        key=key, 
+        n_obs=n_obs, 
+        x_init=x_init, 
+        theta=theta, 
+        model_args=model_args
+        )

@@ -1,18 +1,14 @@
-"""
-Optimal transport tests.
-"""
+import pytest
+from . import utils
 
-import unittest
-import utils
+@pytest.fixture(params=["ot_model"], ids=["ot"])
+def model_setup(request):
+    if request.param == "ot_model":
+        return utils.ot_setup()
+    raise ValueError(f"Unknown model type: {request.param}")
 
+def test_resample_ot_sinkhorn(model_setup):
+    utils.test_resample_ot_sinkhorn(**model_setup)
 
-class TestOT(unittest.TestCase):
-
-    setUp = utils.ot_setup
-
-    test_sinkhorn = utils.test_resample_ot_sinkhorn
-    test_jit = utils.test_resample_ot_jit
-
-
-if __name__ == '__main__':
-    unittest.main()
+def test_resample_ot_jit(model_setup):
+    utils.test_resample_ot_jit(**model_setup)

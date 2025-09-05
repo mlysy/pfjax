@@ -1,0 +1,9 @@
+website:
+  sidebar:
+  - contents:
+    - api/index.qmd
+    - contents:
+      - api/models.base_model.qmd
+      section: pfjax
+    id: api
+  - id: dummy-sidebar
