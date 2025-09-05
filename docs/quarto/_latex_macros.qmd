@@ -69,4 +69,4 @@
 \newcommand{\Ell}{\mathcal{L}}
 \newcommand{\pot}{\mathcal{U}}
 \renewcommand{\vec}{\operatorname{vec}}
-\newcommand{\cov}{\operatorname{cov}}
+# \newcommand{\cov}{\operatorname{cov}}

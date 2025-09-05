@@ -4,6 +4,9 @@ project:
     - "*.qmd"
     - "!sphinx/"
 
+execute:
+  cache: true
+
 website:
   title: "PFJAX Docs"
   navbar:
