@@ -77,10 +77,10 @@ class StoVolModel(SDEModel):
         A = jnp.atleast_2d(jnp.array([1.0, 0.0]))
         Omega = jnp.atleast_2d(self._eps**2)
         Y = y_curr
-        return A, Omega, Y
+        return Y, A, Omega
 
     def meas_pars(self, x_curr, theta):
-        A, Omega, _ = self.bridge_pars(y_curr=None, theta=theta)
+        _, A, Omega = self.bridge_pars(y_curr=None, theta=theta)
         mu = jnp.squeeze(jnp.dot(A, x_curr[-1]))
         sigma = jnp.squeeze(jnp.sqrt(Omega))
         return mu, sigma
@@ -124,6 +124,6 @@ class StoVolModel(SDEModel):
         x_sample = y_init + self._eps * jax.random.normal(key=key_x)
 
         # state_init = jnp.array([[X0_sample, Z0_sample]])
-        state_init = self.zero_pad(jnp.array([x_sample, z_sample]))
+        state_init = self.prior_pad(jnp.array([x_sample, z_sample]))
         logw = 0.0
         return state_init, logw

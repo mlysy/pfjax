@@ -130,4 +130,5 @@ class SDEModel(pfjax.experimental.continuous_time_model.ContinuousTimeModel):
             dt_next=dt_next,
             theta=theta,
         )
+        # jax.debug.print("mu = {x}, Sigma = {y}", x=mu, y=Sigma)
         return jax.random.multivariate_normal(key=key, mean=mu, cov=Sigma)

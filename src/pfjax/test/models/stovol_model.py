@@ -37,6 +37,16 @@ class StoVolModel(SDEModel):
         self._eps = eps
         self._unconstrained_scale = unconstrained_scale
 
+    def prior_pad(self, x_init):
+        """
+        Pad the initial state with `n_res - 1` zeros.
+
+        This is helpful for constructing `x_init` to have the correct dimension.
+        """
+
+        zeros = jnp.zeros((self._n_res - 1, 2))
+        return jnp.concatenate([zeros, x_init[None]])
+
     def to_unconstrained(self, constrained):
         """
         Convert parameters to unconstrained scale.
@@ -121,21 +131,14 @@ class StoVolModel(SDEModel):
 
         ## First do sampling for Z_0. We shall sample Z0 according to the stationary distribution
         ## Z ~ N(eta / gamma, sigma^2 / (2 * gamma))
-        z_sample = eta / gamma + sigma / jnp.sqrt(gamma**2) * jax.random.normal(
-            key=key_z
-        )
+        z_mean = eta / gamma
+        z_sd = sigma / jnp.sqrt(gamma**2)
+        z_sample = z_mean + z_sd * jax.random.normal(key=key_z)
 
         ## Now draw X0 based on Y0
         ## In order for a consistent weight, we sample X0 ~ N(Y0/2, eps^2/2)
         x_sample = y_init + self._eps * jax.random.normal(key=key_x)
 
-        # state_init = jnp.array([[X0_sample, Z0_sample]])
-        state_init = jnp.array([x_sample, z_sample])
-        state_init = jnp.append(
-            jnp.zeros((self._n_res - 1,) + state_init.shape),
-            jnp.expand_dims(state_init_init, axis=0),
-            axis=0,
-        )
-
+        state_init = self.prior_pad(jnp.array([X0_sample, Z0_sample]))
         logw = 0.0
         return state_init, logw

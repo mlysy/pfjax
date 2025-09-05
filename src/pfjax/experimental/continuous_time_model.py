@@ -256,5 +256,7 @@ class ContinuousTimeModel(pfjax.experimental.base_model.BaseModel):
             # add the contribution of meas_lpdf()
             x_curr = full["x"]
             logw = full["logw"]
-            logw = logw + self.meas_lpdf(y_curr=y_curr, x_curr=x_curr, theta=theta)
+            logw = jnp.sum(logw) + self.meas_lpdf(
+                y_curr=y_curr, x_curr=x_curr, theta=theta
+            )
             return x_curr, logw
