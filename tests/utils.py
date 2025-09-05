@@ -198,11 +198,11 @@ def lv_setup():
     theta = jnp.array([alpha, beta, gamma, delta, sigma_H, sigma_L, tau_H, tau_L])
     # data specification
     dt = 0.09
-    n_res = 3
+    n_res = 2
     model_args = {"dt": dt, "n_res": n_res}
     n_obs = 7
     x_init = jnp.block([[jnp.zeros((n_res - 1, 2))], [jnp.log(jnp.array([5.0, 3.0]))]])
-    n_particles = 25
+    n_particles = 5
     Model = models_exp.LotVolModel
     Model2 = models_test.LotVolModel
     return {
