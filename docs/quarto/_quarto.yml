@@ -4,17 +4,32 @@ project:
     - "*.qmd"
     - "!sphinx/"
 
+jupyter: python3
+
 execute:
   cache: true
 
 website:
-  title: "PFJAX Docs"
+  title: "PFJAX"
   navbar:
     left:
-      - href: index.qmd
-        text: Home
-      - href: api/index.qmd
-        text: API Reference
+      - text: "Home"
+        href: index.qmd
+      - text: "Quickstart"
+        href: pfjax.qmd
+      - text: "Tutorials"
+        menu:
+          - text: "Quickstart"
+            href: pfjax.qmd
+          - text: "Comparison of Gradient/Hessian Algorithms"
+            href: gradient_comparisons.qmd
+          - text: "Example: Stochastic Optimization"
+            href: stochopt_tutorial.qmd
+          - text: "Example: Markov Chain Monte Carlo"
+            href: mcmc_tutorial.qmd
+      - text: "API Reference"
+        href: api/index.qmd
+        
 
 format:
   html:
