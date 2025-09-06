@@ -1,0 +1,7 @@
+# Function reference {.doc .doc-index}
+
+## pfjax
+
+| | |
+| --- | --- |
+| [models.base_model](models.base_model.qmd#pfjax.models.base_model) |  |
