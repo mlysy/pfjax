@@ -1,19 +1,68 @@
 ---
-title: "PFJAX Documentation"
-format:
-  html:
-    toc: true
-    theme: cosmo
-execute:
-      cache: true
+title: "PFJAX: Particle Filtering in JAX"
 ---
 
-# Welcome
+[**Quickstart**](#quickstart)
+| [**Installation**](#installation)
+| [**Documentation**](#documentation)
+| [**Developers**](#developers)
 
-Welcome to the documentation for **PFJAX**, a particle filtering library developed at the University of Waterloo.
+---
 
-This site includes:
+## What is PFJAX?
 
-- Tutorials for learning how to use PFJAX.
-- Explanations of algorithms and models.
-- Reference material on functions and modules.
+**PFJAX** is a collection of tools for estimating the parameters of state-space models using particle filtering methods, with  [**JAX**](https://jax.readthedocs.io/) as the backend for JIT-compiling models and automatic differentiation.
+
+---
+
+## Installation
+
+This will clone the repo into a subfolder `pfjax`, from where you (i) issue the `git clone` command and (ii) install the package from source.
+
+```bash
+git clone https://github.com/mlysy/pfjax
+cd pfjax
+pip install .
+``` 
+
+## Quickstart 
+
+A brief [introduction to **PFJAX**](pfjax.qmd).
+
+## Documentation
+
+This is a work in progress!  Current modules include:
+
+- The [quickstart guide](pfjax.qmd).
+
+- A [comparison of gradient and hessian algorithms](gradient_comparisons.qmd) based on particle filters, which in turn are used for conducting parameter inference.
+
+- An example of parameter inference using [stochastic optimization](stochopt_tutorial.qmd).
+
+- An example of parameter inference using [Markov chain Monte Carlo](mcmc_tutorial.qmd).
+
+- The API [reference documentation](https://pfjax.readthedocs.io/).
+
+## Developers
+
+### Testing
+
+From within `pfjax/tests`:
+
+```bash
+python3 -m unittest -v
+```
+
+Or, install [**tox**](https://tox.wiki/en/latest/index.html), then from within `pfjax` at the command line: `tox`.
+
+### Building Documentation
+
+From within `pfjax/docs`:
+
+```bash
+# regular build
+make html
+
+# clean build incl. repeating cached computations
+make clean html
+```
