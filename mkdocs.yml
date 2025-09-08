@@ -1,0 +1,16 @@
+site_name: "PFJAX"
+
+theme:
+  name: readthedocs
+
+
+exclude_docs: |
+  /quarto/*
+  /sphinx/*
+
+plugins:
+- search
+- mkdocstrings:
+- api-autonav:
+    modules: ["src/pfjax"]
+
