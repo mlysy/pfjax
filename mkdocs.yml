@@ -1,8 +1,9 @@
 site_name: "PFJAX"
 
 theme:
-  name: readthedocs
-
+  name: material
+  features:
+    - navigation.indexes
 
 exclude_docs: |
   /quarto/*
@@ -10,8 +11,19 @@ exclude_docs: |
   /internal/*
 
 plugins:
-- search
-- mkdocstrings:
-- api-autonav:
-    modules: ["src/pfjax"]
-
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            type_parameter_headings: true
+            members_order: source
+            summary: true
+            show_signature_annotations: true
+  - api-autonav:
+      modules: ["src/pfjax"]
+      show_full_namespace: false
