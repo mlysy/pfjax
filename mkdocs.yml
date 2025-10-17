@@ -1,0 +1,29 @@
+site_name: "PFJAX"
+
+theme:
+  name: material
+  features:
+    - navigation.indexes
+
+exclude_docs: |
+  /quarto/*
+  /sphinx/*
+  /internal/*
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            type_parameter_headings: true
+            members_order: source
+            summary: true
+            show_signature_annotations: true
+  - api-autonav:
+      modules: ["src/pfjax"]
+      show_full_namespace: false
