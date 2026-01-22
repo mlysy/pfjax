@@ -1,6 +1,33 @@
-[build-system]
-requires = [
-    "setuptools>=42",
-    "wheel"
+[project]
+name = "pfjax"
+version = "0.1.0"
+description = "Particle Filtering in JAX"
+readme = "README.md"
+url = "https://github.com/mlysy/pfjax"
+authors = [
+    { name = "mlysy", email = "mlysy@users.noreply.github.com" }
 ]
-build-backend = "setuptools.build_meta"
+requires-python = ">=3.10"
+dependencies = [
+    "jax>=0.6.2",
+    "jaxlib>=0.6.2",
+    "ott-jax>=0.6.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.26,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pandas>=2.3.3",
+    "pytest>=9.0.2",
+    "pytest-env>=1.2.0",
+]
+
+[tool.pytest.ini_options]
+env = [
+    "JAX_ENABLE_X64=True",
+]
+addopts = "--ignore=tests/interactive --ignore=tests/deprecated"
+testpaths = ["tests"]
