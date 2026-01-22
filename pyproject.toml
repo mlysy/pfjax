@@ -4,7 +4,18 @@ version = "0.0.3rc1"
 description = "Particle Filtering in JAX"
 readme = {file = "README.md", content-type = "text/markdown"}
 authors = [
-    { name = "mlysy", email = "mlysy@users.noreply.github.com" }
+    { name = "Martin Lysy" },
+    { name = "Pranav Subramani" },
+    { name = "Jonathan Ramkissoon" },
+    { name = "Mohan Wu" },
+    { name = "Michelle Ko" },
+    { name = "Kanika Choptra" },
+    { name = "Feiyu Zhu" },
+    { name = "Micky Liu" },
+    { name = "Monica Zhu" }
+]
+maintainers = [
+    { name = "Martin Lysy", email = "mlysy@uwaterloo.ca" }
 ]
 requires-python = ">=3.10"
 dependencies = [

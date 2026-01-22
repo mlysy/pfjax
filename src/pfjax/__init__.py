@@ -1,5 +1,6 @@
 # from . __metadata__ import __version__, __author__
-from importlib.metadata import PackageNotFoundError, version
+import re
+from importlib.metadata import PackageNotFoundError, metadata, version
 
 from .loglik_full import loglik_full
 from .models.base_model import BaseModel
@@ -14,7 +15,19 @@ except PackageNotFoundError:
     # package is not installed
     __version__ = "unknown"
 
-__author__ = "Martin Lysy, Pranav Subramani, Jonathan Ramkissoon, Mohan Wu, Michelle Ko, Kanika Choptra, Feiyu Zhu, Micky Liu, Monica Zhu"
+# __author__ = "Martin Lysy, Pranav Subramani, Jonathan Ramkissoon, Mohan Wu, Michelle Ko, Kanika Choptra, Feiyu Zhu, Micky Liu, Monica Zhu"
+try:
+    pkg_metadata = metadata("pfjax")
+    raw_authors = pkg_metadata.get("Author-email") or pkg_metadata.get("Author")
+
+    if raw_authors:
+        # find the names and ignore the <email@...> parts
+        names = re.findall(r"([^,<>\s][^,<>]*)<[^<>]+>", raw_authors)
+        __author__ = ", ".join(n.strip() for n in names) if names else raw_authors
+    else:
+        __author__ = "unknown"
+except PackageNotFoundError:
+    __author__ = "unknown"
 
 __all__ = [
     "BaseModel",
