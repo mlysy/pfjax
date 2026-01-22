@@ -1,9 +1,8 @@
 [project]
 name = "pfjax"
-version = "0.1.0"
+version = "0.0.3rc1"
 description = "Particle Filtering in JAX"
-readme = "README.md"
-url = "https://github.com/mlysy/pfjax"
+readme = {file = "README.md", content-type = "text/markdown"}
 authors = [
     { name = "mlysy", email = "mlysy@users.noreply.github.com" }
 ]
@@ -13,6 +12,17 @@ dependencies = [
     "jaxlib>=0.6.2",
     "ott-jax>=0.6.0",
 ]
+license = "MIT"
+license-files = ["LICENSE"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent"
+]
+
+[project.urls]
+source = "https://github.com/mlysy/pfjax"
+issues = "https://github.com/mlysy/pfjax/issues"
+changelog = "https://github.com/mlysy/pfjax/NEWS.md"
 
 [build-system]
 requires = ["uv_build>=0.9.26,<0.10.0"]
