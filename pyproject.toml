@@ -17,17 +17,17 @@ authors = [
 maintainers = [
     { name = "Martin Lysy", email = "mlysy@uwaterloo.ca" }
 ]
-requires-python = ">=3.10"
-dependencies = [
-    "jax>=0.6.2",
-    "jaxlib>=0.6.2",
-    "ott-jax>=0.6.0",
-]
 license = "MIT"
 license-files = ["LICENSE"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent"
+]
+requires-python = ">=3.11"
+dependencies = [
+    "jax>=0.6.0",
+    "jaxlib>=0.6.0",
+    "ott-jax>=0.5.0",
 ]
 
 [project.urls]
@@ -39,16 +39,16 @@ changelog = "https://github.com/mlysy/pfjax/NEWS.md"
 requires = ["uv_build>=0.9.26,<0.10.0"]
 build-backend = "uv_build"
 
-[dependency-groups]
-dev = [
-    "pandas>=2.3.3",
-    "pytest>=9.0.2",
-    "pytest-env>=1.2.0",
-]
-
 [tool.pytest.ini_options]
 env = [
     "JAX_ENABLE_X64=True",
 ]
 addopts = "--ignore=tests/interactive --ignore=tests/deprecated"
 testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pandas>=3.0.0",
+    "pytest>=9.0.2",
+    "pytest-env>=1.2.0",
+]
