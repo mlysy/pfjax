@@ -1,0 +1,36 @@
+name: uv-test
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test-min-versions:
+    name: Min-Version (Py ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Resolve Lowest Dependencies
+        run: uv lock --resolution lowest-direct
+
+      - name: Install Dependencies
+        run: uv sync --dev
+
+      - name: Run Pytest
+        env:
+          JAX_PLATFORMS: cpu
+        run: uv run pytest
