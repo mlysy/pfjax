@@ -26,9 +26,9 @@ classifiers = [
 requires-python = ">=3.11"
 dependencies = [
     "jax>=0.5.0",
-    "jax>=0.6.0 ; python_full_version >= '3.14'",
+    "jax>=0.7.0 ; python_full_version >= '3.14'",
     "jaxlib>=0.5.0",
-    "jaxlib>=0.6.0 ; python_full_version >= '3.14'",
+    "jaxlib>=0.7.0 ; python_full_version >= '3.14'",
     "ott-jax>=0.5.0",
 ]
 
