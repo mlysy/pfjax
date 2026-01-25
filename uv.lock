@@ -425,7 +425,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "pandas", specifier = ">=3.0.0" },
+    { name = "pandas", specifier = ">=2.2.0" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-env", specifier = ">=1.2.0" },
 ]
