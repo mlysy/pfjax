@@ -417,9 +417,9 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "jax", specifier = ">=0.5.0" },
-    { name = "jax", marker = "python_full_version >= '3.14'", specifier = ">=0.7.0" },
+    { name = "jax", marker = "python_full_version >= '3.14'", specifier = ">=0.7.2" },
     { name = "jaxlib", specifier = ">=0.5.0" },
-    { name = "jaxlib", marker = "python_full_version >= '3.14'", specifier = ">=0.7.0" },
+    { name = "jaxlib", marker = "python_full_version >= '3.14'", specifier = ">=0.7.2" },
     { name = "ott-jax", specifier = ">=0.5.0" },
 ]
 
