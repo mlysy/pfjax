@@ -28,9 +28,9 @@ jobs:
         run: uv lock --resolution lowest-direct
 
       - name: Install Dependencies
-        run: uv sync --dev
+        run: uv sync --resolution lowest-direct --dev
 
       - name: Run Pytest
         env:
           JAX_PLATFORMS: cpu
-        run: uv run pytest
+        run: uv run --resolution lowest-direct pytest
