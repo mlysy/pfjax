@@ -1,0 +1,14 @@
+project:
+  output-dir: docs
+  render:
+    - "*.qmd"
+    - "!/internal/"
+    - "!/quarto/"
+    - "!/sphinx/"
+
+jupyter: python3
+
+format: mkdocs-gfm
+
+# filters:
+#   - _extensions/mkdocs/filters/mklog.lua
