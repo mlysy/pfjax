@@ -1,4 +1,5 @@
 site_name: "PFJAX"
+docs_dir: docs/_output
 
 theme:
   name: material

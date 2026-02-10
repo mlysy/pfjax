@@ -1,14 +1,20 @@
 project:
-  # output-dir: ../docs
+  output-dir: _output
   render:
     - "*.qmd"
     - "!/internal/"
     - "!/quarto/"
     - "!/sphinx/"
+  resources:
+    - hooks
+    - javascripts
+    - _macros.tex
+    - references.bib
 
 jupyter: python3
 
-format: mkdocs-gfm
+format:
+  mkdocs-gfm
 
 # filters:
 #   - _extensions/mkdocs/filters/mklog.lua
