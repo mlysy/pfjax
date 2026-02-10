@@ -16,7 +16,7 @@ bibliography: "references.bib"
 :::
 
 
-## Summary
+# Summary
 
 In the [Introduction](pfjax.qmd) tutorial, we saw how to set up a model class for state-space models and how to use **PFJAX** to estimate the marginal loglikelihood $\ell(\tth) = \log p(\yy_{0:T} \mid \tth)$.  For parameter inference with state-space models, particle filters are useful not only for estimating $\ell(\tth)$, but also its gradient and hessian functions, $\nabla \ell(\tth) = \frac{\partial}{\partial \tth} \ell(\tth)$ and $\nabla^2 \ell(\tth) = \frac{\partial^2}{\partial \tth \partial \tth'} \ell(\tth)$.
 
@@ -28,7 +28,7 @@ This tutorial compares the speed and accuracy of various particle filter algorit
 
 3.  A bi-product of the "Rao-Blackwellized" (RB) particle filter developped by @poyiadjis.etal11 (also with multinomial resampling).  This algorithm also estimates the gradient and hessian unbiasedly.  Its computational complexity is $\bO(N^2 T)$, but the variance of the gradient/hessian estimates is $\bO(T/N)$ [@poyiadjis.etal11].
 
-### Benchmark Model
+## Benchmark Model
 
 We'll be using a Bootstrap filter for the Brownian motion with drift model defined in the [Introduction](pfjax.qmd):
 
@@ -42,7 +42,7 @@ $$
 
 where the model parameters are $\tth = (\mu, \sigma, \tau)$.  The details of setting up the appropriate model class are provided in the [Introduction](pfjax.qmd).  Here we'll use the version of this model provided with **PFJAX**: `pfjax.models.BMModel`.
 
-### Methods to be Added to the Comparisons
+## Methods to be Added to the Comparisons
 
 4.  Automatic differentiation through a particle filter with multivariate normal resampling scheme [@kotecha.djuric03].  This resampler, implemented in `pfjax.particle_resamplers.resample_mvn()`, calculates the (weighted) mean and variance of the particles at each time $t$ and samples from the multivariate normal with these parameters.  This method is extremely fast and accurate as long as $p(\xx_{t} \mid \yy_{0:t-1}, \tth)$ is well-approximated by a multivariate normal.  It is biased, however, especially when $p(\xx_t \mid \yy_{0:t}, \tth)$ is multimodal.  The MVN resampler should probably be included for comparison, though since $p(\xx_{t} \mid \yy_{0:t-1}, \tth)$ is exactly Gaussian here its results are likely to be overly optimistic.
 
@@ -67,7 +67,7 @@ import pfjax as pf
 from pfjax.models import BMModel
 ```
 
-## Simulate Data
+# Simulate Data
 
 ```{python}
 # parameter values
@@ -105,7 +105,7 @@ sns.relplot(
 )
 ```
 
-## Loglikelihood Comparisons
+# Loglikelihood Comparisons
 
 Before checking derivatives, let's start by comparing the speed and accuracy of the underlying particle filters, namely, the $\bO(NT)$ complexity algorithm of `pfjax.particle_filter()` and the $\bO(N^2T)$ algorithm of `pfjax.particle_filter_rb()`.  Accuracy is assessed visually using projection plots as described in the [Introduction](pfjax.qmd).
 
@@ -178,7 +178,7 @@ def bm_loglik_ott(theta, y_meas, key, n_particles):
     return jnp.squeeze(ll)
 ```
 
-### Timing Comparisons
+## Timing Comparisons
 
 Let's first jit-compile a simplified version of the loglikelihoods for the projection plots and compare timings.
 
@@ -205,7 +205,7 @@ bm_ll_rb = jax.jit(partial(bm_loglik_rb, y_meas=y_meas,
 %timeit bm_ll_rb(theta_true)
 ```
 
-### Projection Plots
+## Projection Plots
 
 ```{python}
 # projection plot specification
@@ -274,7 +274,7 @@ for ax, theta in zip(rp.axes.flat, theta_true):
 
 - Both particle filters reasonably approximate $\ell(\tth)$ when $\mu$ is at its true value.  They don't do as well when $\mu$ is far from its true value.  This is likely due to particle degeneracy in that case.
 
-## Gradient Calculations
+# Gradient Calculations
 
 Here we'll check the three gradient algorithms: 
 
@@ -327,7 +327,7 @@ def bm_score_rb(theta, key, n_particles):
     return out["score"]
 ```
 
-### Timing Comparisons
+## Timing Comparisons
 
 Note here that the number of particles for the basic and RB particle filters was chosen so that the gradient computations take about the same CPU time.
 
@@ -343,7 +343,7 @@ n_particles_rb = 100
 %timeit bm_score_rb(theta_true, key, n_particles_rb)
 ```
 
-### Accuracy Comparisons
+## Accuracy Comparisons
 
 ```{python}
 # repeat calculation nsim times
@@ -402,7 +402,7 @@ g.set_titles(col_template="{col_name}")
 
 - The RB score calculation indeed has lower variance than that of the basic particle filter for $\sigma$.  However, the gradients for $\tau$ appear to be slightly more biased.  One can verify that this bias disappears when the number of particles is increased to about 500.
 
-## Hessian Computations
+# Hessian Computations
 
 We'll do this using the same methods as for the score.
 
@@ -455,7 +455,7 @@ def bm_fisher_rb(theta, key, n_particles):
     return out["fisher"]
 ```
 
-### Timing Comparisons
+## Timing Comparisons
 
 ```{python}
 key = jax.random.PRNGKey(0)
@@ -469,7 +469,7 @@ n_particles_rb = 100
 %timeit bm_fisher_rb(theta_true, key, n_particles_rb)
 ```
 
-### Accuracy Comparisons
+## Accuracy Comparisons
 
 ```{python}
 n_sim = 100
@@ -542,7 +542,7 @@ g.set_titles(col_template="{col_name}")
 
 - In this case the Rao-Blackwellized filter is the clear winner, in terms of accuracy and precision.
 
-## References
+# References
 
 ::: {#refs}
 :::

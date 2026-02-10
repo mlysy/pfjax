@@ -14,7 +14,8 @@ project:
 jupyter: python3
 
 format:
-  mkdocs-gfm
+  mkdocs-gfm:
+    shift-heading-level-by: 1
 
 # filters:
 #   - _extensions/mkdocs/filters/mklog.lua

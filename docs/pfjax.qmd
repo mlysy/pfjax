@@ -15,7 +15,7 @@ bibliography: "references.bib"
 {{< include _macros.tex >}}
 :::
 
-## Summary
+# Summary
 
 The goal of **PFJAX** is to provide tools for estimating the parameters $\tth$ of a [state-space model](http://www.scholarpedia.org/article/State_space_model)
 
@@ -76,7 +76,7 @@ import projplot as pjp
 import pfjax as pf
 ```
 
-## Example Model: Brownian Motion with Drift
+# Example Model: Brownian Motion with Drift
 
 The model is
 
@@ -99,13 +99,13 @@ $$
 
 where $\tilde \mu = \mu \dt$, $\tilde \sigma^2 = \sigma^2 \dt$, and $\delta_{st}$ is the indicator function.  These formulas provide an analytic expression for $\ell(\tth) = \log p(\yy_{0:T} \mid \tth)$, which we can use to benchmark our calculations.
 
-## Particle Filter Approximation of the Marginal Loglikelihood {#sec-pftheo}
+# Particle Filter Approximation of the Marginal Loglikelihood {#sec-pftheo}
 
 The basic particle filter provided by **PFJAX** is the auxiliary particle filter described in [@poyiadjis.etal11] Algorithm 1 and provided below.
 
 --- 
 
-### Auxiliary Particle Filter {#sec-bpf}
+## Auxiliary Particle Filter {#sec-bpf}
 
 **Inputs:** 
 
@@ -266,7 +266,7 @@ class BMModel(pf.BaseModel):
         )
 ```
 
-### Simulate Data
+## Simulate Data
 
 This is accomplished with the function `pfjax.simulate()`.
 
@@ -307,7 +307,7 @@ sns.relplot(
 )
 ```
 
-### Calculate Particle Filter Marginal Logikelihood
+## Calculate Particle Filter Marginal Logikelihood
 
 For this we will use the basic particle filter provided by `pfjax.particle_filter()`.  We'll also compare the particle filter approximation $\hat{\ell}(\tth)$ to the exact loglikelihood $\ell(\tth)$ using "projection plots", i.e., we'll plot the one-dimensional marginal loglikelihood in each of the parameters $\tth = (\mu, \sigma, \tau)$ with the other two parameters fixed at their simulated values.  
 
@@ -405,17 +405,17 @@ for ax, theta in zip(rp.axes.flat, theta_true):
     ax.axvline(theta, linestyle="--", color="black")
 ```
 
-### Conclusions
+## Conclusions
 
 - Jitting the particle filter computation offers almost a 1000x speed improvement!
 - We see that the particle filter loglikelihood approximation is very accurate.  However, it seems to be increasingly biased as we move away from the true parameter value (dashed vertical lines).  This is likely because the quality of the bootstrap filter deteriorates considerably when this happens.
 
-## References
+# References
 
 ::: {#refs}
 :::
 
-## Appendix: Exact Likelihood of the BM Model {#sec-app-bm-deriv}
+# Appendix: Exact Likelihood of the BM Model {#sec-app-bm-deriv}
 
 The distribution of $p(\xx_{0:T}, \yy_{0:T} \mid \tth)$ is multivariate normal.  Thus, $p(\yy_{0:T} \mid \tth)$ is also multivariate normal, and we only need to find $E[y_t \mid \tth]$ and $\cov(y_s, y_t \mid \tth)$.
 
