@@ -1,4 +1,5 @@
 site_name: "PFJAX"
+site_url: https://mlysy.github.io/pfjax
 docs_dir: docs/_output
 
 theme:
