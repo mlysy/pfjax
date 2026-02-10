@@ -7,6 +7,9 @@ contributes:
     gfm:
       from: markdown-latex_macros
       filters:
+	# links
+        - at: pre-quarto
+          path: filters/mklink.lua
         # code blocks
         - at: pre-ast
           path: filters/mkcode.lua
