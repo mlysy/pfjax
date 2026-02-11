@@ -2,6 +2,13 @@ site_name: "PFJAX"
 site_url: https://mlysy.github.io/pfjax
 docs_dir: docs/_output
 
+nav:
+  - Home: index.md
+  - pfjax.md
+  - gradient_comparisons.md
+  - stochopt_tutorial.md
+  - mcmc_tutorial.md
+
 theme:
   name: material
   features:
