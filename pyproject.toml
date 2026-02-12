@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 [project]
 name = "pfjax"
 version = "0.0.3rc1"
@@ -76,3 +77,11 @@ test = [
     "pytest>=9.0.2",
     "pytest-env>=1.2.0",
 ]
+=======
+[build-system]
+requires = [
+    "setuptools>=42",
+    "wheel"
+]
+build-backend = "setuptools.build_meta"
+>>>>>>> 2d59345 (add pyproject back (?))
