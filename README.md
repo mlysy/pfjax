@@ -1,13 +1,13 @@
-# **PFJAX**: Particle Filtering in JAX
+# PFJAX: Particle Filtering in JAX
 
-[**Quickstart**](docs/notebooks/pfjax.md)
+[**Quickstart**](#quickstart)
 | [**Installation**](#installation)
 | [**Documentation**](#documentation)
 | [**Developers**](#developers)
 
 ---
 
-## What is **PFJAX**?
+## What is PFJAX?
 
 **PFJAX** is a collection of tools for estimating the parameters of state-space models using particle filtering methods, with  [**JAX**](https://jax.readthedocs.io/) as the backend for JIT-compiling models and automatic differentiation.
 
@@ -25,42 +25,39 @@ pip install .
 
 ## Quickstart 
 
-A brief [introduction to **PFJAX**](docs/notebooks/pfjax.md).
+A brief [introduction to **PFJAX**](https://mlysy.github.io/pfjax/pfjax/).
 
 ## Documentation
 
 This is a work in progress!  Current modules include:
 
-- The [quickstart guide](docs/notebooks/pfjax.md).
+- The [quickstart guide](https://mlysy.github.io/pfjax/pfjax/).
 
-- A [comparison of gradient and hessian algorithms](docs/notebooks/gradient_comparisons.md) based on particle filters, which in turn are used for conducting parameter inference.
+- A [comparison of gradient and hessian algorithms](https://mlysy.github.io/pfjax/gradient_comparisons/) based on particle filters, which in turn are used for conducting parameter inference.
 
-- An example of parameter inference using [stochastic optimization](docs/notebooks/stochopt_tutorial.md).
+- An example of parameter inference using [stochastic optimization](https://mlysy.github.io/pfjax/stochopt_tutorial/).
 
-- An example of parameter inference using [Markov chain Monte Carlo](docs/notebooks/mcmc_tutorial).
+- An example of parameter inference using [Markov chain Monte Carlo](https://mlysy.github.io/pfjax/mcmc_tutorial/).
 
-- The API [reference documentation](https://pfjax.readthedocs.io/).
+- The API [reference documentation](https://mlysy.github.io/pfjax/reference/pfjax/).
 
 ## Developers
 
+The instructions below assume that [**uv**](https://docs.astral.sh/uv/) is being used for dependency management.  Instructions for installing **uv** are available [here](https://docs.astral.sh/uv/getting-started/installation/).
+
 ### Testing
 
-From within `pfjax/tests`:
+From within the `pfjax` folder:
 
 ```bash
-python3 -m unittest -v
+uv run --group test pytest
 ```
-
-Or, install [**tox**](https://tox.wiki/en/latest/index.html), then from within `pfjax` at the command line: `tox`.
 
 ### Building Documentation
 
-From within `pfjax/docs`:
+The documentation is build using [**Quarto**](https://quarto.org/) + [**MkDocs-Material**](https://squidfunk.github.io/mkdocs-material/).  The latter comes as a Python package installed by **uv**, but the former must be [installed](https://quarto.org/docs/get-started/) separately.  Once **Quarto** is installed, from within the `pfjax` folder:
 
 ```bash
-# regular build
-make html
-
-# clean build incl. repeating cached computations
-make clean html
+uv run --group docs quarto render docs/
+uv run --group docs mkdocs build
 ```
