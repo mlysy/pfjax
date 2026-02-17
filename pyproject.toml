@@ -1,6 +1,77 @@
-[build-system]
-requires = [
-    "setuptools>=42",
-    "wheel"
+[project]
+name = "pfjax"
+version = "0.0.3rc1"
+description = "Particle Filtering in JAX"
+readme = {file = "README.md", content-type = "text/markdown"}
+authors = [
+    { name = "Martin Lysy" },
+    { name = "Pranav Subramani" },
+    { name = "Jonathan Ramkissoon" },
+    { name = "Mohan Wu" },
+    { name = "Michelle Ko" },
+    { name = "Kanika Choptra" },
+    { name = "Feiyu Zhu" },
+    { name = "Micky Liu" },
+    { name = "Monica Zhu" }
 ]
-build-backend = "setuptools.build_meta"
+maintainers = [
+    { name = "Martin Lysy", email = "mlysy@uwaterloo.ca" }
+]
+license = "MIT"
+license-files = ["LICENSE"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent"
+]
+requires-python = ">=3.11"
+dependencies = [
+    "jax>=0.5.0",
+    "jax>=0.7.2 ; python_full_version >= '3.14'",
+    "jaxlib>=0.5.0",
+    "jaxlib>=0.7.2 ; python_full_version >= '3.14'",
+    "ott-jax>=0.5.0",
+]
+
+[project.urls]
+source = "https://github.com/mlysy/pfjax"
+issues = "https://github.com/mlysy/pfjax/issues"
+changelog = "https://github.com/mlysy/pfjax/NEWS.md"
+
+[build-system]
+requires = ["uv_build>=0.9.26,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+env = [
+    "JAX_ENABLE_X64=True",
+]
+addopts = "--ignore=tests/interactive --ignore=tests/deprecated"
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+  {include-group = "docs"},
+  {include-group = "test"}
+]
+docs = [
+    "ansi2html>=1.9.2",
+    "ipykernel>=7.1.0",
+    "jupyter-cache>=1.0.1",
+    "matplotlib>=3.10.8",
+    "mkdocs-api-autonav>=0.4.0",
+    "mkdocs-material>=9.7.1",
+    "mkdocstrings>=1.0.3",
+    "nbclient>=0.10.4",
+    "nbformat>=5.10.4",
+    #"numpy>=2.4.2",
+    "numpy>=2.4.1",
+    "pandas>=2.3.0",
+    "projplot>=1.0",
+    "pyyaml>=6.0.3",
+    "seaborn>=0.13.2",
+]
+test = [
+    "pandas>=2.3.0",
+    "pytest>=9.0.2",
+    "pytest-env>=1.2.0",
+]

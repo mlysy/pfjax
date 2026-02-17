@@ -3,6 +3,7 @@ __pycache__
 .ipynb_checkpoints
 dist
 build
+site
 pfjax.egg-info
 .tox
 docs/notebooks/internal/stochvol_jump_tutorial.ipynb

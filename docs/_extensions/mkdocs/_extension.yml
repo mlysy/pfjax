@@ -1,0 +1,21 @@
+title: quartodocs
+author: Martin Lysy
+version: 0.0.1
+quarto-required: ">=1.4.0"
+contributes:
+  formats:
+    gfm:
+      from: markdown-latex_macros
+      filters:
+	# links
+        - at: pre-quarto
+          path: filters/mklink.lua
+        # code blocks
+        - at: pre-ast
+          path: filters/mkcode.lua
+  	# figures and images
+        - at: pre-quarto
+          path: filters/mkfloat.lua
+        # math
+        - at: post-quarto
+          path: filters/mkmath.lua
