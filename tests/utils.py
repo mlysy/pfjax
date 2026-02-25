@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import jax.random as random
 import jax.scipy as jsp
 import jax.tree_util as jtu
+from jax import flatten_util
 import ott
 import pandas as pd
 import pfjax as pf
@@ -20,6 +21,8 @@ import pfjax.utils as utils
 from ott.geometry import pointcloud
 from ott.problems.linear import linear_problem
 from ott.solvers.linear import sinkhorn
+
+from .ss_model import SSModel
 
 # --- general-purpose utilities ------------------------------------------------
 
@@ -54,8 +57,12 @@ def assert_equal(x1, x2, tol=1e-6, context=""):
             assert rel_err(x1[k], x2[k]) < tol, f"failed at key '{k}'" + (
                 f", {context}" if context else ""
             )
-    else:
+    elif isinstance(x1, jax.Array):
         assert rel_err(x1, x2) < tol, f"failed" + (f" at {context}" if context else "")
+    else:
+        _x1, _ = jax.flatten_util.ravel_pytree(x1)
+        _x2, _ = jax.flatten_util.ravel_pytree(x2)
+        assert rel_err(_x1, _x2) < tol, f"failed" + (f" at {context}" if context else "")
 
 
 def var_sim(key, size):
@@ -323,7 +330,7 @@ def ss_setup():
     # particle filter specification
     n_particles = 3
     # model specification
-    Model = models.SSModel
+    Model = SSModel
     return {
         "key": key,
         "theta": theta,
