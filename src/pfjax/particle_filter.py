@@ -12,6 +12,43 @@ import pfjax.utils as utils
 from pfjax.particle_resamplers import resample_multinomial
 
 
+def _initialize_score(theta, n_particles):
+    """
+    Initialize the score pytree.
+
+    Args:
+        theta (PyTree): Model parameters.
+        n_particles: Number of particles.
+
+    Returns:
+        PyTree: Full of zeros with same structure as `theta`,
+        of which each leaf has an extra leading dimension of size `n_particles`.
+    """
+    return jax.tree.map(
+        lambda x: jnp.broadcast_to(x, (n_particles,) + x.shape),
+        utils.tree_zeros(theta),
+    )
+
+
+def _initialize_fisher(theta, n_particles):
+    """
+    Initialize the Fisher information pytree.
+
+    Args:
+        theta (PyTree): Model parameters.
+        n_particles: Number of particles.
+
+    Returns:
+        PyTree: Full of zeros with same structure as `theta`, of which each
+        leaf has shape `(n_particles,) + leaf.shape + leaf.shape)`, where
+        `leaf` is the corresponding leaf of `theta`.
+    """
+    return jax.tree.map(
+        lambda x: jnp.broadcast_to(x, (n_particles,) + x.shape),
+        jax.hessian(lambda y: 0.0)(theta),
+    )
+
+
 def particle_filter(
     model,
     key,
@@ -207,9 +244,9 @@ def particle_filter(
     }
     if has_acc:
         # dummy initialization for derivatives
-        filter_init["alpha"] = jnp.zeros((n_particles, theta.size))
+        filter_init["alpha"] = _initialize_score(theta, n_particles)
         if fisher:
-            filter_init["beta"] = jnp.zeros((n_particles, theta.size, theta.size))
+            filter_init["beta"] = _initialize_fisher(theta, n_particles)
 
     # lax.scan itself
     last, full = lax.scan(
@@ -505,14 +542,14 @@ def particle_filter_rb(
         "x_particles": x_particles,
         "loglik": jsp.special.logsumexp(logw),
         "logw_bar": logw,
-        "key": key
+        "key": key,
         # "resample_out": init_res
     }
     if has_acc:
         # dummy initialization for derivatives
-        filter_init["alpha"] = jnp.zeros((n_particles, theta.size))
+        filter_init["alpha"] = _initialize_score(theta, n_particles)
         if fisher:
-            filter_init["beta"] = jnp.zeros((n_particles, theta.size, theta.size))
+            filter_init["beta"] = _initialize_fisher(theta, n_particles)
 
     # lax.scan itself
     last, full = lax.scan(

@@ -2,6 +2,41 @@ import jax
 import jax.flatten_util as jfu
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import pfjax
+
+# --- test initialization of gradient and hessian ------------------------------
+
+theta = (
+    jnp.array(1.0),
+    {
+        "x": jnp.arange(2) * 1.0,
+        "y": jnp.array([[jnp.arange(2) + 1.0], [jnp.arange(2) * 2.0]]),
+    },
+)
+
+n_particles = 5
+
+
+a = jax.vmap(lambda i: pfjax.utils.tree_zeros(theta))(jnp.arange(n_particles))
+
+a2 = jax.tree.map(
+    lambda x: jnp.broadcast_to(x, (n_particles,) + x.shape),
+    pfjax.utils.tree_zeros(theta),
+)
+
+jax.tree.map(lambda x, y: jnp.max(jnp.abs(x - y)), a, a2)
+
+b = jax.vmap(lambda x, i: jax.hessian(lambda y: 0.0)(x), in_axes=(None, 0))(
+    theta, jnp.arange(n_particles)
+)
+
+b2 = jax.tree.map(
+    lambda x: jnp.broadcast_to(x, (n_particles,) + x.shape),
+    jax.hessian(lambda y: 0.0)(theta),
+)
+
+
+jax.tree.map(lambda x, y: jnp.max(jnp.abs(x - y)), b, b2)
 
 # --- test repeats -------------------------------------------------------------
 
