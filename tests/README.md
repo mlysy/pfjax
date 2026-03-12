@@ -93,11 +93,17 @@ This folder contains the test functions living inside the package, i.e., those w
 
 **Note:** All tests are run in 64 bit precision.
 
-- `test_loglik_full`: passed for models lv, bm, pg.
+- `test_loglik_full`: passed for models lv, bm, pg, ss.
 
 - `test_simulate`: passed for models lv, bm, pg.
 
 - `test_particle_filter`: passed for models lv, bm, pg.
+
+	- for model ss:
+		
+		- passed for `test_particle_filter_for`.
+
+		- failed for `test_particle_filter_deriv`. This is because the scan body function carry input and carry output must have the same pytree structure, but they differ.
 
 - `test_particle_filter_rb`: 
 
@@ -107,7 +113,7 @@ This folder contains the test functions living inside the package, i.e., those w
 	
 	- failed for model lv: actually it's taking forever because the for-loop version needs to be compiled.  consider reducing `n_particles` and `n_res` in `lv_setup()`.
 
-- `test_particle_smooth`: passed for models lv, bm, pg.
+- `test_particle_smooth`: passed for models lv, bm, pg, ss.
 
 - `test_resample_mvn`: passed for model bm.
 
@@ -124,3 +130,23 @@ This folder contains the test functions living inside the package, i.e., those w
 		- failed for `test_bridge_step_for`.  This is because `SDEModel` class no longer contains method `_bridge_step_for`.
 
 	- **TODO:** If we really want to do systematic for-loop testing, then we should write something like `pfjax.test.SDEModel` which uses for-loops for all the major methods.
+
+# Testing a new custom model
+
+## Creating your model
+
+- Create a new `.py` file and use it to create your model, follow similar structure requirements to other predefined models (ex. base, bm, lotvol, pgnet). Put this new file into `pfjax\src\pfjax\models`.
+
+	- This likely involves creating a class, and having certain functions including lpdf and sample functions (see bm_model for an example).
+
+## Setting up testing
+
+- Go to `pfjax\tests`. In it's current state, pfjax does not have a direct way to test newly created models, so it will need to be hard coded into the package itself.
+
+- The test files will start with something along the lines of `@pytest.fixture(params=`. Look at the list created in `params` if it contains "lv", "bm", "pg", then create an abbreviation for your new model and add it to both the params and id lists.
+
+	- Currently, this applies to `loglik`, `particle_filter`, `particle_smooth`, and `simulate`.
+
+- Go to `utils.py` and scroll to setup-methods. Within the function model_setup(), add a new elif statement for the abbreviation you created and call a function called `abbreviation_model` (replace abbreviation accordingly).
+
+- Create a new function under the existing model setups and follow the same structure style as the other functions currently in the file. Ensure that you are returning everything required to poperly run the function.

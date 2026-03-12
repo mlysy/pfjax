@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import jax.random as random
 import jax.scipy as jsp
 import jax.tree_util as jtu
+from jax import flatten_util
 import ott
 import pandas as pd
 import pfjax as pf
@@ -20,6 +21,8 @@ import pfjax.utils as utils
 from ott.geometry import pointcloud
 from ott.problems.linear import linear_problem
 from ott.solvers.linear import sinkhorn
+
+from .ss_model import SSModel
 
 # --- general-purpose utilities ------------------------------------------------
 
@@ -54,8 +57,12 @@ def assert_equal(x1, x2, tol=1e-6, context=""):
             assert rel_err(x1[k], x2[k]) < tol, f"failed at key '{k}'" + (
                 f", {context}" if context else ""
             )
-    else:
+    elif isinstance(x1, jax.Array):
         assert rel_err(x1, x2) < tol, f"failed" + (f" at {context}" if context else "")
+    else:
+        _x1, _ = jax.flatten_util.ravel_pytree(x1)
+        _x2, _ = jax.flatten_util.ravel_pytree(x2)
+        assert rel_err(_x1, _x2) < tol, f"failed" + (f" at {context}" if context else "")
 
 
 def var_sim(key, size):
@@ -98,9 +105,10 @@ def model_setup(request):
         return bm_setup()
     elif request.param == "pg":
         return pg_setup()
+    elif request.param == "ss":
+        return ss_setup()
     else:
         raise ValueError(f"Unknown model type: {request.param}")
-
 
 def bm_setup():
     """
@@ -274,6 +282,64 @@ def pg_setup():
         "model2": Model2,
     }
 
+def ss_setup():
+    """
+    Setup function for Gaussian State Space model tests (WIP)
+
+    This initializes key variables required for running PGNETModel tests,
+    including model parameters, number of observations, initial state,
+    number of particles, and model class references.
+
+    Returns
+    -------
+    None
+        Sets the following attributes on self:
+        - key : jax.random.PRNGKey
+            JAX random key.
+        - theta : jax.numpy.ndarray
+            Model parameters for SSModel.
+        - model_args : dict
+            Arguments to initialize the model.
+        - n_obs : int
+            Number of observations.
+        - x_init : jax.numpy.ndarray
+            Initial state of the model.
+        - n_particles : int
+            Number of particles for the particle filter.
+        - Model : type
+            SSModel class from models.
+        - Model2 : type
+            SSModel class from models.
+    """
+    key = random.PRNGKey(0)
+    # parameter values
+    n_state = 3
+    n_meas = 2
+    key, *subkeys = jax.random.split(key, num = 7)
+    A = jax.random.normal(subkeys[0], shape = (n_state, n_state))
+    b = jax.random.normal(subkeys[1], shape = (n_state,))
+    C = jax.random.normal(subkeys[2], shape = (n_state, n_state))
+    D = jax.random.normal(subkeys[3], shape = (n_meas, n_state))
+    e = jax.random.normal(subkeys[4], shape = (n_meas,))
+    F = jax.random.normal(subkeys[5], shape = (n_meas, n_meas))
+    theta = (A, b, C, D, e, F)  # all jnp arrays
+    # data specification
+    model_args = {"n_state": n_state, "n_meas": n_meas}
+    n_obs = 5
+    x_init = b
+    # particle filter specification
+    n_particles = 3
+    # model specification
+    Model = SSModel
+    return {
+        "key": key,
+        "theta": theta,
+        "model_args": model_args,
+        "n_obs": n_obs,
+        "x_init": x_init,
+        "n_particles": n_particles,
+        "model": Model,
+    }
 
 # move into individual test files
 
