@@ -93,11 +93,17 @@ This folder contains the test functions living inside the package, i.e., those w
 
 **Note:** All tests are run in 64 bit precision.
 
-- `test_loglik_full`: passed for models lv, bm, pg.
+- `test_loglik_full`: passed for models lv, bm, pg, ss.
 
 - `test_simulate`: passed for models lv, bm, pg.
 
 - `test_particle_filter`: passed for models lv, bm, pg.
+
+	- for model ss:
+		
+		- passed for `test_particle_filter_for`.
+
+		- failed for `test_particle_filter_deriv`. This is because the scan body function carry input and carry output must have the same pytree structure, but they differ.
 
 - `test_particle_filter_rb`: 
 
@@ -107,7 +113,7 @@ This folder contains the test functions living inside the package, i.e., those w
 	
 	- failed for model lv: actually it's taking forever because the for-loop version needs to be compiled.  consider reducing `n_particles` and `n_res` in `lv_setup()`.
 
-- `test_particle_smooth`: passed for models lv, bm, pg.
+- `test_particle_smooth`: passed for models lv, bm, pg, ss.
 
 - `test_resample_mvn`: passed for model bm.
 

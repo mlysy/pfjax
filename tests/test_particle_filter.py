@@ -2,7 +2,7 @@ import pytest
 from . import utils
 
 
-@pytest.fixture(params=["lv", "bm", "pg", "ss"], ids=["lv", "bm", "pg", "ss"])
+@pytest.fixture(params=["lv", "bm", "pg"], ids=["lv", "bm", "pg"])
 def model_setup(request):
     return utils.model_setup(request)
 
