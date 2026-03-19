@@ -70,6 +70,7 @@ docs = [
     "projplot>=1.0",
     "pyyaml>=6.0.3",
     "seaborn>=0.13.2",
+    "tornado>=6.5.5", # an ipykernel dependency, but contains a security fix
 ]
 test = [
     "pandas>=2.3.0",
