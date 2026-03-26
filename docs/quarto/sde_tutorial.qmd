@@ -4,12 +4,6 @@ author:
     name: Qianmo Liu
     affiliation: University of Waterloo
 date: Sept 10, 2025
-format:
-    pdf:
-        include-in-header:
-            - file:
-                packages.tex
-            - _latex_macros.tex
 jupyter:
   jupytext:
     text_representation:
@@ -21,29 +15,33 @@ jupyter:
     display_name: Python 3 (ipykernel)
     language: python
     name: python3
-execute: 
-  eval: true
+execute:
+      cache: true
+      eval: true
 ---
 
-# Model Specification
+{{< include _latex_macros.qmd >}}
 
-This tutorial assumes working knowledge of SDE. Readers who seeks for a refresher are suggests to walk through [Appendix 1](#appendix-1-what-is-sde). 
 
-Let $\XX(t) = (X_1(t), \ldots, X_d(t))$ denote a $d$-dimensional process satisfying the stochastic differential equation (SDE)
+# Overview of SDE under SSM
+
+This tutorial assumes working knowledge of stochastic differential equations. Readers who seeks for a refresher are suggests to walk through [Appendix 1](#appendix-1-what-is-sde). 
+
+Let $\XX(t) = (X_1(t), \ldots, X_d(t))$ denote a $d$-dimensional process satisfying SDE
 
 $$
 \ud \XX(t) = \dr_{\tth}(\XX(t)) \ud t + \df_{\tth}(\XX(t))^{1/2} \ud \BB(t),
 $$
 
-where $\dr_{\tth}(\XX)$ is a $d$-dimensional drift function and $\df_{\tth}(\XX)$ is a $d \times d$ positive-definite diffusion matrix.  We assume that $\XX(t)$ is measured with error at times $t_n = n \dt$ such that the observed data is $\YY_{0:N} = (\YY_0, \ldots, \YY_N)$ with
+where $\dr_{\tth}(\XX)$ is a $d$-dimensional drift function and $\df_{\tth}(\XX)$ is a $d \times d$ positive-definite diffusion matrix. Under state-space dynamics, we assume that $\XX(t)$ is measured with error at times $t_n = n \dt$ such that the observed data is $\YY_{0:N} = (\YY_0, \ldots, \YY_N)$ with
 
 $$
-\YY_n \ind g(\YY_n \mid \XX_n, \tth),
+\YY_n \ind g(\YY_n \mid \XX_n, \tth)
 $$
 
 where $\XX_n = \XX(t_n)$. 
 
-SDE defines a continuous time markov process. Thus, if we have the measurement variables above, then we can define a SSM via
+SDE defines a continuous time Markov process. Thus, if we have the measurement variables above, then we can define a SSM via
 
 $$
 \begin{aligned}
@@ -53,13 +51,18 @@ $$
 \end{aligned}
 $$
 
-where $\XX_n = \XX(t_n)= \XX(n\Delta t)$. In order to simulate SSM, we need to specify the likelihood
+where $\XX_n = \XX(t_n)= \XX(n\Delta t)$. 
+
+(One must note that PFJAX expects the SDE $\XX(t)$ to be **unconstrained** in $\mathbb{R}^d$.  That being said, the SDE should be transformed to an unconstrained scale with *Ito's Lemma*, where a brief introduction is given in [Appendix 2](#appendix-2-variable-transformation). )
+
+In order to simulate SSM, we need to specify the likelihood
 
 $$
 \mathcal L(\tth \mid \YY_{0:N}) = \int \left[\pi(\XX_0 \mid \tth) \cdot \prod_{n=0}^N g(\YY_n \mid \XX_n, \tth) \cdot \prod_{n=1}^N p(\XX_n \mid \XX_{n-1}, \tth)\right] \ud \XX_{0:N}.
 $$
 
-However, the conditional probability $p(\XX_n\mid \XX_{n-1},\tth)$ is rarely available in closed form. But we can still simulate $\XX_{0:N}, \YY_{0:N}$ via a technique called *Euler-Maruyama* discretization method. It suggests to introduce a hidden path between two consecutive state variables. Namely,  for $m\geq 1$, let $\XX^{(m)}_n$ denote the value of the SDE at time $t=n\dt/m$, such that $\XX^{(m)}_{nm}=\XX_n=\XX(t_n)$. 
+However, the conditional probability $p(\XX_n\mid \XX_{n-1},\tth)$ is rarely available in closed form. But we can still simulate $\XX_{0:N}, \YY_{0:N}$ via a technique called *Euler-Maruyama* discretization method. It suggests introducing a hidden path between two consecutive state variables. Namely,  for $m\geq 1$, let $\XX^{(m)}_n$ denote the value of the SDE at time $t=n\dt/m$, such that $\XX^{(m)}_{nm}=\XX_n=\XX(t_n)$. 
+
 
 ```{mermaid}
 ---
@@ -75,6 +78,7 @@ graph LR
     E("$$X^{(m)}_{nm-1}$$")
     A -.-> |"$$\Delta t_m$$"| C -.-> |"$$\Delta t_m$$"| D -.-> |"$$\Delta t_m$$"| E -.-> |"$$\Delta t_m$$"| B
 ```
+
 
 As $\dt_m=\dt/m\to 0$, the normal approximation
 $$
@@ -92,143 +96,154 @@ $$
 
 and we have $\Lhat_m(\tth \mid \YY_{0:N}) \to \mathcal L(\tth \mid \YY_{0:N})$ as $m \to \infty$. 
 
-Moreover, the introduction of hidden underlying path exactly follows the nature of SSM, where the state and measurement variables at time $t$ are given by
+Moreover, this hidden underlying path technique can be naturally inherited by SSM, where the state and measurement variables at time $t$ are given by
 $$
 \begin{aligned}
 \xx_t & = \XX\up m_{(t-1)m+1:tm}, & \yy_t & = \YY_t.
 \end{aligned}
 $$
-We will keep this as the notation of PFJAX. 
-
-# Implementation in PFJAX
-
-## Prior on Initial Value
-
-The prior on $\xx_0 = (\XX\up m_{-m+1}, \ldots, \XX\up m_0)$, is given by
-
-$$
-\begin{aligned}
-\XX\up m_0 & \sim \pi(\XX\up m_0 \mid \tth), \\
-\XX\up m_n & = 0, \ \ \ \ \ -m+1 \le n < 0.
-\end{aligned}
-$$
-
-In other words, we use the SDE prior for $\XX\up m_0$, and set the dummy variables $\XX\up m_n = 0$ for $n = -m+1, \ldots, -1$.
-
-## Variable Transformations
-
-The present version of PFJAX expects the SDE $\XX(t)$ to be unconstrained in $\mathbb{R}^d$.  When this is not the case, the SDE can be transformed to an unconstrained scale using [Ito's lemma](https://en.wikipedia.org/wiki/It%C3%B4%27s_lemma). A high level discussion of Ito's lemma can also be found in [Appendix 1](#appendix-1-what-is-sde). 
-
-## Bridge Proposal
-
-Suppose $t=1$ for notation simplicity. The state-space model measures the following dynamics.
-
-The interest lies in how to sample for the path $(\XX^{(m)}_{1}, \dots, \XX^{(m)}_{m})$ for each observation. In PFJAX, there are two implemented methods.
-
-1. Sample from the disribution $p(\XX^{(m)}_{n}\mid \XX^{(m)}_{n-1})$ for all $n=1,\dots, m$. This answers the question "given where I was at one step ago, where am I likely to be right now". This can be done via *Euler* approximaiton. 
-
-2. Sample from the distribution $p(\XX^{(m)}_{n}\mid \XX^{(m)}_{n-1}, \YY_{t})$ for all $n=1,\dots, m$. This answers the quetion "given where I was at one step ago and where I will be eventually, where am I likely to be right now". This can be done via *bridge proposal*. 
-
-In oder to describe proposal, let us first consider the following formula. 
-
-> **Formula.** If
->
-> $$
-\begin{aligned}
-\WW & \sim \N(\mmu_W, \SSi_W) \\
-\XX \mid \WW & \sim \N(\WW + \mmu_{X|W}, \SSi_{X|W}) \\
-\YY \mid \XX, \WW & \sim \N(\AA \XX, \OOm),
-\end{aligned}
-$$
-> 
-> then 
-> 
-> $$
-\begin{bmatrix} \WW \\ \YY \end{bmatrix} \sim \N\left(\begin{bmatrix} \mmu_W \\ \mmu_{Y} = \AA[\mmu_W + \mmu_{X|W}] \end{bmatrix}, \begin{bmatrix} \SSi_W & \SSi_W \AA' \\ \AA \SSi_W & \SSi_Y = \AA (\SSi_W + \SSi_{X|W}) \AA' + \OOm \end{bmatrix} \right),
-$$
-> 
-> such that
-> 
-> $$
-\WW \mid \YY \sim \N\left(\mmu_W + \SSi_W \AA' \SSi_Y^{-1}(\YY - \mmu_Y), \SSi_W - \SSi_W \AA' \SSi_Y^{-1} \AA \SSi_W \right).
-$$
-
-
-Bridge proposal assumes the measurement model is
-
-$$
-\YY_t \ind \N(\AA \XX_t, \OOm)
-$$
-
-1. Start at $\XX_0^{(m)}$. Pretend the rest of the path $(\XX_{1}^{(m)},\dots, \XX_{m}^{(m)})$ is a simple Brownian motion with constant drift and diffusion, with the values of the current position.
-
-2. Analytically calculate the following conditional probability 
-$$
-\XX^{(m)}_{1}\mid \XX^{(m)}_{0}, \YY_1 \sim \N(\mmu_0, \SSi_0)
-$$
-where $\mmu_0, \SSi_0$ are results from the formula above. 
-
-3. Sample from the conditional distribution above to obtain $\XX_{1}^{(m)}$
-
-Repeat the procedure above to get the rest of the path: $\XX_2^{(m)},\dots, \XX_m^{(m)}$.
-
-(The high-level discussion on $\mmu_0, \SSi_0$ is only for simplicity purpose. A rigorous derivation on analytical result can be found in [Appendix 2](#appendix-2-bridge-proposal))
 
 
 
-# Example: Stochastic Volatility Model with Measurement Noise
-Starting from a constant volatility approach, assume that the price of an asset follows a *geometric Brownian motion, GBM*
+# Constructing Stochastic Volatility Model
+
+In financial applications, we usually model the asset price with *geometric Brownian motion (GBM)*
 
 $$
 \ud S_t=\mu S_t \ud t+\sigma S_t \ud\BB_t
 $$
-where $\mu$ is the constant drift, i..e the expected return of $S_t$ and $\sigma$ is the constant volatility. 
 
-For a *stochastic volatility model*, one may assume that the volatility has a stochastic pattern itself. Note that both volatility and price should be positive valued. For simplicity, our further discussion of stochastic volatility model will be based on log scale, i.e. log asset price and log volatility.  Say $X_t$ denotes the log price of the asset and $Z_t$ denotes the log volatility, then our SDE on $(Z_0,X_0)$ admits the following dynamic
+where $\mu$ is the constant drift, i.e., the expected return of $S_t$ and $\sigma$ is the constant volatility. 
+
+In *stochastic volatility*, we assume that the volatility admits a stochastic pattern itself. Moreover, we consider $X_t, Z_t$ on the log-scale so that the SDE is unconstrained, where $X_t$ denotes the log price of the asset and $Z_t$ denotes the log volatility. This yields a system of SDEs
+
 $$
-\left\{
-\begin{aligned}
-\mathrm{d}X_t
-  &= (\alpha - \tfrac12 e^{2Z_t})\,\mathrm{d}t + e^{Z_t}\,\mathrm{d}B^X_t\,,\\
-\mathrm{d}Z_t
-  &= (-\gamma Z_t + \eta)\,\mathrm{d}t + \sigma\,\mathrm{d}B^Z_t
-\end{aligned}
-\right.
-\quad
-\mathrm{Cor}(B^X_t,B^Z_t)=\rho
+\begin{cases}
+  \ud X_t = (\alpha - \frac{1}{2} e^{2Z_t}) \ud t + e^{Z_t} \ud B^X_t \\[6pt]
+  \ud Z_t = (\eta - \gamma Z_t) \ud t + \sigma \ud B^Z_t
+\end{cases}
 $$
 
-where $B_t^X, B_t^Z$ are 1-dimensional standard Brownian motion. The parameter of the models are thus $\vec{\theta}=(\alpha, \gamma, \eta, \sigma, \rho)$ The measurement variables, $\YY_t=Y_t$, is a 1-dimensional stochastic process such that
+
+
+where $B_t^X, B_t^Z$ are 1-dimensional standard Brownian motion and $\text{Cor}(B_t^X, B_t^Z)=\rho$. The parameters of the model are thus $\tth=(\alpha, \gamma, \eta, \sigma, \rho)$ 
+
+We will treat the tuple $\XX_t= (X_t,Z_t)$ as the latent variable, and the measurement variable $\YY_t=Y_t$, is a 1-dimensional stochastic process such that
 
 $$
 Y_t \sim \N(X_t, \eps^2)
 $$
 
-That is, the measurement variable is $X_t$ with small noise. In this note, we will fix $\eps = 1/10$. Moreover, we assume that the $X_0$, i.e. the current log price, is observed and deterministic.
+That is, the measurement variable is $X_t$ with small noise, i.e. $\eps = 1/10$. This noisy setup is used for two specific reasons:
 
-Another common setup for stochastic volatility in state-space model is to treat stochastic volatility, i.e. $Z_t$, as latent variable and log derivative price, i.e. $X_t$, as measurement. In this case, we use the noisy version due to mainly two purposes
 
-- This setup will direct enable the usage of bridge proposal without modification. 
+- *Theoretical*: This setup will directly enable the usage of bridge proposal without modification. 
 
-- In practice, the log price data we observed from financial market does not reflect the true data. It could be biased and noist due to bid-ask spread, recording error etc.
+- *Practical*: The log price data we observe from the financial market deviates from the true data due to bid-ask spread, recording errors etc. 
 
-## Prior Distribution
-In the case of a stochastic volatilty setup, we can use the *optimal proposal*, in which we choose the proposal distribution to be the conditional distribution itself. 
+SDE modeling in PFJAX is done via the `SDE` class in `pfjax.experimental`, where the following hyperparameters are needed 
 
-First note that this would benefit all samples of the initial latent variables to have a constant weight. Indeed, we observe the following
+ - `dt`: Float-valued, SDE inter-observational time
+
+ - `n_res`: Integer-valued, the length of the hidden path introduced by *Euler-Maruyama Approximation*
+
+ - `diff_diag`: Bool-valued, whether the diffusion matrix is diagonal or not
+
+ - `bootstrap`: Bool-valued, `True` to use bootstrap filter and `False` to use bridge proposal (which will be introduced later)
+
+```{python}
+import pfjax as pf
+from pfjax.experimental import sde_model as sde_test
+
+
+class StoVolModel(sde_test.SDEModel):
+    def __init__(self, dt, n_res, eps = 0.1):
+        super().__init__(dt, n_res, diff_diag = False, bootstrap = False)
+        self._eps = eps # noise of the measurement
+```
+
+Now implement the drift and diffusion terms of the SDE
+
+```{python}
+import jax
+import jax.numpy as jnp
+
+def stovol_drift(self, x, theta): 
+    alpha, gamma, eta, sigma, rho = theta
+    return jnp.array([alpha - 0.5 * jnp.exp(2 * x[1]), -gamma * x[1] + eta])
+
+def stovol_diff(self, x, theta):
+    alpha, gamma, eta, sigma, rho = theta
+    return jnp.array(
+        [[jnp.exp(2 * x[1]), rho * jnp.exp(x[1]) * sigma],
+                [rho * jnp.exp(x[1]) * sigma, sigma**2]])
+
+StoVolModel.drift = stovol_drift
+StoVolModel.diff = stovol_diff
+```
+
+ 
+
+## Prior of the Parameters
+We assume that the parameters $\tth=(\alpha, \gamma, \eta, \sigma, \rho)$ admit **independent** prior distributions, in particular
+
+ - $\alpha,\gamma,\eta\sim \N(0,10^2)$
+
+ - $\sigma\sim \log\N(0,1)$
+
+ - $\rho \sim \text{Uniform}(-1,1)$
+
+Therefore, the log-likelihood of the prior of $\tth$ is simply the sum of the log-likelihood of the prior of each piece, and sampling for $\tth$ is equivalent to stacking the sample of each piece.
+
+Now we can store our findings in `prior_lpdf()` and `prior_sample()`
+
+```{python}
+import jax.scipy.stats as jstats
+
+def stovol_prior_lpdf(self, theta):
+    alpha, gamma, eta, sigma, rho = theta
+    
+    lp = jstats.norm.logpdf(alpha, 0.0, 10.0)
+    lp += jstats.norm.logpdf(gamma, 0.0, 10.0)
+    lp += jstats.norm.logpdf(eta, 0.0, 10.0)
+    lp += jstats.norm.logpdf(jnp.log(sigma), loc=0.0, scale=1.0) - jnp.log(sigma)
+    lp += jnp.where((rho > -1.) & (rho < 1.), 0.0, -jnp.inf)
+    
+    return lp
+
+def stovol_prior_sample(self, key):
+    keys = jax.random.split(key, 5)
+    
+    alpha = jax.random.normal(keys[0]) * 10.0
+    gamma = jax.random.normal(keys[1]) * 10.0
+    eta = jax.random.normal(keys[2]) * 10.0
+    sigma = jnp.exp(jax.random.normal(keys[3]))
+    rho = jax.random.uniform(keys[4], minval=-1.0, maxval=1.0)
+    
+    return jnp.array([alpha, gamma, eta, sigma, rho])
+
+StoVolModel.prior_lpdf = stovol_prior_lpdf
+StoVolModel.prior_sample = stovol_prior_sample
+```
+
+
+## Initializing PF
+
+In the case of a stochastic volatility setup, we can use the *optimal proposal*, in which we choose the proposal distribution to be the conditional distribution itself. 
+
+First note that this allows all samples of the initial latent variables to have a constant weight. Indeed, we observe the following
 $$
 \begin{aligned}
 W_0^{(m)}=\frac{p(Z_0,X_0, Y_0)}{p(Z_0,X_0\mid Y_0)} = \frac{p(Z_0,X_0\mid Y_0)\pi(Y_0)}{p(Z_0,X_0\mid Y_0)}  = \pi(Y_0)
 \end{aligned}
 $$
 
-where $\pi$ is the marginal distribution of $Y_0$. The value of the unnormalized sample does not depend on $(Z_0,X_0)$, and thus all samples has $w^{(m)}_0=1$ after normalization. That is, $\log w^{(m)}_0=0$. 
+where $\pi$ is the marginal distribution of $Y_0$. The value of the unnormalized sample does not depend on $(Z_0,X_0)$, and thus all samples have $w^{(m)}_0=1$ after normalization. That is, $\log w^{(m)}_0=0$. 
 
-Then it leaves to us to specify $p(Z_0,X_0\mid Y_0)$. We may assume thatv $Z_0,X_0$ are independent variables, since $Z_0$ only describes the market volatility instead of the volatility of the asset price. Hence we can move our attention to $Z_0,X_0$ separately. 
+It leaves us to specify $p(Z_0,X_0\mid Y_0)$. We may assume that $Z_0,X_0$ are independent variables, since $Z_0$ only describes the market volatility instead of the volatility of the asset price. Hence we can move our attention to $Z_0,X_0$ separately. 
 
-Before further discussion into $(Z_0,X_0)$, we shall first investigate the dynamics of each pieces.
+1. For $Z_t$, we recognize it admits a pattern of [Ornstein-Uhlenbeck process](https://en.wikipedia.org/wiki/Ornstein%E2%80%93Uhlenbeck_process), which admits a stationary distribution. Therefore we can sample $Z_0$ from its stationary distribution
 
-1. For $Z_t$, we recognize it admits a pattern of [Ornstein-Uhlenbeck process](https://en.wikipedia.org/wiki/Ornstein%E2%80%93Uhlenbeck_process), which admits a stationary distribution. Therefore we can sample $Z_0$ from the stationary distribution, i.e
 $$Z_0\sim \N\bigg(\frac{\eta}{\gamma}, \frac{\sigma^2}{2\gamma}\bigg)$$
 
 2. For $X_0$, with the knowledge of $Y_0$, we observe that
@@ -236,192 +251,81 @@ $$\mathcal{N}(x_0, y_0, \eps^2)=\mathcal{N}(y_0, x_0, \eps^2)$$
 where $\mathcal{N}(a, \mu, \eps^2)$ denote the density function of $\N(\mu, \eps^2)$ distribution at $a$. Therefore we have $Y_0\sim \N(X_0, \eps^2)$. 
 
 
-Hence for the prior, we can simply do the following
-
-1. Sample $X_0\sim \N(Y_0, \eps^2)$ and sample $Z_0\sim \N(\frac{\eta}{\gamma}, \frac{\sigma^2}{2\gamma})$
-
-2. Use `logw = 0` for all samples.
-
-# Constructing Stochastic Volatility Model in PFJAX
-In PFJAX, all SDE models are defined based on `SDE` class, in which requires us to specify the following functions.
-
- - Hyperparameters:
-    1. `dt`: Float. SDE interobservation time
-
-    2. `n_res`: Int. There are `n_res` latent variables per observation, equally spaced with interobservation time `dt/n_res`
-
-    3. `diff_diag`: Bool. Whether or not the diffusion matrix is assumed to be diagonal.
-
-    4. `bootstrap`: Bool. Whether or not to use a bootstrap filter.  If `bootstrap == False`, use a bridge proposal, for which we must define the `bridge_pars()` method.
-
- - To define a SDE:
-
-    1. `drift(x, theta)`
-
-    2. `diff(x, theta)`
-
-    3. `meas_lpdf(y_curr, x_curr, theta)`
-
-    4. `bridge_pars(y_curr, theta)` (*optional*, depends on the choice of `bootstrap`) 
-
- - To simulate from SDE:
-
-    1. `meas_sample(key, y_curr, x_curr, theta)`
-
- - To enable particle filter method:
-
-    1. `pf_init(key, y_init, theta)`
-
 ```{python}
-## jax
-import jax
-import jax.numpy as jnp
-import jax.scipy as jsp
-import jax.random as random
-## plotting
-import numpy as np
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-import projplot as pjp
-## pfjax
-import pfjax as pf
-from pfjax.experimental import sde_model as sde_test
-from pfjax import sde as sde
-from pfjax.particle_resamplers import resample_mvn, resample_multinomial
-## optax
-import optax
+def stovol_pf_init(self, key, y_init, theta):
+    alpha, gamma, eta, sigma, rho = theta
+    key_x, key_z = jax.random.split(key)
 
-class StoVolModel(sde_test.SDEModel):
-    def __init__(self, dt, n_res, eps = 0.1):
-        """
-        Store important parameters and hyper model paramaters
-        """
-        super().__init__(dt, n_res, diff_diag = False, bootstrap = False)
-        self._eps = eps
-    
-    def drift(self, x, theta):
-        """
-        Describes the drift part of the SDE
-        """
-        alpha, gamma, eta, sigma, rho = theta
-        return jnp.array([alpha - 0.5 * jnp.exp(2 * x[1]), -gamma * x[1] + eta])
- 
-    def diff(self, x, theta):
-        """
-        Describes the diffusion part of the SDE
-        """
-        alpha, gamma, eta, sigma, rho = theta
-        return jnp.array(
-            [
-                [jnp.exp(2 * x[1]), rho * jnp.exp(x[1]) * sigma],
-                [rho * jnp.exp(x[1]) * sigma, sigma**2],
-            ]
-        )
-    
+    Z0_sample = (eta / gamma) + (sigma / jnp.sqrt(2 * gamma)) * jax.random.normal(key=key_z)
+    X0_sample = y_init + self._eps * jax.random.normal(key = key_x)
 
-    def bridge_pars(self, y_curr, theta):
-        """ 
-        Calculate the parameters required for bridge proposal
+    ## use prior_pad to create dummy variables for the initial value
+    state_init = self.prior_pad(jnp.array([X0_sample, Z0_sample]))
+    logw = 0
+    return state_init, logw
 
-        Args:
-            y_curr: Measurement variable at current time `t`.
-            theta: Parameter value.
-
-        Returns:
-            Triple:
-                Y: Measurement variable
-                A: Linear map (matrix) for latent variable towards bridge proposal mean
-                Omega: bridge proposal variance
-        """
-        A = jnp.atleast_2d(jnp.array([1.0, 0.0]))
-        Omega = jnp.atleast_2d(self._eps**2)
-        Y = y_curr
-        return Y, A, Omega
- 
-    def meas_pars(self, x_curr, theta):
-        """
-        Helper function
-        """
-        Y, A, Omega = self.bridge_pars(y_curr = None, theta = theta)
-        mu = jnp.squeeze(jnp.dot(A, x_curr[-1]))
-        sigma = jnp.squeeze(jnp.sqrt(Omega))
-        return mu, sigma
- 
-    def meas_sample(self, key, x_curr, theta):
-        """
-        Sample from `p(y_curr | x_curr, theta)`.
-
-        Args:
-            key: PRNG key.
-            x_curr: State variable at current time `t`.
-            theta: Parameter value.
-
-        Returns:
-            Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
-        """
-        mu, sigma = self.meas_pars(x_curr = x_curr, theta = theta)
-        return mu + sigma * jax.random.normal(key)
- 
-    def meas_lpdf(self, y_curr, x_curr, theta):
-        r"""
-        Log-density of `p(y_curr | x_curr, theta)`.
-
-        Args:
-            y_curr: Measurement variable at current time `t`.
-            x_curr: State variable at current time `t`.
-            theta: Parameter value.
-
-        Returns:
-            The log-density of `p(y_curr | x_curr, theta)`.
-        """
-        mu, sigma = self.meas_pars(x_curr = x_curr, theta = theta)
-        return jsp.stats.norm.logpdf(x = y_curr, loc = mu, scale = sigma)
-
-    def pf_init(self, key, y_init, theta):
-        """
-        Importance sampler for `x_init`.  
-
-        Args:
-            key: PRNG key.
-            y_init: Measurement variable at initial time `t = 0`.
-            theta: Parameter value.
-
-        Returns:
-            Tuple:
-                x_init: A sample from the proposal distribution for `x_init`.
-                logw: The log-weight of `x_init`.
-        """
-        alpha, gamma, eta, sigma, rho = theta
-        key_x, key_z = jax.random.split(key)
-
-        Z0_sample = eta / gamma + sigma / jnp.sqrt(gamma ** 2) * jax.random.normal(key = key_z)
-        X0_sample = y_init + self._eps * jax.random.normal(key = key_x)
-
-        ## use prior_pad to create dummy variables for the initial value
-        state_init = self.prior_pad(jnp.array([X0_sample, Z0_sample]))
-        logw = 0
-        return state_init, logw
+StoVolModel.pf_init = stovol_pf_init
 ```
 
-After building up the stochastic volatility model class, we can now pass through some paramaters and do simulations.
-```{python, eval = False}
-## true parameters
-alpha = 0.001
+
+
+## Measurement Variables
+The measurement variable is $Y_t\sim \N(X_t, \eps^2)$, which is coded into the following
+
+```{python}
+def stovol_meas_lpdf(self, y_curr, x_curr, theta):
+    return jstats.norm.logpdf(y_curr, loc=x_curr[-1, 0], scale=self._eps)
+
+def stovol_meas_sample(self, key, x_curr, theta):
+    return x_curr[-1, 0] + self._eps * jax.random.normal(key)
+
+StoVolModel.meas_lpdf = stovol_meas_lpdf
+StoVolModel.meas_sample = stovol_meas_sample
+```
+
+## Bridge Proposal
+The Bridge Proposal functions as a guidance system. That is, instead of letting our particles wander blindly (the Bootstrap approach), we look ahead at the next available data point $Y_{t+1}$ and nudge the particles toward it as they move through the SDE. 
+It ensures more particles pass the reality check, so that the scenario where some particles significantly dominating the rest is prevented.
+
+The essential assumption of Bridge Proposal is
+
+$$Y_t\sim \N(AX_t, \Omega)$$
+
+which is met by our model. To enable Bridge Proposal for the particle filtering, we need `bridge_pars` to return $Y, A, \Omega$.
+
+```{python}
+def stovol_bridge_pars(self, y_curr, theta):
+
+    A = jnp.atleast_2d(jnp.array([1.0, 0.0]))
+    Omega = jnp.atleast_2d(self._eps**2)
+    Y = y_curr
+    
+    return Y, A, Omega
+
+StoVolModel.bridge_pars = stovol_bridge_pars
+```
+
+A more rigorous and techinical discussion on the Bridge Proposal can be found in [Appendix 3](#appendix-3-bridge-proposal)
+
+## Simulation
+Now we have gathered all the needed tool for the stochastic model, so that we can move on to simulate the data. This is done via `pf_simulate`. 
+```{python}
+# true parameters
+alpha = 0.045
 gamma = 3
-eta = 3 * -1.3
+eta = 3 * -1.7
 sigma = 1
 rho = -0.8
 true_theta = jnp.array([alpha, gamma, eta, sigma, rho])
 
-## data specification
+# data specification
 n_res = 1
 dt = 0.5
 n_obs = 1000
 x_init = jnp.array([[0., 0.2]])
 key = jax.random.PRNGKey(1)
 
-## simulation
+# simulation
 sv_model = StoVolModel(dt = dt, n_res = n_res)
 key, subkey = jax.random.split(key)
 meas, state = pf.simulate(
@@ -431,7 +335,16 @@ meas, state = pf.simulate(
     x_init = x_init,
     theta = true_theta
 )
+```
 
+```{python}
+#| echo: false
+#| eval: true
+
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
 ## Visualization
 arr = np.array(state)
 flat = arr.reshape(-1,2)
@@ -449,23 +362,23 @@ axs[1].set(xlabel = None, ylabel = None, title = 'log-volatility')
 axs[1].legend()
 axs[0].grid(True, alpha = 0.3)
 axs[1].grid(True, alpha = 0.3)
-
 ```
 
 
-# Choice of Resamlper
+# Computations on Stochastic Volatility Model
+## Choice of Resampler
 
-In the following demo on PFJAX, we choose MVN resampler over multinomial resampler. First we shall agree on two aspects.
+The particle filtering algorithm in PFJAX supports two choices of resamplers: Multivariate normal resampler and multinomial. 
+In this demo, we choose MVN resampler over multinomial resampler, where the reason can be attributed to two aspects.
 
 1. Differentiability
 
 2. MVN resampler is indeed a fair substitute for multinomial resampler
+
 ```{python}
-theta_lims = np.array([[-0.2, 0.2], [2, 4], [-5, -3], [0.5, 1.275], [-1, 1]])
-theta_names = ["alpha", "gamma", "eta", "sigma", "rho"]
+from pfjax.particle_resamplers import resample_mvn, resample_multinomial
 
 n_particles = 100
-
 @jax.jit
 def stovol_pflik_multinomial(theta):
     temp = pf.particle_filter(model = sv_model, key = key, y_meas = meas,
@@ -482,10 +395,19 @@ def stovol_pflik_mvn(theta):
                               resampler = resample_mvn)
     return temp['loglik']
 
-# Processing data for projection Plot
-n_points = 500
 
-## Setting parameter grids
+```
+
+```{python}
+#| echo: false
+
+
+# Processing data for projection Plot
+n_points = 300
+
+# Setting parameter grids
+theta_lims = np.array([[0.03, 0.06], [2, 4], [-6.5, -3.7], [0.5, 1.5], [-1, 1]])
+theta_names = ["alpha", "gamma", "eta", "sigma", "rho"]
 grids = [jnp.linspace(lo, hi, n_points) for (lo, hi) in theta_lims]
 
 proj_multinomial = jnp.zeros((5, n_points))
@@ -503,7 +425,7 @@ for i, grid in enumerate(grids):
         # For mvn resampler
         val2 = stovol_pflik_mvn(th)
         proj_mvn = proj_mvn.at[i, j].set(val2)
-        
+
 # plotting
 fig, axs = plt.subplots(1, 5, figsize=(28, 7))
 for i, ax in enumerate(axs):
@@ -519,25 +441,16 @@ plt.tight_layout()
 plt.show()
 ```
 
-The above plot confirms 
 
-1. The differentiability of marginal likelihood estimate using the MVN resmapler, as the the curves are visibly smooth in all projection plots
+## Solving the Smoothing Problem
 
-2. There is no significant evidence of bias from using MVN resample. 
+Recall that the smoothing problem in SSM involves estimating $\XX_t$ using the entire measurement dataset $Y_{1:T}$. 
 
-# Estimating Latent Variables with Past History
-
-When we set `history = True`, the output will give us (`logw, x_particles`) pairs for each time point. For example, suppose the interest lies in time $t$. 
-
-1. We can sample from the **filtered** distribution $p(\XX_t\mid \YY_{0:t},\tth)$
-
-2. The built-in function `particle_smooth` in PFJAX allows us to sample from the **smoothed** distribution $p(\XX_t\mid \YY_{0:T}, \tth)$, i.e. conditioning on all measurements. 
+When we set `history = True`, the output will give us (`logw, x_particles`) pairs for each time point. Then the built-in function `particle_smooth` in PFJAX allows us to sample from $p(\XX_t\mid \YY_{0:T}, \tth)$.
 
 It must be noted that `particle_smooth` requires an input for ancestors, which is only available under `resampler_multinomial`.
-
-In this tutorial, we will focus on the second method.
 ```{python}
-n_particles = 100
+n_particles = 1000
 ## Run with history on and multinomial resampler
 pf_hist = pf.particle_filter(model = sv_model, key = key, y_meas = meas,
                              theta = true_theta, n_particles = n_particles,
@@ -561,7 +474,11 @@ pf_state_smooth = pf.particle_smooth(key = key, logw = pf_hist_logw,
 
 hist_df = pd.DataFrame(pf_state_smooth)
 hist_df.columns = ['log-price', 'log-volatility']
+```
 
+
+```{python}
+#| echo: false
 ## Plotting with respect to true state variables
 fig, axs = plt.subplots(1, 2, figsize=(20,10))
 sns.lineplot(data = df['log-price'], ax = axs[0], label = "log-price, state")
@@ -579,18 +496,10 @@ axs[0].grid(True, alpha = 0.3)
 axs[1].grid(True, alpha = 0.3)
 ```
 
-# Estimating Density Plot for Single Observation
-With the history of particle filter, another thing we can investigate is the density plot of a single observation of the latent variables. A typical procedure is as follow:
+On the other hand, if one is interested in the distribution $p(\XX_t\mid \YY_{1:T},\tth)$ itself rather than sampling from it, we can manually calculate this with the log-weights provided in the history
 
-1. Pick a time point of interest (here we pick $t_obs = 10$).
-
-2. Get `logw, x_particles` at the intersted time. Note that `(logw, x_particles)` tells us a guess on the latent varviables with a weight.
-
-3. Normalize the weights. Then compute a weighted average of all guesses.
-
-4. Take many draws to finish the density plot. 
 ```{python}
-n_particles = 100
+n_particles = 1000
 pf_result = pf.particle_filter(model = sv_model, key = key, y_meas = meas,
                                theta = true_theta, n_particles = n_particles, 
                                score = False, fisher=False,
@@ -612,8 +521,12 @@ wgt = jnp.exp(logw - jnp.max(logw))
 prob = wgt / jnp.sum(wgt)
 
 ## Take many draws for density plot
-ind = random.choice(key, a = n_particles, shape = (n_samples,), p = prob)
+ind = jax.random.choice(key, a = n_particles, shape = (n_samples,), p = prob)
 x_sample = x_particles[ind]
+```
+
+```{python}
+#| echo: false
 
 ## Plot
 fig, axs = plt.subplots(1, 2, figsize = (20,10))
@@ -630,19 +543,11 @@ axs[1].grid(True, alpha = 0.3)
 fig.suptitle('Density plots for observation {}'.format(t_obs), fontsize=24)
 ```
 
-# MLE Searching
+# MLE Analysis
 ## Reparameterization
-Before using `optax` to find MLE, it should be noted that
+It must be noted that in many optimization methods, the parameters are required to be unconstrained. Yet in our model, $\rho$ takes values from $[-1,1]$ and $\gamma, \sigma$ only takes positive values.
 
-1. The parameter optimization in `adam` is unconstrained.
-
-2. In our model, we have constraints such that
-
- - $\rho$ takes value from $[-1,1]$
-
- - $\gamma, \sigma$ takes positive values.
-
-Therefore, in the optimizing procedure, we must passed the transformed parameters. One way to do this is as the following:
+Therefore, the following reparameterization is required.
 
  - $\rho \mapsto  \log \frac{\rho + 1}{1-\rho}$, where the inverse map is $\rho^*\mapsto \frac{\exp (\rho^*)-1}{\exp(\rho^*)+1}$
 
@@ -660,10 +565,12 @@ def to_constrained(unconstrained):
     return jnp.array([alpha, jnp.exp(log_gamma), eta, jnp.exp(log_sigma), jnp.tanh(atanh_rho)])
 ```
 
-## MLE Searching with LFBGS
+## Find MLE with LBFGS
 In our example, we will choose [LBFGS](https://optax.readthedocs.io/en/stable/_collections/examples/lbfgs.html) as our optimizer. 
 ```{python}
-n_particles = 100
+import optax
+
+n_particles = 1000
 mle_key = jax.random.PRNGKey(0)
 
 ## The objective function
@@ -687,7 +594,7 @@ vng = optax.value_and_grad_from_state(negloglik_uncons)
 
 ## Loop
 mle_theta_names = ["mle_alpha", "mle_gamma", "mle_eta", "mle_sigma", "mle_rho"]
-num_steps = 50
+num_steps = 50 
 mvn_plot_df = pd.DataFrame()
 for i in range(num_steps):
     val, grad = vng(cur_mle_uncons, state = opt_state)
@@ -708,6 +615,8 @@ mle_theta_uncons = cur_mle_uncons
 print("MLE Result:", mle_theta_cons)
 ```
 ```{python}
+#| echo: false
+
 ## Plotting for MLE along the loop
 fig, ax = plt.subplots(1, 5, figsize = (30,5))
 for i, name in zip(range(5), mle_theta_names):
@@ -718,12 +627,12 @@ for i, name in zip(range(5), mle_theta_names):
     ax[i].grid(True, alpha = 0.3)
 ```
 
-# Analyis on MLE
+## Frequentist Analysis
+In order to find the standard deviation of the MLE, we must ensure that the Fisher matrix is positive-definite. One way to check this is by examining if all the eigenvalues of the fisher matrix are positive. 
 
-## Frequentist Approach
-In order to find the standard deviation of the MLE, we must ensure that the fisher matrix is positive-definite. One way to check this is by examining if all the eigenvalues of the fisher matrix are positive. Here we will do 10 times with different keys to ensure the statbility of posituve-definite proproperty. 
+Here we run this with 5 different keys to ensure the statbility of positive-definite proproperty. 
 ```{python}
-n_particles = 100
+n_particles = 1000
 
 ## The objective function
 def negloglik(cons_theta, key):
@@ -770,7 +679,7 @@ Instead of assuming the parameters are deterministic values, we can assume they 
 The quantity of interest is to find the posterior $\pi(\theta\mid Y_t)$. One way is to implement *Bayesian normal approximation*
 
 ```{python}
-n_particles = 100
+n_particles = 1000
 
 ## Get the negative loglikelihood
 def negloglik(uncons_theta, key):
@@ -780,7 +689,7 @@ def negloglik(uncons_theta, key):
                               score = False,fisher=False,
                               history = False,
                               resampler = resample_mvn)
-    return -temp['loglik']
+    return -(temp['loglik'] + sv_model.prior_lpdf(cons_theta))
 
 ## Get the observed information matrix
 get_fisher = jax.jit(jax.hessian(negloglik, argnums=0))
@@ -792,26 +701,33 @@ uncons_mle_fisher = get_fisher(mle_theta_uncons, fisher_key)
 var_matrix = jnp.linalg.inv(uncons_mle_fisher)
 root_var_matrix = jnp.linalg.cholesky(var_matrix)
 
-draw_uncons = mle_theta_uncons + jax.random.normal(fisher_key, (500, 5)) @ root_var_matrix
+draw_uncons = mle_theta_uncons + jax.random.normal(fisher_key, (500, 5)) @ root_var_matrix.T
 
 ## Get the Bayesian normal approximation for cons_theta
 draw_cons = jax.vmap(to_constrained)(draw_uncons)
-
-## Plotting
-cons_df = pd.DataFrame(draw_cons)
-cons_df.columns = theta_names
-## Get a density plot
-fig, axs = plt.subplots(1,5, figsize = (24,4))
-for par, i in zip(theta_names, range(5)):
-    sns.kdeplot(data = cons_df[par], ax = axs[i], label = "Posterior")
-    axs[i].set_ylabel("")
-    axs[i].axvline(true_theta[i], color = "red", label = "True Parameter")
-    axs[i].grid(True, alpha = 0.3)
 ```
+
+```{python}
+#| echo: false
+## Plotting
+cons_df = pd.DataFrame(np.array(draw_cons), columns=theta_names)
+
+## Get a density plot
+fig, axs = plt.subplots(1, 5, figsize=(24, 4))
+for par, i in zip(theta_names, range(5)):
+    sns.kdeplot(data=cons_df[par], ax=axs[i], label="Posterior")
+    axs[i].set_ylabel("")
+    axs[i].axvline(true_theta[i], color="red", label="True Parameter")
+    axs[i].grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+```
+
 
 # Appendix 1: What is SDE
 ## Standard Brownian Motion
-A 1-dimensional*standard Brownian Motion, or Weiner process*, is a stochastic process $\{\BB_t\}_{t\geq 0}$, with the following properties
+A 1-dimensional*standard Brownian Motion, or Wiener process*, is a stochastic process $\{\BB_t\}_{t\geq 0}$, with the following properties
 
 - $\BB_0 = 0$
 
@@ -877,7 +793,7 @@ $$
 
 where $\dr_{\tth}(\XX)$ is a $d$-dimensional drift function and $\df_{\tth}(\XX)$ is a $d \times d$ positive-definite diffusion matrix. 
 
-## Variable Transformation
+# Appendix 2: Variable Transformation
 Suppose that $\YY(t) = (f_1(X_1(t)), \ldots, f_d(X_d(t)))$ is a twice-differentiable bijective transformation such that $\YY(t)$ is unconstrained in $\mathbb{R}^d$.  Then by *Ito's Lemma*, the SDE for $\YY(t)$ is
 
 $$
@@ -894,7 +810,8 @@ $$
 
 and $\Sigma_{ij} = [\df_{\tth}(\XX)]_{ij}$.
 
-# Appendix 2: Bridge Proposal
+# Appendix 3: Bridge Proposal
+
 Suppose that $x_{t-1} = (\XX\up m_{(t-2)m+1}, \ldots, \XX\up m_{(t-1)m})$ is given, and suppose that the measurement model is 
 
 $$
@@ -904,7 +821,7 @@ $$
 In order to describe the bridge proposal for $x_t = (\XX\up m_{(t-1)m+1}, \ldots, \XX\up m_{tm})$, let us first consider the following formula.  
 
 > **Formula.** If
->
+
 > $$
 \begin{aligned}
 \WW & \sim \N(\mmu_W, \SSi_W) \\
@@ -931,37 +848,33 @@ The bridge proposal for $x_t$ then proceeds recursively as follows:
 
 - Pretend that $\XX(t)$ is a Brownian motion with drift for $t \in (\tfrac n m \dt, \dt)$:
 
-    $$
-    \ud \XX(t) = \dr_n \ud t + \df_n^{1/2} \ud \BB(t),
-    $$
+$$\ud \XX(t) = \dr_n \ud t + \df_n^{1/2} \ud \BB(t)$$
 	
-	where $\dr_n = \dr_{\tth}(\XX \up m_{n})$ and $\df_n = \df_{\tth}(\XX \up m_{n})$.  This means that for any $\tfrac n m \dt \le s \le s + u \le \dt$ we have
+where $\dr_n = \dr_{\tth}(\XX \up m_{n})$ and $\df_n = \df_{\tth}(\XX \up m_{n})$.  This means that for any $\tfrac n m \dt \le s \le s + u \le \dt$ we have
 	
-	$$
-	\XX(s+u) \mid \XX(s) \sim \N(\XX(s) + u \dr_n, u \df_n),
-	$$
+$$ \XX(s+u) \mid \XX(s) \sim \N(\XX(s) + u \dr_n, u \df_n) $$
     
-    To obtain the proposal for $\XX\up m_{n+1}$, we apply the formula to $(\WW, \XX, \YY) = (\XX\up m_{n+1}, \XX\up m_{m}, \YY_1)$, for which we have
+To obtain the proposal for $\XX\up m_{n+1}$, we apply the formula to $(\WW, \XX, \YY) = (\XX\up m_{n+1}, \XX\up m_{m}, \YY_1)$, for which we have
 	
-	$$
+$$
 	\begin{aligned}
 	\XX\up m_{n+1} & \sim \N(\XX\up m_n + \dt_m \dr_n, \dt_m \df_n) \\
 	\XX\up m_m \mid \XX \up m_{n+1} & \sim \N(\XX \up m_{n+1} + k \dt_m \dr_n , k \dt_m \df_n) \\
 	\YY_1 \mid \XX\up m_m, \XX\up m_{n+1} & \sim \N(\AA \XX\up m_m, \OOm),
 	\end{aligned}
-	$$
+$$
 	
-	where $k = m - n$, such that in the formula we have
+where $k = m - n$, such that in the formula we have
 	
-	$$
+$$
 	\begin{aligned}
 	\mmu_W & = \XX\up m_n + \dr_n \dt_m, & \SSi_W & = \dt_m \SSi_n, \\
     % \mmu_{X|W} & = k \dt_m \dr_n, & \SSi_{X|W} & = k \dt_m \df_n, \\
 	\mmu_Y & = \AA[\XX \up m_n + k \dt_m \dr_n], & \SSi_Y & = k \dt_m \AA \SSi_n \AA' + \OOm.
 	\end{aligned}
-	$$
+$$
     
-There are a few special cases of this formula:
+There are a few special cases of this formula: 
 
 1.  When $\AA = \begin{bmatrix} \II_{p \times p} & \bz_{p \times (d-p)} \end{bmatrix}$, for the measurement variables we have $E[\YY_1 \mid \XX\up m_{m}] = \XX\up m_{m}$.  Moreover, for 
 
@@ -994,4 +907,4 @@ There are a few special cases of this formula:
 	
 	where $\XX\up m_{n1}$ are the first $p$ components of $\XX\up m_m$.
     
-4.  Suppose that in addition to 1, both $\SSi_n$ and $\OOm$ are diagonal. Then the formulas above can be implemented componentwise, i.e., without matrix operations.  That is, suppose we have $\df_n = \diag(\tau_1, \ldots, \tau_d)$ and $\OOm = \diag(\omega_1, \ldots, \omega_p)$.  Then *[TBD]*
+4.  Suppose that in addition to 1, both $\SSi_n$ and $\OOm$ are diagonal. Then the formulas above can be implemented componentwise, i.e., without matrix operations. 
