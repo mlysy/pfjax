@@ -1,0 +1,63 @@
+site_name: "PFJAX"
+site_url: https://mlysy.github.io/pfjax
+docs_dir: docs/_output
+
+nav:
+  - Home: index.md
+  - pfjax.md
+  - gradient_comparisons.md
+  - stochopt_tutorial.md
+  - mcmc_tutorial.md
+
+theme:
+  name: material
+  features:
+    - navigation.indexes
+
+exclude_docs: |
+  /quarto/*
+  /sphinx/*
+  /internal/*
+
+markdown_extensions:
+  - attr_list
+  - md_in_html
+  - admonition
+  - footnotes
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tilde
+  - pymdownx.details
+  
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+hooks:
+  - docs/hooks/ansi_escapes.py
+  - docs/hooks/md_in_csl.py
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            type_parameter_headings: true
+            members_order: source
+            summary: true
+            show_signature_annotations: true
+  - api-autonav:
+      modules: ["src/pfjax"]
+      show_full_namespace: false

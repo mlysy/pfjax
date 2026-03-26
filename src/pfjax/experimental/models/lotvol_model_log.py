@@ -1,4 +1,4 @@
-"""
+r"""
 Lotka-Volterra predator-prey model on the log-scale
 
 The model on the regular scale is:
@@ -21,8 +21,7 @@ y_t ~ N( exp(x_{m,mt}), diag(tau_H^2, tau_L^2) )
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
-from jax import random
-from jax import lax
+from jax import lax, random
 from pfjax import sde as sde
 
 # --- helper functions ---------------------------------------------------------
@@ -42,6 +41,7 @@ from pfjax import sde as sde
 
 # --- main functions -----------------------------------------------------------
 
+
 class LotVolModelLog(sde.SDEModel):
     def __init__(self, dt, n_res, bootstrap=True):
         r"""
@@ -60,21 +60,20 @@ class LotVolModelLog(sde.SDEModel):
         """
         Calculates the SDE drift on the regular scale
         Args:
-            x: 
+            x:
             theta: parameter values on the log-scale
         """
         alpha = jnp.exp(theta[0])
         beta = jnp.exp(theta[1])
         gamma = jnp.exp(theta[2])
         delta = jnp.exp(theta[3])
-        return jnp.array([alpha - beta * x[1],
-                          -gamma + delta * x[0]])
+        return jnp.array([alpha - beta * x[1], -gamma + delta * x[0]])
 
     def diff(self, x, theta):
         """
-        Calculates the SDE diffusion function on the regular scale 
+        Calculates the SDE diffusion function on the regular scale
         Args:
-            x: 
+            x:
             theta: parameter values on the log-scale
         """
         return jnp.exp(theta[4:6])
@@ -155,10 +154,7 @@ class LotVolModelLog(sde.SDEModel):
             The log-density of `p(y_curr | x_curr, theta)`.
         """
         tau = jnp.exp(theta[6:8])
-        return jnp.sum(
-            jsp.stats.norm.logpdf(y_curr,
-                                  loc=x_curr[-1], scale=tau)
-        )
+        return jnp.sum(jsp.stats.norm.logpdf(y_curr, loc=x_curr[-1], scale=tau))
 
     def meas_sample(self, key, x_curr, theta):
         """
@@ -171,12 +167,11 @@ class LotVolModelLog(sde.SDEModel):
             Sample of the measurement variable at current time `t`: `y_curr ~ p(y_curr | x_curr, theta)`.
         """
         tau = jnp.exp(theta[6:8])
-        return x_curr[-1] + \
-            tau * random.normal(key, (self._n_state[1],))
+        return x_curr[-1] + tau * random.normal(key, (self._n_state[1],))
 
     def pf_init(self, key, y_init, theta):
         """
-        Importance sampler for `x_init`.  
+        Importance sampler for `x_init`.
         See file comments for exact sampling distribution of `p(x_init | y_init, theta)`, i.e., we have a "perfect" importance sampler with `logw = CONST(theta)`.
         Args:
             key: PRNG key.
@@ -195,19 +190,20 @@ class LotVolModelLog(sde.SDEModel):
         #     shape=(self._n_state[1],)
         # ))
         x_init = y_init + tau * random.truncated_normal(
-            subkey,
-            lower=-y_init/tau,
-            upper=jnp.inf,
-            shape=(self._n_state[1],)
+            subkey, lower=-y_init / tau, upper=jnp.inf, shape=(self._n_state[1],)
         )
-        logw = jnp.sum(jsp.stats.norm.logcdf(y_init/tau))
-        return \
-            jnp.append(jnp.zeros((self._n_res-1,) + x_init.shape),
-                       jnp.expand_dims(x_init, axis=0), axis=0), \
-            logw
+        logw = jnp.sum(jsp.stats.norm.logcdf(y_init / tau))
+        return (
+            jnp.append(
+                jnp.zeros((self._n_res - 1,) + x_init.shape),
+                jnp.expand_dims(x_init, axis=0),
+                axis=0,
+            ),
+            logw,
+        )
 
     def pf_step(self, key, x_prev, y_curr, theta):
-        """ 
+        """
         Choose between bootstrap filter and bridge proposal.
 
         Args:
@@ -227,6 +223,6 @@ class LotVolModelLog(sde.SDEModel):
             # omega = (jnp.exp(theta[6:8]) / y_curr)**2
             omega = jnp.exp(theta[6:8])
             x_curr, logw = self.bridge_prop(
-                key, x_prev, y_curr, theta, y_curr,
-                jnp.eye(2), jnp.diag(omega))
+                key, x_prev, y_curr, theta, y_curr, jnp.eye(2), jnp.diag(omega)
+            )
         return x_curr, logw
