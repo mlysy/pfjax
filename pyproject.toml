@@ -63,17 +63,19 @@ docs = [
     "mkdocstrings>=1.0.3",
     "nbclient>=0.10.4",
     "nbformat>=5.10.4",
-    #"numpy>=2.4.2",
     "numpy>=2.4.1",
     "pandas>=2.3.0",
-    "pillow>=12.1.1", # a matplotlib dependency, but contains a security fix
+    "pillow>=12.1.1", # matplotlib dependency (security fix)
     "projplot>=1.0",
+    "pygments>=2.20.0", # mkdocs-material + ipykernel dependency (security fix)
     "pyyaml>=6.0.3",
+    "requests>=2.33.0", # mkdocs-material dependency (security fix)
     "seaborn>=0.13.2",
-    "tornado>=6.5.5", # an ipykernel dependency, but contains a security fix
+    "tornado>=6.5.5", # ipykernel dependency (security fix)
 ]
 test = [
     "pandas>=2.3.0",
+    "pygments>=2.20.0", # pytest dependency (security fix)
     "pytest>=9.0.2",
     "pytest-env>=1.2.0",
 ]
