@@ -231,12 +231,12 @@ class BasicFilter(object):
                 theta=theta,
             )
             # FIXME: replace proposal with stop-gradient version
-            x_particles_curr = jax.lax.stop_gradient(x_particles_curr)
-            logw_prop = jax.vmap(
-                fun=self._model.step_lpdf,
-                in_axes=(0, 0, None, None),
-            )(x_particles_curr, x_particles_resamp, y_curr, theta)
-            logw_curr = logw_curr + logw_prop - jax.lax.stop_gradient(logw_prop)
+            # x_particles_curr = jax.lax.stop_gradient(x_particles_curr)
+            # logw_prop = jax.vmap(
+            #     fun=self._model.step_lpdf,
+            #     in_axes=(0, 0, None, None),
+            # )(x_particles_curr, x_particles_resamp, y_curr, theta)
+            # logw_curr = logw_curr + logw_prop - jax.lax.stop_gradient(logw_prop)
             # 3. update logw
             # downweight with auxiliary pf
             logw_aux_resamp = self.pf_aux(

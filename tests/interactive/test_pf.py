@@ -16,6 +16,100 @@ from tests.interactive.basic_filter import BasicFilter
 from tests.ss_model import SSModel
 from tests.utils import expand_grid, rel_err
 
+jax.config.update("jax_enable_x64", True)
+
+
+# --- test stop_gradient -------------------------------------------------------
+
+
+class BMModelSimple(pf.experimental.base_model.BaseModel):
+    def __init__(self):
+        """
+        A simplified version of BM Model:
+
+        x_0 ~ Lebesgue
+        x_t ~  + Normal(beta * x_{t-1}, sigma^2)
+        y_t ~ x_t + Normal(0, 1)
+        """
+        super().__init__(bootstrap=False)
+
+    def state_lpdf(self, x_curr, x_prev, theta):
+        beta, sigma = theta
+        return jax.scipy.stats.norm.logpdf(
+            x=x_curr,
+            loc=beta * x_prev,
+            scale=sigma,
+        )
+
+    def state_sample(self, key, x_prev, theta):
+        beta, sigma = theta
+        return beta * x_prev + sigma * jax.random.normal(key)
+
+    def meas_lpdf(self, y_curr, x_curr, theta):
+        return jax.scipy.stats.norm.logpdf(
+            x=y_curr,
+            loc=x_curr,
+            scale=1.0,
+        )
+
+    def meas_sample(self, key, x_curr, theta):
+        return x_curr + jax.random.normal(key)
+
+    def pf_init(self, key, y_init, theta):
+        return (y_init + jax.random.normal(key), 0.0)
+
+    def pf_step(self, key, x_prev, y_curr, theta):
+        x_curr = y_curr + jax.random.normal(key)
+        lp_prop = jax.scipy.stats.norm.logpdf(x=x_curr, loc=0.0, scale=1.0)
+        lp_targ = self.state_lpdf(x_curr=x_curr, x_prev=x_prev, theta=theta)
+        lp_targ = lp_targ + self.meas_lpdf(y_curr=y_curr, x_curr=x_curr, theta=theta)
+        return (x_curr, lp_targ - lp_prop)
+
+
+key = jax.random.PRNGKey(0)
+# parameter values
+beta = 1.3
+sigma = 5.1
+theta = jnp.array([beta, sigma])
+# data specification
+n_obs = 5
+x_init = jnp.array(0.0)
+bm_model = BMModelSimple()
+# simulate without for-loop
+y_meas, x_state = pf.simulate(bm_model, key, n_obs, x_init, theta)
+
+# particle filter specification
+n_particles = 1
+key, subkey = jax.random.split(key)
+
+n_obs_test = 3
+out1 = pf.particle_filter(
+    model=bm_model,
+    key=key,
+    y_meas=y_meas[0:n_obs_test],
+    theta=theta,
+    n_particles=n_particles,
+    score=True,
+)
+
+bm_filter = BasicFilter(model=bm_model)
+out2 = bm_filter(
+    key,
+    y_meas[0:n_obs_test],
+    theta,
+    n_particles,
+)
+out3 = jax.grad(bm_filter, argnums=2, has_aux=True)(
+    key,
+    y_meas[0:n_obs_test],
+    theta,
+    n_particles,
+)
+
+print(f'out1_loglik={out1["loglik"]}, out2_loglik={out2[0]}')
+
+print(f'out1_score={out1["score"]}, out3_score={out3[0]}')
+
 # --- ss_model -----------------------------------------------------------------
 
 ss_inputs = tests.utils.ss_setup()
