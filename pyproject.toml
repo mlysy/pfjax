@@ -67,7 +67,7 @@ docs = [
     "pandas>=2.3.0",
     "pillow>=12.1.1", # matplotlib dependency (security fix)
     "projplot>=1.0",
-    "pygments>=2.20.0", # mkdocs-material + ipykernel dependency (security fix)
+    "pygments==2.19.2", # mkdocs-material + ipykernel dependency (security fix)
     "pyyaml>=6.0.3",
     "requests>=2.33.0", # mkdocs-material dependency (security fix)
     "seaborn>=0.13.2",
@@ -75,7 +75,7 @@ docs = [
 ]
 test = [
     "pandas>=2.3.0",
-    "pygments>=2.20.0", # pytest dependency (security fix)
+    "pygments==2.19.2", # pytest dependency (security fix)
     "pytest>=9.0.2",
     "pytest-env>=1.2.0",
 ]
