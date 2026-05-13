@@ -38,6 +38,7 @@ def resample_multinomial(key, x_particles, logw):
     return {
     "x_particles": utils.tree_subset(x_particles, index=ancestors),
     "ancestors": ancestors,
+    "logw": -jnp.log(n_particles) * jnp.ones((n_particles,)),
 }
 
 
@@ -184,68 +185,63 @@ class BasicFilter(object):
             y_init=utils.tree_subset(y_meas, 0),
             theta=theta,
         )
-        #logw = logw + init_lpdf - stop_gradient(init_lpdf)
-        logv = logw - jnp.log(n_particles)  # v_0 = w_0 / N
+        logw = logw - jnp.log(n_particles)  # matches pseudocode: logw = logw - log(N)
         filter_init = {
             "x_particles": x_particles,
-            "logv": logv,
+            "logw": logw,
             "loglik": 0.0,
             "key": key,
         }
 
         # lax.scan stepping function
         def filter_step(carry, y_curr):
-            # 1. resample particles from previous time point
-            logv_prev = carry["logv"]
-            x_particles_prev = carry["x_particles"]
-            # upweight with auxiliary pf
-            """
+            logw = carry["logw"]
+            x_particles = carry["x_particles"]
+
+            # upweight by aux pf (== 0 if model has no pf_aux)
             logw_aux = self.pf_aux(
-                x_prev=x_particles_prev,
+                x_prev=x_particles,
                 y_curr=y_curr,
                 theta=theta,
             )
-            """
+            logw = logw + logw_aux
+
+            # loglik contribution for this step. The stop_gradient is needed for
+            # reinforce (prevents pathwise gradients from double-counting with logw_ad).
+            loglik_inc = jax.lax.stop_gradient(logsumexp(logw))
+
+            # resample
             key, subkey = jax.random.split(carry["key"])
             resample_out = resampler(
                 key=subkey,
-                x_particles=x_particles_prev,
-                # logw=logw_prev + logw_aux,
-                logw=logv_prev,
+                x_particles=x_particles,
+                logw=logw,
             )
-            x_particles_resamp = resample_out["x_particles"]
             ancestors = resample_out["ancestors"]
-            logu = (
-                -jnp.log(n_particles)
-                + logv_prev[ancestors]
-                - jax.lax.stop_gradient(logv_prev[ancestors])
-            )
-            # FIXME: allow resampler to output weighted particles.
-            # # default to unweighted now.
-            # logw_resamp = jnp.zeros(shape=(n_particles,))
-            # # FIXME: this should be done inside resample_multinomial.
-            # logw_hist = logw_prev[resample_out["ancestors"]]
-            # logw_resamp = logw_resamp + logw_hist - jax.lax.stop_gradient(logw_hist)
-            # REMOVED : logw_resamp = jax.lax.stop_gradient(resample_out["logw"])
-            # 2. sample particles for current time point
-            key, *subkeys = jax.random.split(key, num=n_particles + 1)
-            x_particles_curr, logw_curr = self.propagate(
-                key=jnp.array(subkeys),
-                x_prev=x_particles_resamp,
+
+            # Needed for reinforce: must be computed before logw is overwritten,
+            # since it has to reference the weights the resampler actually saw.
+            logw_ad = logw[ancestors] - jax.lax.stop_gradient(logw[ancestors])
+
+            x_particles = resample_out["x_particles"]
+            logw_prev = resample_out["logw"]  # uniform weights after resampling
+
+            # Downweight by aux pf at the resampled particles
+            logw_aux_resamp = self.pf_aux(
+                x_prev=x_particles,
                 y_curr=y_curr,
                 theta=theta,
             )
-            #logw_curr = logw_curr + step_lpdf - stop_gradient(step_lpdf)
-            logv_curr = logw_curr + logu
-            # FIXME: replace proposal with stop-gradient version
-            # x_particles_curr = jax.lax.stop_gradient(x_particles_curr)
-            # logw_prop = jax.vmap(
-            #     fun=self._model.step_lpdf,
-            #     in_axes=(0, 0, None, None),
-            # )(x_particles_curr, x_particles_resamp, y_curr, theta)
-            # logw_curr = logw_curr + logw_prop - jax.lax.stop_gradient(logw_prop)
-            # 3. update logw
-            # downweight with auxiliary pf
+
+            # Propagate. Overwrites x_particles and logw with the new step's outputs,
+            # exactly like the pseudocode's `x_particles, logw = propagate(...)`.
+            key, *subkeys = jax.random.split(key, num=n_particles + 1)
+            x_particles, logw = self.propagate(
+                key=jnp.array(subkeys),
+                x_prev=x_particles,
+                y_curr=y_curr,
+                theta=theta,
+            )
 
             """
             logw_aux_resamp = self.pf_aux(
@@ -253,21 +249,27 @@ class BasicFilter(object):
                 y_curr=y_curr,
                 theta=theta,
             )
+            logw_curr = logw_curr + logw_resamp - logw_aux_resamp
+
+            logw_marg = logsumexp(logw_curr)
+            logw_marg = logw_marg - logsumexp(logw_resamp)
+            logw_marg = logw_marg + logsumexp(logw_aux + logw_prev)
+            logw_marg = logw_marg - logsumexp(logw_prev)
             """
-            logv_curr = logw_curr + logu
-            
-            # 5. update lax.scan carry and stack
+
+            # Combine. Pseudocode is logw = logw + logw_prev; the - logw_aux_resamp
+            # is the aux-pf downweight; the + logw_ad is needed for reinforce.
+            logw = logw + logw_prev - logw_aux_resamp + logw_ad
+
             res_carry = {
-                "x_particles": x_particles_curr,
-                "logv": logv_curr,
+                "x_particles": x_particles,
+                "logw": logw,
                 "key": key,
-                "loglik": carry["loglik"] + jax.lax.stop_gradient(logsumexp(logv_prev)),
+                "loglik": carry["loglik"] + loglik_inc,
             }
             if history:
-                # mandatory elements
                 res_stack = {k: res_carry[k] for k in ["x_particles", "logw"]}
                 if set(["x_particles"]) < resample_out.keys():
-                    # other elements of resample_out if they exist
                     res_stack["resample_out"] = utils.rm_keys(
                         x=resample_out, keys="x_particles"
                     )
@@ -284,17 +286,14 @@ class BasicFilter(object):
         )
 
         # format output
-        loglik = last["loglik"] + logsumexp(last["logv"])
+        loglik = last["loglik"] + logsumexp(last["logw"])
         if history:
-            # append initial values of x_particles and logw
             full["x_particles"] = utils.tree_append_first(
                 tree=full["x_particles"], first=filter_init["x_particles"]
             )
-            full["logv"] = utils.tree_append_first(
-                tree=full["logv"], first=filter_init["logv"]
+            full["logw"] = utils.tree_append_first(
+                tree=full["logw"], first=filter_init["logw"]
             )
         else:
             full = last.copy()
-            # del full["loglik"]  # hold off on this for now
-        # CAN CHANGE NEGATIVE BACK
-        return -loglik, full
+        return loglik, full

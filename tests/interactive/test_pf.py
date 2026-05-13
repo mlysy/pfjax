@@ -118,7 +118,7 @@ print(f'out1_loglik={out1["loglik"]}, out2_loglik={out2[0]}')
 
 print(f'out1_score={out1["score"]}, out3_score={out3[0]}')
 
-print(f'out1_fisher={out1["fisher"]}, out4_fisher={out4[0]}')
+print(f'out1_fisher={out1["fisher"]}, out4_fisher={-out4[0]}')
 
 import sys
 sys.exit(0)
