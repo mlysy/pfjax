@@ -198,7 +198,7 @@ class BasicFilter(object):
             logw = carry["logw"]
             x_particles = carry["x_particles"]
 
-            # upweight by aux pf (== 0 if model has no pf_aux)
+            # upweight by aux pf (= 0 if model has no pf_aux)
             logw_aux = self.pf_aux(
                 x_prev=x_particles,
                 y_curr=y_curr,
@@ -243,6 +243,7 @@ class BasicFilter(object):
                 theta=theta,
             )
 
+            # Preserved for future use
             """
             logw_aux_resamp = self.pf_aux(
                 x_prev=x_particles_resamp,
@@ -261,6 +262,7 @@ class BasicFilter(object):
             # is the aux-pf downweight; the + logw_ad is needed for reinforce.
             logw = logw + logw_prev - logw_aux_resamp + logw_ad
 
+            # Update lax.scan carry and stack
             res_carry = {
                 "x_particles": x_particles,
                 "logw": logw,
@@ -268,8 +270,10 @@ class BasicFilter(object):
                 "loglik": carry["loglik"] + loglik_inc,
             }
             if history:
+                # mandatory elements
                 res_stack = {k: res_carry[k] for k in ["x_particles", "logw"]}
                 if set(["x_particles"]) < resample_out.keys():
+                    # other elements of resample_out if they exist
                     res_stack["resample_out"] = utils.rm_keys(
                         x=resample_out, keys="x_particles"
                     )
@@ -288,6 +292,7 @@ class BasicFilter(object):
         # format output
         loglik = last["loglik"] + logsumexp(last["logw"])
         if history:
+            # append initial values of x_particles and logw
             full["x_particles"] = utils.tree_append_first(
                 tree=full["x_particles"], first=filter_init["x_particles"]
             )
