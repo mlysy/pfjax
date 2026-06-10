@@ -3,6 +3,21 @@ import jax.numpy as jnp
 import pfjax.utils as utils
 from jax.scipy.special import logsumexp
 
+def logmeanexp(logw):
+    r"""
+    Compute `log(mean(exp(logw)))`.
+
+    For an importance-sampling particle set where
+    `logw[i] = log(C * p(x[i]) / q(x[i]))` with `x[i] ~ q`, this
+    satisfies
+
+    \frac{1}{N} \sum_i e^{\ell^i}
+    \;\to\;
+    \int e^{\ell(x)}\, q(x)\, dx = C,
+
+    so `logmeanexp(logw)` is a consistent estimate of `log C`.
+    """
+    return logsumexp(logw) - jnp.log(logw.size)
 
 def resample_multinomial(key, x_particles, logw):
     r"""
@@ -208,7 +223,7 @@ class BasicFilter(object):
 
             # loglik contribution for this step. The stop_gradient is needed for
             # reinforce (prevents pathwise gradients from double-counting with logw_ad).
-            loglik_inc = jax.lax.stop_gradient(logsumexp(logw))
+            loglik_inc = jax.lax.stop_gradient(logmeanexp(logw))
 
             # resample
             key, subkey = jax.random.split(carry["key"])
@@ -260,7 +275,7 @@ class BasicFilter(object):
 
             # Combine. Pseudocode is logw = logw + logw_prev; the - logw_aux_resamp
             # is the aux-pf downweight; the + logw_ad is needed for reinforce.
-            logw = logw + logw_prev - logw_aux_resamp + logw_ad
+            logw = logw + logw_prev - logw_aux_resamp + logw_ad - logmeanexp(logw_prev)
 
             # Update lax.scan carry and stack
             res_carry = {
@@ -290,7 +305,7 @@ class BasicFilter(object):
         )
 
         # format output
-        loglik = last["loglik"] + logsumexp(last["logw"])
+        loglik = last["loglik"] + logmeanexp(last["logw"])
         if history:
             # append initial values of x_particles and logw
             full["x_particles"] = utils.tree_append_first(
