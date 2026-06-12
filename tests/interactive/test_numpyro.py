@@ -3,6 +3,8 @@
 # Works fine for random quantity as a JAX array.
 # Not sure how to automate this when its a PyTree.
 
+import inspect
+
 import jax
 import jax.numpy as jnp
 import jax.random as random
@@ -120,7 +122,7 @@ def pyro_sample(key, dist, *args, **kwargs):
     return model(*args, **kwargs)
 
 
-# example
+# --- example: data is a dict -----------------------------------------------
 
 
 def pyro_dist(x_prev, theta, x_curr={"x": None, "y": None}):
@@ -135,6 +137,7 @@ def pyro_dist(x_prev, theta, x_curr={"x": None, "y": None}):
     return {"x": x, "y": y}
 
 
+key = jax.random.PRNGKey(0)
 x_prev = 5.1
 theta = 1.7
 x_curr = {"x": 1.0, "y": 2.0}
@@ -146,3 +149,113 @@ jax.jit(pyro_lpdf, static_argnums=1)(
 jax.jit(pyro_sample, static_argnums=1)(
     key=key, dist=pyro_dist, x_prev=x_prev, theta=theta
 )
+
+# --- example: x_state and y_meas are PyTrees ----------------------------------
+
+
+def resolve_kwargs(fun_sig, args, kwargs):
+    """Resolve input arguments to positional following a function's signature.
+
+    This will raise a TypeError if any keyword-only arguments were passed by the
+    caller.
+
+    Mostly copied from
+    <https://github.com/jax-ml/jax/blob/50476ee1fa9009bfb8c63567681af72b1ada5ef4/jax/_src/api_util.py>
+    """
+    # if isinstance(fun, partial):
+    #     # functools.partial should have an opaque signature.
+    #     fun = lambda *args, **kwargs: None
+    ba = fun_sig.bind(*args, **kwargs)
+    ba.apply_defaults()
+    if ba.kwargs:
+        passed_kwargs = [k for k in ba.kwargs if k in kwargs]
+        if passed_kwargs:
+            raise TypeError(
+                "The following keyword arguments could not be resolved to positions: "
+                f"{', '.join(passed_kwargs)}"
+            )
+    return ba.args
+
+
+def meas_dist(x_curr, theta, y_curr=(None, None)):
+    x1, x2 = x_curr
+    t1, t2 = theta
+    y1 = numpyro.sample(
+        name="y1",
+        fn=dist.Normal(loc=x1, scale=t1),
+        obs=y_curr[0],
+    )
+    y2 = numpyro.sample(
+        name="y2",
+        fn=dist.Normal(loc=x2 * y1, scale=t2 * y1**2),
+        obs=y_curr[1],
+    )
+    return (y1, y2)
+
+
+def make_dist_sample(dist):
+    # create the right signature
+    sig = inspect.signature(dist)
+    params = list(sig.parameters.values())
+    key_param = inspect.Parameter(
+        name="key",
+        kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    )
+    new_params = [key_param] + params[:-1]
+    new_sig = sig.replace(parameters=params)
+
+    def _sample(key, *args, **kwargs):
+        return pyro_sample(key=key, dist=dist, *args, **kwargs)
+
+    _sample.__signature__ = new_sig
+
+    return _sample
+
+
+def make_dist_lpdf(dist):
+    # create signature
+    sig = inspect.signature(dist)
+    params = list(sig.parameters.values())
+    obs_param = params[-1].replace(default=inspect.Parameter.empty)
+    new_params = [obs_param] + params[:-1]
+    new_sig = sig.replace(parameters=new_params)
+
+    def _lpdf(*args, **kwargs):
+        new_args = resolve_kwargs(new_sig, args, kwargs)
+        return pyro_lpdf(new_args[0], dist, *new_args[1:])
+
+    _lpdf.__signature__ = new_sig
+
+    return _lpdf
+
+
+meas_sample = make_dist_sample(meas_dist)
+meas_lpdf = make_dist_lpdf(meas_dist)
+
+key = jax.random.PRNGKey(0)
+theta = (1.2, 2.3)
+x_curr = (-1.0, 2.0)
+y_curr = (0.7, -0.8)
+
+jax.jit(meas_sample)(key=key, x_curr=x_curr, theta=theta)
+jax.jit(meas_lpdf)(y_curr=y_curr, x_curr=x_curr, theta=theta)
+
+# --- test ---------------------------------------------------------------------
+
+
+def make_foo(f):
+    """
+    Create a `foo()` out of `f()`.
+    """
+    sig = inspect.signature(f)
+
+    def _foo(*args, **kwargs):
+        # no copy, positional order, positional order of new_sig
+        new_args = resolve_kwargs(
+            fun_sig,
+            *args,
+            **kwargs,
+        )
+        return bar(new_args[0], f, *new_args[1:])
+
+    return _foo
