@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 from jax import random
+
 from .base_model import BaseModel
 
 
@@ -51,8 +52,9 @@ class BMModel(BaseModel):
         mu = theta[0]
         sigma = theta[1]
         return jnp.squeeze(
-            jsp.stats.norm.logpdf(x_curr, loc=x_prev + mu * self._dt,
-                                  scale=sigma * jnp.sqrt(self._dt))
+            jsp.stats.norm.logpdf(
+                x_curr, loc=x_prev + mu * self._dt, scale=sigma * jnp.sqrt(self._dt)
+            )
         )
 
     def state_sample(self, key, x_prev, theta):
@@ -90,9 +92,7 @@ class BMModel(BaseModel):
         if self._unconstrained_theta:
             theta = self._constrain_theta(theta)
         tau = theta[2]
-        return jnp.squeeze(
-            jsp.stats.norm.logpdf(y_curr, loc=x_curr, scale=tau)
-        )
+        return jnp.squeeze(jsp.stats.norm.logpdf(y_curr, loc=x_curr, scale=tau))
 
     def meas_sample(self, key, x_curr, theta):
         r"""
@@ -113,7 +113,7 @@ class BMModel(BaseModel):
 
     def pf_init(self, key, y_init, theta):
         r"""
-        Get particles for initial state `x_init = x_state[0]`. 
+        Get particles for initial state `x_init = x_state[0]`.
 
         Samples from an importance sampling proposal distribution
 
@@ -127,12 +127,19 @@ class BMModel(BaseModel):
 
             logw = log p(y_init | x_init, theta) + log p(x_init | theta) - log q(x_init)
 
-        In this case we have an exact proposal 
+        In this case for the prior distribution
 
         ::
 
-                  q(x_init) = p(x_init | y_init, theta)   
-            <=>   x_init ~ N(y_init, tau)
+            p(x_init | theta) \propto 1,
+
+
+        we have an exact proposal
+
+        ::
+
+                  x_init | y_init ~ N(y_init, tau^2)
+            <=>   q(x_init | y_init) = p(x_init | y_init, theta)
 
         Moreover, due to symmetry of arguments we have `q(x_init) = p(y_init | x_init, theta)`, and since `p(x_init | theta) \propto 1` we have `logw = 0`.
 
@@ -170,16 +177,14 @@ class BMModel(BaseModel):
         mu = theta[0]
         sigma2 = theta[1] * theta[1]
         tau2 = theta[2] * theta[2]
-        n_obs = y_meas.shape[0]-1  # conditioning on y_0
-        t_meas = jnp.arange(1, n_obs+1) * self._dt
-        Sigma_y = sigma2 * jax.vmap(lambda t:
-                                    jnp.minimum(t, t_meas))(t_meas) + \
-            tau2 * (jnp.ones((n_obs, n_obs)) + jnp.eye(n_obs))
+        n_obs = y_meas.shape[0] - 1  # conditioning on y_0
+        t_meas = jnp.arange(1, n_obs + 1) * self._dt
+        Sigma_y = sigma2 * jax.vmap(lambda t: jnp.minimum(t, t_meas))(t_meas) + tau2 * (
+            jnp.ones((n_obs, n_obs)) + jnp.eye(n_obs)
+        )
         mu_y = y_meas[0] + mu * t_meas
         return jsp.stats.multivariate_normal.logpdf(
-            x=jnp.squeeze(y_meas[1:]),
-            mean=mu_y,
-            cov=Sigma_y
+            x=jnp.squeeze(y_meas[1:]), mean=mu_y, cov=Sigma_y
         )
 
 

@@ -131,19 +131,21 @@ def particle_filter(
         """
         grad_meas = jax.grad(model.meas_lpdf, argnums=2)
         grad_state = jax.grad(model.state_lpdf, argnums=2)
-        alpha = (
-            grad_meas(y_curr, x_curr, theta)
-            + grad_state(x_curr, x_prev, theta)
-            + acc_prev["alpha"]
+        alpha = jax.tree.map(
+            lambda x, y, z: x + y + z,
+            grad_meas(y_curr, x_curr, theta),
+            grad_state(x_curr, x_prev, theta),
+            acc_prev["alpha"],
         )
         acc_curr = {"alpha": alpha}
         if fisher:
             hess_meas = jax.jacfwd(jax.jacrev(model.meas_lpdf, argnums=2), argnums=2)
             hess_state = jax.jacfwd(jax.jacrev(model.state_lpdf, argnums=2), argnums=2)
-            beta = (
-                hess_meas(y_curr, x_curr, theta)
-                + hess_state(x_curr, x_prev, theta)
-                + acc_prev["beta"]
+            beta = jax.tree.map(
+                lambda x, y, z: x + y + z,
+                hess_meas(y_curr, x_curr, theta),
+                hess_state(x_curr, x_prev, theta),
+                acc_prev["beta"],
             )
             acc_curr["beta"] = beta
         return acc_curr
@@ -187,7 +189,8 @@ def particle_filter(
             logw=carry["logw"] + logw_aux,
         )
         # 2. sample particles for current time point
-        key, *subkeys = random.split(key, num=n_particles + 1)
+        ks = random.split(key, num=n_particles + 1)
+        key, subkeys = ks[0], ks[1:]
         x_particles, logw = jax.vmap(
             fun=pf_step,
             in_axes=(0, 0, None),
@@ -234,7 +237,8 @@ def particle_filter(
         return res_carry, res_stack
 
     # lax.scan initial value
-    key, *subkeys = random.split(key, num=n_particles + 1)
+    ks = random.split(key, num=n_particles + 1)
+    key, subkeys = ks[0], ks[1:]
     x_particles, logw = jax.vmap(pf_init)(jnp.array(subkeys))
     filter_init = {
         "x_particles": x_particles,
@@ -249,6 +253,16 @@ def particle_filter(
             filter_init["beta"] = _initialize_fisher(theta, n_particles)
 
     # lax.scan itself
+    # if has_acc:
+    #     acc_debug = {"alpha": _initialize_score(theta, 1)}
+    #     if fisher:
+    #         acc_debug["beta"] = _initialize_fisher(theta, 1)
+    #     accumulate_deriv(
+    #         x_prev=filter_init["x_particles"][0],
+    #         x_curr=filter_init["x_particles"][1],
+    #         y_curr=y_meas[0],
+    #         acc_prev=acc_debug,
+    #     )
     last, full = lax.scan(
         f=filter_step,
         init=filter_init,
@@ -498,7 +512,8 @@ def particle_filter_rb(
             logw=logw_aux + carry["logw_bar"],
         )
         # 2. sample particles for current timepoint
-        key, *subkeys = random.split(key, num=n_particles + 1)
+        ks = random.split(key, num=n_particles + 1)
+        key, subkeys = ks[0], ks[1:]
         x_particles = jax.vmap(
             pf_step,
             in_axes=(0, 0, None),
@@ -532,7 +547,8 @@ def particle_filter_rb(
         return res_carry, res_stack
 
     # lax.scan initial value
-    key, *subkeys = random.split(key, num=n_particles + 1)
+    ks = random.split(key, num=n_particles + 1)
+    key, subkeys = ks[0], ks[1:]
     # initial particles and weights
     x_particles, logw = jax.vmap(pf_init)(jnp.array(subkeys))
     # # dummy initialization for resampler
