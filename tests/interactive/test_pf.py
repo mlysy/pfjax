@@ -91,7 +91,7 @@ y_meas, x_state = pf.simulate(bm_model, key, n_obs, x_init, theta)
 n_particles = 20
 key, subkey = jax.random.split(key)
 
-n_obs_test = 2
+n_obs_test = 3
 out1 = pf.particle_filter(
     model=bm_model,
     key=key,
@@ -99,7 +99,7 @@ out1 = pf.particle_filter(
     theta=theta,
     n_particles=n_particles,
     score=True,
-    fisher=True,
+    fisher = True,
 )
 
 bm_filter = BasicFilter(model=bm_model)
@@ -130,7 +130,6 @@ print(f'out1_score={out1["score"]}, out3_score={out3[0]}')
 print(f'out1_fisher={out1["fisher"]}, out4_fisher={-out4[0]}')
 
 import sys
-
 sys.exit(0)
 
 # --- ss_model -----------------------------------------------------------------
