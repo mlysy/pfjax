@@ -189,7 +189,8 @@ def particle_filter(
             logw=carry["logw"] + logw_aux,
         )
         # 2. sample particles for current time point
-        key, *subkeys = random.split(key, num=n_particles + 1)
+        ks = random.split(key, num=n_particles + 1)
+        key, subkeys = ks[0], ks[1:]
         x_particles, logw = jax.vmap(
             fun=pf_step,
             in_axes=(0, 0, None),
@@ -236,7 +237,8 @@ def particle_filter(
         return res_carry, res_stack
 
     # lax.scan initial value
-    key, *subkeys = random.split(key, num=n_particles + 1)
+    ks = random.split(key, num=n_particles + 1)
+    key, subkeys = ks[0], ks[1:]
     x_particles, logw = jax.vmap(pf_init)(jnp.array(subkeys))
     filter_init = {
         "x_particles": x_particles,
@@ -510,7 +512,8 @@ def particle_filter_rb(
             logw=logw_aux + carry["logw_bar"],
         )
         # 2. sample particles for current timepoint
-        key, *subkeys = random.split(key, num=n_particles + 1)
+        ks = random.split(key, num=n_particles + 1)
+        key, subkeys = ks[0], ks[1:]
         x_particles = jax.vmap(
             pf_step,
             in_axes=(0, 0, None),
@@ -544,7 +547,8 @@ def particle_filter_rb(
         return res_carry, res_stack
 
     # lax.scan initial value
-    key, *subkeys = random.split(key, num=n_particles + 1)
+    ks = random.split(key, num=n_particles + 1)
+    key, subkeys = ks[0], ks[1:]
     # initial particles and weights
     x_particles, logw = jax.vmap(pf_init)(jnp.array(subkeys))
     # # dummy initialization for resampler
