@@ -55,27 +55,32 @@ dev = [
 ]
 docs = [
     "ansi2html>=1.9.2",
+    "certifi>=2026.1.4", # mkdocs-material + requests dependency
+    "griffe==1.15.0", # mkdocstrings dependency
+    "idna>=3.15", # mkdocs-material + requests dependency
     "ipykernel>=7.1.0",
     "jupyter-cache>=1.0.1",
     "matplotlib>=3.10.8",
     "mkdocs-api-autonav>=0.4.0",
-    "mkdocs-material>=9.7.1",
+    "mkdocs-material>=9.7.7",
     "mkdocstrings>=1.0.3",
     "nbclient>=0.10.4",
     "nbformat>=5.10.4",
     "numpy>=2.4.1",
     "pandas>=2.3.0",
-    "pillow>=12.2.0", # matplotlib dependency (security fix)
+    "pillow>=13.0.0", # matplotlib dependency
     "projplot>=1.0",
-    "pygments==2.19.2", # mkdocs-material + ipykernel dependency (security fix)
+    "pygments>=2.20.0", # mkdocs-material + ipykernel dependency
+    "pymdown-extensions==10.20.1", # mkdocstrings + mkdocs-material + mkdocs-api-autonav dependency
     "pyyaml>=6.0.3",
-    "requests>=2.33.0", # mkdocs-material dependency (security fix)
+    "requests>=2.33.0", # mkdocs-material dependency
     "seaborn>=0.13.2",
-    "tornado>=6.5.5", # ipykernel dependency (security fix)
+    "tornado>=6.6", # ipykernel dependency
+    "urllib3>=2.6.8", # mkdocs-material + requests dependency
 ]
 test = [
     "pandas>=2.3.0",
-    "pygments==2.19.2", # pytest dependency (security fix)
+    "pygments>=2.20.0", # pytest dependency
     "pytest>=9.0.3",
     "pytest-env>=1.2.0",
 ]
